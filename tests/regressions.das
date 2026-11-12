@@ -176,6 +176,16 @@ def main(smoke:bool):int {
         ui_frame() { screen(model) }
         verify(mode_reads == 2 && origin_reads == 2 && find(rui_inner_markup(ui_find("origin")),"5") == 0)
 
+        // The base text is a setting, not a constant. A larger size makes the
+        // same text taller; the defaults bring it back.
+        let text_height = rui_bounds(leaf).w
+        set_base_text("LatoLatin",px(20))
+        ui_frame() { screen(model) }
+        verify(base_font_family() == "LatoLatin" && rui_bounds(leaf).w > text_height,"set_base_text did not restyle the tree")
+        set_base_text("LatoLatin")
+        ui_frame() { screen(model) }
+        verify(rui_bounds(leaf).w == text_height && rui_warning_count() == 0ul)
+
         // RmlUi lays a native template out while loading it, before the DSL
         // stylesheet is attached. Its own sheet must already name a font.
         let frame = open_template(@@regression_window,"Window",float2(20.,20.))

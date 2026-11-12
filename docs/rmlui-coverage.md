@@ -33,6 +33,7 @@ daScript. Наличие примера не означает, что он вк�
 | Диагностика DSL | `ui_stats`, `ui_trace`, AST dump, отрицательные тесты | Это не визуальный RmlUi Debugger |
 | Spatial navigation | Typed `nav`, `nav_up/right/down/left`, `UiNav`, `nav_to`, `nav_id`, `tab_stop`, `document_nav`; native geometry/tree-order/ID и focus-visible | Native auto ограничен scroll container; focus_scope ограничивает Tab; геймпадная обвязка SDL отдельно |
 | RmlUi Debugger | Официальный плагин: lazy init, F8, toolbar, Element Info, Event Log, Outlines, Data Models, hide/shutdown и reactive status; Vector deck | Один context; Data Models не показывает состояние DSL. Hide дополнительно закрывает инструменты и выключает picking/outlines |
+| Пользовательские native-элементы | `register_native_element`, `native_element` в компонентах/шаблонах; native ElementInstancer, Create/Attribute/Property/Resize/Update/Paint/Destroy, intrinsic, solid geometry и GC-safe registry; Signal foundry | Имена с дефисом; без переопределения built-ins, texture/shader commands, baseline/custom hit testing. Мутации DOM внутри native-хуков запрещены; обычные DSL events доступны |
 
 Файлы реализации: [ui.das](../dasrmlui/ui.das),
 [macros.das](../dasrmlui/macros.das),
@@ -54,7 +55,7 @@ daScript. Наличие примера не означает, что он вк�
 | Touch и IME | SDL adapter передаёт touch, подключён IME handler; есть защита композиции при обновлении input | Реальные сценарии на устройствах/IME, прикладные touch callbacks и жесты. Базовая передача событий уже есть |
 | Шрифтовый fallback и shaping | Есть `rui_font` и `rui_fallback_font`; кириллица показана с Segoe UI. Используется FreeType | Проверки цепочек fallback/CJK; отдельная интеграция HarfBuzz для сложного shaping и проверка RTL. Загрузка шрифта сама этого не решает |
 | Табличная раскладка и rich text | `display: table*` доступен через `property`; `text()` создаёт plain text | Helpers/пример таблицы с row/col spans, inline fragments и управляемым форматированием текста |
-| Пользовательские элементы, decorators, filters, shaders | Native API регистрации не экспортирован | Явный ABI и lifetime для расширений, безопасные callbacks daScript; для shader — поддержка renderer |
+| Пользовательские decorators, filters, shaders | Native элементы уже экспортированы; отдельные instancers decorators/filters/shaders ещё нет | ABI/lifetime и callback boundaries для каждого типа; для shader — поддержка renderer |
 | Встроенные RmlUi data models | Нет `CreateDataModel`/Bind/DirtyVariable bindings | Только если нужна совместимость с существующими RML `data-*`; для текущих компонентов эту задачу решает наш runtime |
 | Файловая система и ресурсы | FileInterface читает зарегистрированные текстовые ресурсы из памяти, остальные файлы — с диска; texture loaders читают PNG с диска | Архивы, invalidation/cache reload, in-memory textures, расширение форматов при необходимости |
 | Планирование обновлений | Компоненты пропускают пересчёт, но host продолжает Update/Render и SDL_Delay | Интеграция `Context::GetNextUpdateDelay` с очередью событий, анимациями и сигналами; проверить idle CPU |
@@ -65,7 +66,7 @@ daScript. Наличие примера не означает, что он вк�
 остановку распространения с отменой default actions. Отложенный setter не может
 изменить уже завершившийся native dispatch; независимого PreventDefault здесь нет.
 
-## Десять примеров native возможностей и тесты
+## Примеры native возможностей и тесты
 
 - `drag_drop.das`: перенос, перестановка с сохранением keyed handle, отказ при
   заполненном контейнере, отмена снаружи и невалидный payload.
@@ -92,7 +93,11 @@ daScript. Наличие примера не означает, что он вк�
   цвета, размеров и remount. Runtime и pixel tests проверяют независимые bindings,
   native factories, templates, DPI, lifecycle, загрузку и кадры анимации по времени.
 
-Все одиннадцать зарегистрированы в CTest. Effects, Progress Lab, Animations, Style Lab и Vector Lab имеют метку `opengl`
+- `native_lab.das`: custom waveform elements из daScript, update/paint независимо от
+  компонентов, атрибуты, события, keyed identity, resize, Hold и GC. Runtime tests
+  проверяют captured values, callbacks, шаблоны, снятие регистрации, shutdown и ошибки.
+
+Все двенадцать зарегистрированы в CTest. Effects, Progress Lab, Animations, Style Lab, Vector Lab и Native Lab имеют метку `opengl`
 и требуют настоящего OpenGL 3.3 context; остальные используют SDL dummy для smoke.
 Для визуальной проверки SDL-примеры отдельно запущены с Windows renderer.
 
@@ -113,8 +118,10 @@ daScript. Наличие примера не означает, что он вк�
    Vector deck, проверки инспектора, клавиатурных переходов, popup, фокуса и lifecycle.
 6. **Готово:** SVG/Lottie — официальные плагины с закреплёнными зависимостями, DSL
    компонентов/шаблонов/стилей, Vector atelier, runtime/negative/pixel tests.
-7. Расширения renderer/element instancers и совместимость с native data models — по
-   конкретному сценарию, а не ради дублирования всех C++ методов.
+7. **Готово:** пользовательские native-элементы — регистрация ElementInstancer из
+   daScript, DSL, Signal foundry, lifecycle/GC/error и pixel tests.
+8. Остались custom decorators/filters/shaders и совместимость с native data models —
+   по конкретному сценарию, а не ради дублирования всех C++ методов.
 
 В локальном property index нет CSS Grid: обещать его как просто неэкспортированный
 режим RmlUi также нельзя.
@@ -141,12 +148,18 @@ shader hooks. `rui_init_gl` использует upstream GL3 renderer с эти
 SDL3 по-прежнему создаёт окно/context и доставляет ввод.
 
 На момент аудита `ctest --test-dir build --output-on-failure`:
-**53/53 passed** в полном прогоне. Включены одиннадцать примеров native возможностей,
-пять OpenGL тестов и два SDL pixel tests,
+**60 проверок подтверждены:** полный прогон дал 59/60, отдельный повтор
+`runtime_package` — 1/1 passed. В первом запуске упаковки временно не открывался
+уже найденный font file; повторная установка и запуск пакета завершились успешно.
+Логи: `logs/ctest-native-full.log`, `logs/ctest-native-package.log`.
+Включены двенадцать примеров native возможностей, шесть OpenGL тестов и три SDL pixel tests,
 генерация/слоты шаблонов, анимации, media/theme/DPI, события/режимы документов,
-Debugger/spatial navigation, SVG/Lottie, регрессии и отрицательные проверки DSL.
-После финальных правок примера/тестов и повторной сборки все пять SVG/Lottie проверок
-повторены отдельно: **5/5 passed** (`logs/ctest-vectors-final.log`).
+Debugger/spatial navigation, SVG/Lottie, native custom elements, регрессии и отрицательные проверки DSL.
+Пять новых native-element тестов прошли в полном прогоне: `native_elements`,
+`native_safety`, `demo_native_lab`, `native_host_lifetime`, `native_pixels`.
+Они покрывают captured values/GC, native callbacks, keyed identity, templates,
+ошибки и reentry, unregister, shutdown/restart, поздний cleanup после main,
+геометрию, clipping, opacity, resize и DPI. Signal foundry также проверен визуально в GL3.
 Signal desk и Vector deck также проверены на Windows renderer по снимкам редактора,
 modal, popup и штатного инспектора RmlUi.
 Vector atelier визуально проверен в OpenGL. SVG/Lottie pixel test на SDL проверяет
@@ -170,6 +183,7 @@ pixel-golden сравнение всех экранов.
 - [Встроенный Debugger](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/debugger.html)
 - [SVG plugin](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/svg.html)
 - [Lottie plugin](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/lottie.html)
+- [Custom elements](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/custom_elements.html)
 - [C++ API и плагины](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual.html)
 - [Native data binding](https://mikke89.github.io/RmlUiDoc/pages/data_bindings.html)
 

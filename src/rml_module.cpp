@@ -11,6 +11,10 @@
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/StyleSheet.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
+#include <RmlUi/Core/Geometry.h>
+#include <RmlUi/Core/RenderManager.h>
+#include <RmlUi/Core/ElementUtilities.h>
+#include <RmlUi/Core/MeshUtilities.h>
 #include <algorithm>
 #include "RmlUi_Platform_SDL.h"
 #include "RmlUi_Renderer_GL3.h"
@@ -198,6 +202,8 @@ public:
     }
 };
 struct State;
+class ScriptInstancer;
+class ScriptElement;
 class QueueListener : public Rml::EventListener {
 public: void ProcessEvent(Rml::Event& event) override;
 };
@@ -213,6 +219,8 @@ public:
 };
 struct DocumentState { uint64_t return_focus=0; bool popup=false; Rml::Vector2f position{}; };
 struct State {
+    std::unordered_map<std::string,std::unique_ptr<ScriptInstancer>> native_types;
+    std::unordered_map<uint64_t,ScriptElement*> native_nodes;
     bool debugger_ready=false, debugger_key_down=false;
     SDL_Keycode debugger_key=SDLK_UNKNOWN;
     uint64_t debugger_revision=0, debugger_return_focus=0;
@@ -264,6 +272,7 @@ uint64_t remember(Rml::Element* element) {
     element->SetAttribute("data-rui-id", Rml::String(std::to_string(id)));
     return id;
 }
+#include "native_elements.inc"
 void listen_document(Rml::ElementDocument* document, bool attach) {
     for(const char* type : {"click","change","tabchange","dragdrop","dragover","dragout","keydown","blur","animationend","transitionend"}) {
         const bool capture=!strcmp(type,"keydown") || !strcmp(type,"blur");
@@ -423,18 +432,23 @@ char* str(const std::string& value, das::Context* ctx, das::LineInfoArg* at) {
     return ctx->allocateString(value.c_str(), uint64_t(value.size()), at);
 }
 }
-void rui_shutdown() {
+void rui_shutdown() { native_guard();
     if (!state) return;
     state->listeners.clear();
     state->nodes.clear();
     state->document_styles.clear();
     if(state->context) for(int i=0;i<state->context->GetNumDocuments();++i) listen_document(state->context->GetDocument(i),false);
     const bool gl_loaded=state->gl_loaded;
-    Rml::Shutdown(); state.reset();
+    Rml::Shutdown();
+    // Release rooted daScript handlers only after every native element died.
+    for(auto& type:state->native_types) type.second->Call(0,NativeRelease);
+    state.reset();
     if (gl_loaded) RmlGL3::Shutdown();
 }
-static bool rui_init_backend(SDL_Window* window, SDL_Renderer* renderer, int width, int height, bool advanced) {
+const char* rui_last_native_error() { return native_error.empty() ? nullptr : native_error.c_str(); }
+static bool rui_init_backend(SDL_Window* window, SDL_Renderer* renderer, int width, int height, bool advanced) { native_guard();
     if (state || !window || (!renderer && !advanced)) return false;
+    native_error.clear();
     state = std::make_unique<State>(); state->window = window;
     state->system = std::make_unique<UiSystem>(window);
     state->render.r = renderer;
@@ -471,7 +485,7 @@ static uint64_t rui_root() {
     if (!state) return 0;
     return state->ids.at(state->document);
 }
-static bool rui_debugger_init() {
+static bool rui_debugger_init() { native_guard();
     if(!state) return false;
     if(state->debugger_ready) return true;
     if(!Rml::Debugger::Initialise(state->context)) return false;
@@ -482,7 +496,7 @@ static bool rui_debugger_init() {
 static bool rui_debugger_ready() { return state && state->debugger_ready; }
 static bool rui_debugger_visible() { return rui_debugger_ready() && Rml::Debugger::IsVisible(); }
 static uint64_t rui_debugger_revision() { return state ? state->debugger_revision : 0; }
-static bool rui_debugger_show(bool visible) {
+static bool rui_debugger_show(bool visible) { native_guard();
     if(!state || (visible && !rui_debugger_init())) return false;
     if(!state->debugger_ready) return true;
     const bool was_visible=rui_debugger_visible();
@@ -508,7 +522,7 @@ static bool rui_debugger_show(bool visible) {
     if(was_visible!=visible) ++state->debugger_revision;
     return true;
 }
-static void rui_debugger_shutdown() {
+static void rui_debugger_shutdown() { native_guard();
     if(!state) return;
     state->debugger_key=SDLK_UNKNOWN;
     if(!state->debugger_ready) return;
@@ -517,7 +531,7 @@ static void rui_debugger_shutdown() {
     state->debugger_ready=false;
     ++state->debugger_revision;
 }
-static bool rui_debugger_hotkey(const char* name) {
+static bool rui_debugger_hotkey(const char* name) { native_guard();
     if(!state) return false;
     const auto key=(!name || !*name) ? SDLK_UNKNOWN : SDL_GetKeyFromName(name);
     if(name && *name && key==SDLK_UNKNOWN) return false;
@@ -530,9 +544,9 @@ static uint64_t rui_test_debugger_document(const char* name) {
 }
 static int rui_test_document_count() { return state ? state->context->GetNumDocuments() : 0; }
 static bool rui_has_class(uint64_t id,const char* name) { auto e=node(id); return e && e->IsClassSet(name); }
-static bool rui_font(const char* path) { return state && Rml::LoadFontFace(path); }
-static bool rui_fallback_font(const char* path) { return state && Rml::LoadFontFace(path,true); }
-static void rui_resource(const char* path,const char* content) { if(state) state->files.resources[path]=content; }
+static bool rui_font(const char* path) { native_guard(); return state && Rml::LoadFontFace(path); }
+static bool rui_fallback_font(const char* path) { native_guard(); return state && Rml::LoadFontFace(path,true); }
+static void rui_resource(const char* path,const char* content) { native_guard(); if(state) state->files.resources[path]=content; }
 static void document_css(uint64_t id) {
     auto document=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id));
     if(!document || state->css.empty()) return;
@@ -541,7 +555,7 @@ static void document_css(uint64_t id) {
     if(base!=state->document_styles.end() && base->second) sheet=sheet->CombineStyleSheetContainer(*base->second);
     document->SetStyleSheetContainer(std::move(sheet));
 }
-static uint64_t rui_document_load(const char* markup,const char* source,bool visible) {
+static uint64_t rui_document_load(const char* markup,const char* source,bool visible) { native_guard();
     if(!state) return 0;
     auto document=state->context->LoadDocumentFromMemory(markup,source);
     if(!document) return 0;
@@ -554,14 +568,14 @@ static uint64_t rui_document_load(const char* markup,const char* source,bool vis
     return id;
 }
 static uint64_t rui_document(const char* markup,const char* source) { return rui_document_load(markup,source,true); }
-static void rui_show_document(uint64_t id,int modal,int focus,bool scroll) {
+static void rui_show_document(uint64_t id,int modal,int focus,bool scroll) { native_guard();
     auto doc=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id));
     if(!doc || modal<0 || modal>2 || focus<0 || focus>3) return;
     auto& entry=state->documents[id];
     if(!doc->IsVisible()) entry.return_focus=remember(state->context->GetFocusElement());
     doc->Show(Rml::ModalFlag(modal),Rml::FocusFlag(focus),scroll ? Rml::ScrollFlag::Auto : Rml::ScrollFlag::None);
 }
-static void rui_hide_document(uint64_t id) {
+static void rui_hide_document(uint64_t id) { native_guard();
     auto doc=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id));
     if(!doc) return;
     const bool restore=inside(doc,state->context->GetFocusElement());
@@ -578,11 +592,11 @@ static void rui_hide_document(uint64_t id) {
 static bool rui_document_modal(uint64_t id) {
     auto doc=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id)); return doc && doc->IsModal();
 }
-static void rui_document_front(uint64_t id,bool front) {
+static void rui_document_front(uint64_t id,bool front) { native_guard();
     if(auto doc=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id))) { if(front) doc->PullToFront(); else doc->PushToBack(); }
 }
-static void rui_focus_next(uint64_t id,bool reverse) { focus_cycle(node(id),reverse); }
-static void rui_document_position(uint64_t id,float x,float y) {
+static void rui_focus_next(uint64_t id,bool reverse) { native_guard(); focus_cycle(node(id),reverse); }
+static void rui_document_position(uint64_t id,float x,float y) { native_guard();
     if(auto doc=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id))) {
         doc->SetProperty("left",std::to_string(x)+"px"); doc->SetProperty("top",std::to_string(y)+"px");
         state->properties[id].erase("left"); state->properties[id].erase("top");
@@ -600,7 +614,7 @@ static void clamp_popups() {
         if(actual!=desired) rui_document_position(id,desired.x,desired.y);
     }
 }
-static bool rui_show_popup(uint64_t id,float x,float y) {
+static bool rui_show_popup(uint64_t id,float x,float y) { native_guard();
     auto doc=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id)); if(!doc) return false;
     // A popup takes modal focus too, so it can be opened from a native dialog.
     auto& entry=state->documents[id]; entry.position={x,y}; entry.popup=true;
@@ -616,7 +630,7 @@ static uint64_t rui_document_element(uint64_t id,const char* name) {
     auto document=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id));
     return document ? remember(document->GetElementById(name)) : 0;
 }
-static void rui_close_document(uint64_t id) {
+static void rui_close_document(uint64_t id) { native_guard();
     auto document=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id));
     if(!document || document==state->document) return;
     rui_hide_document(id);
@@ -633,14 +647,14 @@ static void rui_close_document(uint64_t id) {
     }
     document->Close();
 }
-static void rui_translation(const char* language,const char* key,const char* value) {
+static void rui_translation(const char* language,const char* key,const char* value) { native_guard();
     if(!state) return;
     auto& catalog=state->system->translations[language];
     auto it=catalog.find(key);
     if(it!=catalog.end() && it->second==value) return;
     catalog[key]=value; ++state->system->revision;
 }
-static void rui_set_locale(const char* language) {
+static void rui_set_locale(const char* language) { native_guard();
     if(state && state->system->locale!=language) { state->system->locale=language; ++state->system->revision; }
 }
 static uint64_t rui_locale_revision() { return state ? state->system->revision : 0; }
@@ -648,14 +662,14 @@ static char* rui_locale(das::Context* ctx,das::LineInfoArg* at) { return str(sta
 static char* rui_translate(const char* text,das::Context* ctx,das::LineInfoArg* at) {
     Rml::String output=text; if(state) state->system->TranslateString(output,text); return str(output,ctx,at);
 }
-static void rui_css(const char* css) {
+static void rui_css(const char* css) { native_guard();
     if (state) {
         state->css=css;
         state->document->SetStyleSheetContainer(Rml::Factory::InstanceStyleSheetString(css));
         for(const auto& entry : state->document_styles) document_css(entry.first);
     }
 }
-static uint64_t rui_create(uint64_t parent, const char* tag, const char* classes, const char* input_type) {
+static uint64_t rui_create(uint64_t parent, const char* tag, const char* classes, const char* input_type) { native_guard();
     auto p = node(parent); if (!p) return 0;
     // Tabsets lazily create their structural groups. Adopt those elements rather
     // than appending a second tabs/panels pair that the native widget would ignore.
@@ -681,7 +695,7 @@ static uint64_t rui_create(uint64_t parent, const char* tag, const char* classes
 }
 static bool rui_alive(uint64_t id) { return node(id) != nullptr; }
 static bool rui_enabled(uint64_t id) { return element_enabled(node(id)); }
-static void rui_remove(uint64_t id) {
+static void rui_remove(uint64_t id) { native_guard();
     auto e = node(id); if (!e || e == state->document) return;
     if (auto p = e->GetParentNode()) p->RemoveChild(e).reset();
     for (auto it = state->nodes.begin(); it != state->nodes.end();) {
@@ -691,7 +705,7 @@ static void rui_remove(uint64_t id) {
         if (!node(it->second)) it = state->ids.erase(it); else ++it;
     }
 }
-static void rui_before(uint64_t id, uint64_t before) {
+static void rui_before(uint64_t id, uint64_t before) { native_guard();
     auto e = node(id); if (!e) return;
     auto p = e->GetParentNode(); auto b = node(before);
     if (!p || (b && b->GetParentNode() != p) || e == b) return;
@@ -708,7 +722,7 @@ static void rui_before(uint64_t id, uint64_t before) {
     if (observer) observer->Focus();
     if (input && observer) input->SetSelectionRange(selection_start,selection_end);
 }
-static void rui_text(uint64_t id, const char* text) {
+static void rui_text(uint64_t id, const char* text) { native_guard();
     auto e = node(id); if (!e) return;
     const Rml::String value = text ? text : "";
     // The caption is the element's own text node. Never clear the element to
@@ -721,7 +735,7 @@ static void rui_text(uint64_t id, const char* text) {
         else e->AppendChild(std::move(created));
     } else if (caption->GetText() != value) caption->SetText(value);
 }
-static void rui_property(uint64_t id, const char* name, const char* value) {
+static void rui_property(uint64_t id, const char* name, const char* value) { native_guard();
     if (auto e = node(id)) {
         auto& props = state->properties[id];
         auto it = props.find(name);
@@ -735,9 +749,9 @@ static void rui_property(uint64_t id, const char* name, const char* value) {
         }
     }
 }
-static void rui_class(uint64_t id, const char* name, bool enabled) { if (auto e = node(id)) e->SetClass(name,enabled); }
+static void rui_class(uint64_t id, const char* name, bool enabled) { native_guard(); if (auto e = node(id)) e->SetClass(name,enabled); }
 static uint64_t rui_warning_count() { return state ? state->system->problems : 0; }
-static void rui_attr(uint64_t id, const char* name, const char* value) {
+static void rui_attr(uint64_t id, const char* name, const char* value) { native_guard();
     if (auto e = node(id)) {
         const auto desired=Rml::String(value);
         if (e->HasAttribute(name) && e->GetAttribute<Rml::String>(name,"") == desired) return;
@@ -748,7 +762,7 @@ static void rui_attr(uint64_t id, const char* name, const char* value) {
 static int rui_active_tab(uint64_t id) {
     auto e=rmlui_dynamic_cast<Rml::ElementTabSet*>(node(id)); return e ? e->GetActiveTab() : -1;
 }
-static void rui_set_tab(uint64_t id, int index) {
+static void rui_set_tab(uint64_t id, int index) { native_guard();
     if (auto e=rmlui_dynamic_cast<Rml::ElementTabSet*>(node(id))) {
         if (index<0 || index>=e->GetNumTabs()) return;
         const bool previous=state->applying;
@@ -759,7 +773,7 @@ static bool rui_visible(uint64_t id) { auto e=node(id); return e && e->IsVisible
 static char* rui_get_attr(uint64_t id, const char* name, das::Context* ctx, das::LineInfoArg* at) {
     auto e=node(id); return str(e ? e->GetAttribute<Rml::String>(name,"") : "",ctx,at);
 }
-static void rui_attr_if(uint64_t id, const char* name, bool enabled) {
+static void rui_attr_if(uint64_t id, const char* name, bool enabled) { native_guard();
     if (auto e = node(id)) {
         const bool previous_applying = state->applying;
         state->applying = true;
@@ -793,7 +807,7 @@ static das::float2 rui_intrinsic_size(uint64_t id) {
     if(auto e=node(id)) e->GetIntrinsicDimensions(size,ratio);
     return {size.x,size.y};
 }
-static void rui_svg_inline(uint64_t id,const char* fragment,float width,float height,bool crop) {
+static void rui_svg_inline(uint64_t id,const char* fragment,float width,float height,bool crop) { native_guard();
     auto e=rmlui_dynamic_cast<Rml::ElementSVG*>(node(id)); if(!e) return;
     // Native SetInnerRML always invalidates the SVG cache. Reapply only when the
     // source or SVG viewport changes, not on unrelated component updates.
@@ -811,7 +825,7 @@ static void rui_svg_inline(uint64_t id,const char* fragment,float width,float he
     // SVG element even when width is unchanged, invoking its layout invalidation.
     e->SetAttribute("width", width);
 }
-static void rui_value(uint64_t id, const char* value) {
+static void rui_value(uint64_t id, const char* value) { native_guard();
     if (!value) value = "";
     auto e = rmlui_dynamic_cast<Rml::ElementFormControl*>(node(id));
     if (!e || e->GetValue() == value) return;
@@ -822,21 +836,21 @@ static char* rui_get_value(uint64_t id, das::Context* ctx, das::LineInfoArg* at)
     auto e = rmlui_dynamic_cast<Rml::ElementFormControl*>(node(id));
     return str(e ? e->GetValue() : "", ctx, at);
 }
-static void rui_watch(uint64_t id, const char* type) {
+static void rui_watch(uint64_t id, const char* type) { native_guard();
     auto e = node(id); if (!e) return;
     // Handlers declare their watch on every update pass, and setting an
     // attribute, even to the same value, dirties the element's style definition.
     const auto name = Rml::String("data-rui-watch-") + type;
     if (!e->HasAttribute(name)) e->SetAttribute(name, true);
 }
-static void rui_pseudo(uint64_t id, const char* name, bool value) { if (auto e=node(id)) e->SetPseudoClass(name,value); }
+static void rui_pseudo(uint64_t id, const char* name, bool value) { native_guard(); if (auto e=node(id)) e->SetPseudoClass(name,value); }
 static bool rui_checked(uint64_t id) { auto e=node(id); return e && e->HasAttribute("checked"); }
-static void rui_options_clear(uint64_t id) {
+static void rui_options_clear(uint64_t id) { native_guard();
     if (auto e=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(node(id))) {
         state->applying=true; e->RemoveAll(); state->applying=false;
     }
 }
-static void rui_option(uint64_t id, const char* caption, const char* value) {
+static void rui_option(uint64_t id, const char* caption, const char* value) { native_guard();
     if (auto e=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(node(id))) {
         state->applying=true; e->Add(Rml::StringUtilities::EncodeRml(caption),value); state->applying=false;
     }
@@ -855,17 +869,17 @@ static void update_density(float display_scale) {
         state->context->SetDensityIndependentPixelRatio(ratio); ++state->style_revision;
     }
 }
-static bool rui_set_ui_scale(float scale) {
+static bool rui_set_ui_scale(float scale) { native_guard();
     if(!state || !std::isfinite(scale) || scale<=0 || !std::isfinite(scale*state->display_scale) || scale*state->display_scale<=0) return false;
     if(state->ui_scale!=scale) { state->ui_scale=scale; update_density(state->display_scale); }
     return true;
 }
 static bool rui_theme_active(const char* name) { return state && state->context->IsThemeActive(name); }
-static void rui_activate_theme(const char* name,bool active) {
+static void rui_activate_theme(const char* name,bool active) { native_guard();
     if(!state || !name || !*name || rui_theme_active(name)==active) return;
     state->context->ActivateTheme(name,active); ++state->style_revision;
 }
-static void rui_set_theme(const char* name) {
+static void rui_set_theme(const char* name) { native_guard();
     if(!state || !name) return;
     if(state->selected_theme!=name) {
         rui_activate_theme(state->selected_theme.c_str(),false);
@@ -875,11 +889,11 @@ static void rui_set_theme(const char* name) {
     rui_activate_theme(name,true);
 }
 static char* rui_theme(das::Context* ctx,das::LineInfoArg* at) { return str(state ? state->selected_theme : "",ctx,at); }
-static void rui_test_display_scale(float scale) { update_density(scale); }
+static void rui_test_display_scale(float scale) { native_guard(); update_density(scale); }
 static float rui_scroll_top(uint64_t id) { auto e=node(id); return e ? e->GetScrollTop() : 0.f; }
-static void rui_scroll_to(uint64_t id, float y) { if (auto e=node(id)) e->SetScrollTop(y); }
-static void rui_test_resize(int width, int height) { if (state) { SDL_SetWindowSize(state->window,width,height); state->context->SetDimensions({width,height}); } }
-static void rui_event(const SDL_Event& event) {
+static void rui_scroll_to(uint64_t id, float y) { native_guard(); if (auto e=node(id)) e->SetScrollTop(y); }
+static void rui_test_resize(int width, int height) { if (state) { native_guard(); SDL_SetWindowSize(state->window,width,height); state->context->SetDimensions({width,height}); } }
+static void rui_event(const SDL_Event& event) { native_guard();
     if (!state) return;
     SDL_Event ev = event;
     if((ev.type==SDL_EVENT_KEY_DOWN || ev.type==SDL_EVENT_KEY_UP) && state->debugger_key!=SDLK_UNKNOWN &&
@@ -925,7 +939,7 @@ static void rui_event(const SDL_Event& event) {
     if (ev.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) state->context->SetDimensions({ev.window.data1, ev.window.data2});
     RmlSDL::InputEventHandler(state->context, state->window, ev);
 }
-static bool rui_next_event() {
+static bool rui_next_event() { native_guard();
     if (!state) return false;
     while (!state->events.empty()) {
         state->current = std::move(state->events.front()); state->events.pop_front();
@@ -943,7 +957,7 @@ static uint64_t rui_event_node() { return state->current.node; }
 static char* rui_event_type(das::Context* ctx, das::LineInfoArg* at) { return str(state->current.type,ctx,at); }
 static char* rui_event_value(das::Context* ctx, das::LineInfoArg* at) { return str(state->current.value,ctx,at); }
 static uint64_t rui_event_generation() { return state ? state->current.generation : 0; }
-static uint64_t rui_listen(uint64_t id,const char* type,bool capture,bool stop,bool immediate,const char* key,int modifiers) {
+static uint64_t rui_listen(uint64_t id,const char* type,bool capture,bool stop,bool immediate,const char* key,int modifiers) { native_guard();
     auto element=node(id); if(!element) return 0;
     auto listener=std::make_unique<RichListener>();
     listener->token=next_listener++; listener->host=id; listener->element=element->GetObserverPtr();
@@ -953,8 +967,8 @@ static uint64_t rui_listen(uint64_t id,const char* type,bool capture,bool stop,b
     element->AddEventListener(type,listener.get(),capture);
     state->listeners.emplace(token,std::move(listener)); return token;
 }
-static void rui_unlisten(uint64_t token) { if(state) state->listeners.erase(token); }
-static uint64_t rui_relisten(uint64_t token,uint64_t id,const char* type,bool capture,bool stop,bool immediate,const char* key,int modifiers) {
+static void rui_unlisten(uint64_t token) { native_guard(); if(state) state->listeners.erase(token); }
+static uint64_t rui_relisten(uint64_t token,uint64_t id,const char* type,bool capture,bool stop,bool immediate,const char* key,int modifiers) { native_guard();
     if(state) {
         auto it=state->listeners.find(token);
         if(it!=state->listeners.end()) {
@@ -997,7 +1011,7 @@ static char* rui_event_parameter_name(int index,das::Context* ctx,das::LineInfoA
 static char* rui_event_parameter_value(int index,das::Context* ctx,das::LineInfoArg* at) {
     return str(index>=0 && index<int(state->current.parameters.size()) ? state->current.parameters[index].second : "",ctx,at);
 }
-static uint64_t rui_animation_start(uint64_t id,const char* name,float seconds,const char* easing,int iterations,bool alternate) {
+static uint64_t rui_animation_start(uint64_t id,const char* name,float seconds,const char* easing,int iterations,bool alternate) { native_guard();
     if(!node(id) || seconds<=0 || (iterations<1 && iterations!=-1)) return 0;
     UiAnimation animation;
     animation.generation=++state->animation_serial; animation.name=name; animation.duration=seconds;
@@ -1005,7 +1019,7 @@ static uint64_t rui_animation_start(uint64_t id,const char* name,float seconds,c
     state->animations[id]=std::move(animation);
     return state->animation_serial;
 }
-static void rui_animation_cancel(uint64_t id) {
+static void rui_animation_cancel(uint64_t id) { native_guard();
     if(auto e=node(id)) {
         state->animations.erase(id);
         e->SetProperty("animation","none"); state->properties[id].erase("animation");
@@ -1019,13 +1033,13 @@ static uint64_t rui_animation_generation(uint64_t id) {
     if(!state) return 0;
     auto it=state->animations.find(id); return it==state->animations.end() ? 0 : it->second.generation;
 }
-static void rui_test_advance_time(double seconds) {
+static void rui_test_advance_time(double seconds) { native_guard();
     if(!state || seconds<0) return;
     auto& clock=*state->system;
     if(!clock.test_clock) { clock.test_time=clock.GetElapsedTime(); clock.test_clock=true; }
     clock.test_time+=seconds;
 }
-static void rui_update() {
+static void rui_update() { native_guard();
     if(!state) return;
     for(auto it=state->listeners.begin();it!=state->listeners.end();) {
         if(!it->second->element) it=state->listeners.erase(it); else ++it;
@@ -1074,7 +1088,7 @@ static void rui_update() {
     }
     state->context->Update();
 }
-static void rui_render() {
+static void rui_render(das::Context* context,das::LineInfoArg* at) { native_guard();
     if (!state) return;
     if (state->advanced) {
         const auto size=state->context->GetDimensions();
@@ -1083,19 +1097,24 @@ static void rui_render() {
         state->advanced->BeginFrame();
         state->context->Render();
         state->advanced->EndFrame();
+        rui_native_check(context,at);
         return;
     }
     SDL_BlendMode old; SDL_GetRenderDrawBlendMode(state->render.r, &old);
     SDL_SetRenderDrawBlendMode(state->render.r, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
     state->context->Render(); SDL_SetRenderClipRect(state->render.r, nullptr);
     SDL_SetRenderDrawBlendMode(state->render.r, old);
+    rui_native_check(context,at);
+}
+static void rui_shutdown_checked(das::Context* context,das::LineInfoArg* at) {
+    rui_shutdown(); rui_native_check(context,at);
 }
 // With the clear off, the GL3 renderer composites the UI over what the host
 // has already drawn into the frame. It has no effect on the SDL_Renderer path,
 // where the host clears the frame itself.
-static void rui_gl_clear(bool enabled) { if (state) state->gl_clear = enabled; }
+static void rui_gl_clear(bool enabled) { native_guard(); if (state) state->gl_clear = enabled; }
 // Test automation uses the same RmlUi event dispatcher as real controls.
-static void rui_test_event(uint64_t id, const char* type, const char* value) {
+static void rui_test_event(uint64_t id, const char* type, const char* value) { native_guard();
     if (auto e = node(id)) {
         if (!strcmp(type,"change")) rui_value(id,value);
         Rml::Dictionary args; args["value"] = Rml::String(value);
@@ -1103,7 +1122,7 @@ static void rui_test_event(uint64_t id, const char* type, const char* value) {
     }
 }
 // Exercise hit testing, focus and the actual SDL -> RmlUi mouse path.
-static void rui_test_click(uint64_t id) {
+static void rui_test_click(uint64_t id) { native_guard();
     auto e = node(id);
     if (!state || !e) return;
     state->context->Update();
@@ -1128,7 +1147,7 @@ static void rui_test_click(uint64_t id) {
     ev.button.down = false;
     rui_event(ev);
 }
-static void rui_test_key(const char* name, bool shift) {
+static void rui_test_key(const char* name, bool shift) { native_guard();
     if (!state) return;
     SDL_Event ev{}; ev.type=SDL_EVENT_KEY_DOWN;
     ev.key.windowID=SDL_GetWindowID(state->window);
@@ -1139,7 +1158,7 @@ static void rui_test_key(const char* name, bool shift) {
     rui_event(ev); ev.type=SDL_EVENT_KEY_UP; rui_event(ev);
     SDL_SetModState(previous);
 }
-static void rui_test_shortcut(const char* name,int modifiers) {
+static void rui_test_shortcut(const char* name,int modifiers) { native_guard();
     if(!state) return;
     SDL_Event ev{}; ev.type=SDL_EVENT_KEY_DOWN; ev.key.windowID=SDL_GetWindowID(state->window);
     ev.key.key=SDL_GetKeyFromName(name);
@@ -1148,7 +1167,7 @@ static void rui_test_shortcut(const char* name,int modifiers) {
     const auto previous=SDL_GetModState(); SDL_SetModState(ev.key.mod);
     rui_event(ev); ev.type=SDL_EVENT_KEY_UP; rui_event(ev); SDL_SetModState(previous);
 }
-static void rui_test_pointer(float x,float y,int button,float wheel) {
+static void rui_test_pointer(float x,float y,int button,float wheel) { native_guard();
     if(!state) return;
     const auto density=SDL_GetWindowPixelDensity(state->window);
     SDL_Event ev{}; ev.type=SDL_EVENT_MOUSE_MOTION; ev.motion.windowID=SDL_GetWindowID(state->window);
@@ -1168,7 +1187,7 @@ static das::float4 rui_bounds(uint64_t id) {
     const auto p=e->GetAbsoluteOffset(Rml::BoxArea::Border); const auto s=e->GetBox().GetSize(Rml::BoxArea::Border);
     return {p.x,p.y,s.x,s.y};
 }
-static void rui_test_drag_offset(uint64_t source, float dx, float dy) {
+static void rui_test_drag_offset(uint64_t source, float dx, float dy) { native_guard();
     if (!state || !node(source)) return;
     state->context->Update(); const auto box=rui_bounds(source);
     const float density=SDL_GetWindowPixelDensity(state->window);
@@ -1186,7 +1205,7 @@ static void rui_test_drag_offset(uint64_t source, float dx, float dy) {
     event={}; event.type=SDL_EVENT_MOUSE_BUTTON_UP; event.button.windowID=SDL_GetWindowID(state->window);
     event.button.button=SDL_BUTTON_LEFT; event.button.down=false; rui_event(event);
 }
-static void rui_test_drag(uint64_t source, uint64_t destination) {
+static void rui_test_drag(uint64_t source, uint64_t destination) { native_guard();
     if (!state || !node(source) || !node(destination)) return;
     state->context->Update(); const auto a=rui_bounds(source),b=rui_bounds(destination);
     rui_test_drag_offset(source,b.x+b.z*.5f-a.x-a.z*.5f,b.y+b.w*.5f-a.y-a.w*.5f);
@@ -1219,7 +1238,7 @@ static bool rui_screenshot(const char* path) {
     if (!s) return false;
     bool ok = SDL_SavePNG(s,path); SDL_DestroySurface(s); return ok;
 }
-static void rui_focus(uint64_t id) { if (auto e=node(id)) e->Focus(); }
+static void rui_focus(uint64_t id) { native_guard(); if (auto e=node(id)) e->Focus(); }
 static bool rui_focused(uint64_t id) { return state && node(id) && state->context->GetFocusElement()==node(id); }
 static uint64_t rui_focus_node() {
     if (!state) return 0;
@@ -1230,7 +1249,7 @@ static bool rui_contains(uint64_t parent, uint64_t child) {
     auto p=node(parent); auto c=node(child);
     return p && c && (p==c || p->Contains(c));
 }
-static void rui_select(uint64_t id, int begin, int end) {
+static void rui_select(uint64_t id, int begin, int end) { native_guard();
     if (auto e=rmlui_dynamic_cast<Rml::ElementFormControlInput*>(node(id))) e->SetSelectionRange(begin,end);
 }
 static das::int2 rui_selection(uint64_t id) {
@@ -1238,8 +1257,17 @@ static das::int2 rui_selection(uint64_t id) {
     if (auto e=rmlui_dynamic_cast<Rml::ElementFormControlInput*>(node(id))) e->GetSelection(&begin,&end,nullptr);
     return {begin,end};
 }
-static void rui_test_text(const char* text) { if (state) state->context->ProcessTextInput(Rml::String(text)); }
-static bool rui_default_font() { return rui_font(RMLUI_FONT); }
+static void rui_test_text(const char* text) { native_guard(); if (state) state->context->ProcessTextInput(Rml::String(text)); }
+// The host finds the bundled font at run time; no path is compiled in here.
+static std::string default_font_path;
+void rui_set_default_font(const char* path) { default_font_path = path ? path : ""; }
+static bool rui_default_font() {
+    if (default_font_path.empty()) {
+        SDL_Log("dasrmlui: the bundled default font was not found; load a font with rui_font and name it with set_base_text");
+        return false;
+    }
+    return rui_font(default_font_path.c_str());
+}
 namespace das {
 class Module_dasRmlUi : public Module {
     bool initialized = false;
@@ -1252,7 +1280,8 @@ public:
         ModuleLibrary lib(this); lib.addBuiltInModule(); addBuiltinDependency(lib,sdl);
         initialized = true;
 #define B(F) addExtern<DAS_BIND_FUN(F)>(*this,lib,#F,SideEffects::worstDefault,#F)
-        B(rui_init); B(rui_init_gl); B(rui_shutdown); B(rui_root); B(rui_font); B(rui_css);
+        B(rui_init); B(rui_init_gl); B(rui_root); B(rui_font); B(rui_css);
+        addExtern<DAS_BIND_FUN(rui_shutdown_checked)>(*this,lib,"rui_shutdown",SideEffects::worstDefault,"rui_shutdown_checked");
         B(rui_debugger_init); B(rui_debugger_ready); B(rui_debugger_visible); B(rui_debugger_revision);
         B(rui_debugger_show); B(rui_debugger_shutdown); B(rui_debugger_hotkey);
         B(rui_test_debugger_document); B(rui_test_document_count);
@@ -1270,6 +1299,9 @@ public:
         B(rui_focus); B(rui_focused); B(rui_select); B(rui_selection); B(rui_test_text); B(rui_default_font);
         B(rui_focus_node); B(rui_contains);
         B(rui_active_tab); B(rui_set_tab); B(rui_visible); B(rui_get_attr); B(rui_has_attr);
+        B(rui_native_register); B(rui_native_registration); B(rui_native_unregister); B(rui_native_live); B(rui_is_native);
+        B(rui_native_size); B(rui_native_time); B(rui_native_intrinsic); B(rui_native_invalidate);
+        B(rui_native_rect); B(rui_native_triangle); B(rui_native_error); B(rui_native_check);
         B(rui_test_drag); B(rui_test_drag_offset); B(rui_bounds);
         B(rui_inner_markup); B(rui_local_property);
         B(rui_animation_start); B(rui_animation_cancel); B(rui_animation_status); B(rui_animation_generation); B(rui_test_advance_time);

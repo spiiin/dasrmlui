@@ -441,6 +441,28 @@ box("panel") {
 В GL-режиме `rui_render` сам очищает кадр. `rui_gl_clear(false)` отключает очистку:
 приложение рисует свою сцену, а интерфейс накладывается поверх неё.
 
+## Базовый шрифт
+
+```das
+verify(rui_font("assets/Inter-Regular.ttf"))
+set_base_text("Inter", px(15), rgb(30,34,40))
+```
+
+`set_base_text(family, size, color)` задаёт текст по умолчанию для всех документов:
+семейство, размер и цвет. Размер и цвет необязательны и равны `px(16)` и
+`rgb(232,237,246)`. Без вызова используется `LatoLatin` — семейство шрифта, который
+загружает `rui_default_font()`. `base_font_family()` возвращает текущее семейство.
+
+Сам файл шрифта этот вызов не загружает: сначала `rui_font(path)`, затем имя семейства.
+Если семейство не загружено, RmlUi сообщит об этом предупреждением. Вызывайте
+`set_base_text` один раз при запуске: главный документ и документы, открытые позже,
+получают новые значения, а уже открытый документ-шаблон сохраняет те, с которыми был
+загружен. Правило `rule("body")` в `[ui_style]` по-прежнему перекрывает эти значения.
+
+Файл для `rui_default_font()` хост ищет рядом с exe (`assets/LatoLatin-Regular.ttf`),
+подробнее — в README, раздел «Где exe ищет скрипты и шрифт». Если файл не найден,
+функция возвращает `false`.
+
 ## Границы текущей реализации
 
 DSL покрывает перечисленные структурные конструкции, формы, стили и композицию,
@@ -925,4 +947,110 @@ Source, fragment, viewport и crop отслеживаются **на уровн�
 этими библиотеками; произвольный экспорт After Effects не гарантируется.
 Пример `examples/vector_lab.das` использует GL3; функциональные тесты работают с SDL
 dummy, пиксельные тесты SVG и анимации — с настоящим SDL renderer.
+
+## Пользовательские native-элементы
+
+`register_native_element` регистрирует настоящий `Rml::ElementInstancer`. Native
+подкласс `Rml::Element` вызывает обработчик daScript из своих виртуальных методов,
+а `native_element` создаёт его через Factory в компоненте или шаблоне.
+Регистрация выполняется **после `rui_init`/`rui_init_gl` и до создания элементов**.
+
+```das
+def meter(event:UiNativeEvent) {
+    if (event.kind==UiNativeKind.Paint) {
+        native_rect(event.element,float4(0.,0.,event.size.x,event.size.y),rgb(30,50,40))
+        native_line(event.element,float2(10.,10.),event.size-float2(10.,10.),3.,rgb(240,190,70))
+    }
+}
+// В startup, после инициализации RmlUi:
+// register_native_element("app-meter",@@meter,float2(200.,80.))
+
+[ui_component]
+def meter_view(var model:Model) {
+    native_element("meter","app-meter") {
+        width(px(300)); height(px(100))
+        attribute("value","{model.value}")
+        on_click() { model.value+=1 }
+    }
+}
+```
+
+Сигнатура: `register_native_element(tag, handler, intrinsic=float2(0.), continuous=false)`.
+Handler — обычная функция `@@name` или owning lambda `@(event:UiNativeEvent) { ... }`.
+Имя должно начинаться с латинской строчной буквы, содержать дефис и состоять из
+`a-z`, `0-9`, `-`. Встроенные типы и повторная регистрация одного имени отклоняются.
+Ошибки регистрации не заменяют прежний обработчик. Возвращается уникальный ID регистрации.
+
+`UiNativeEvent` содержит `element:uint64`, `kind:UiNativeKind`, `name:string`,
+`size:float2` (content box в пикселях) и `time:double` (время RmlUi).
+
+| Kind | Когда вызывается |
+|---|---|
+| `Create` | Один раз после получения handle, до установки атрибутов Factory и присоединения к документу; размер может быть нулевым |
+| `Attribute` | Для каждого изменённого атрибута; `name` — его имя, значение читается через `rui_get_attr`/`rui_has_attr` |
+| `Property` | Для каждого изменённого computed property; `name` — имя RCSS-свойства; актуальные размеры для рисования берите в Paint |
+| `Resize` | Native `OnResize`, после изменения content box |
+| `Update` | Native `OnUpdate`, только при `continuous=true`; может вызываться несколько раз за кадр и для скрытого элемента |
+| `Paint` | В native `OnRender`, когда нужно построить или обновить геометрию |
+| `Destroy` | Один раз при уничтожении native-объекта; handle уже невалиден, используется только как ключ для cleanup |
+
+`native_rect`, `native_triangle`, `native_line` принимают handle, геометрию,
+`UiColor` и необязательный `alpha=1`. Координаты локальны относительно content box,
+в физических пикселях. Solid geometry копируется в native mesh и компилируется
+через `RenderManager`. Сохранённые native clipping/transform/layer states применяются
+при рисовании; возможности transforms/filters зависят от renderer (GL3).
+RCSS opacity применяется к цветам вершин каждого примитива: перекрывающиеся
+полупрозрачные примитивы смешиваются последовательно, это не отдельная opacity-layer.
+Texture/shader commands, custom hit testing и baseline overrides пока не экспортированы.
+
+Обычно Paint не вызывается каждый кадр. Атрибуты, native style changes, размеры
+и DPI помечают геометрию устаревшей; `native_invalidate(element)` делает это явно.
+Для анимации регистрируйте `continuous=true`, обновляйте своё состояние в Update
+и вызывайте invalidate. Сам компонент при этом остаётся закешированным. Одного
+изменения таблицы daScript недостаточно для native repaint без invalidate.
+
+`intrinsic` задаёт размер в dp и aspect ratio; положительные размеры делают элемент
+replaced element. `(0,0)` оставляет обычную раскладку контейнера. Изменить intrinsic
+можно через `native_set_intrinsic(element,size)` из Create/Attribute/Update или обычного
+кода. Во время Paint/Destroy это запрещено. Размеры должны быть конечными и положительными.
+RCSS width/height переопределяют intrinsic. Атрибуты в DSL отслеживаются отдельными bindings.
+
+Обработчики синхронны и работают на UI-потоке. Из native-хука разрешены чтение
+свойств/атрибутов, изменение своего состояния daScript, native invalidate/size и
+рисование в Paint. Мутации DOM/context и повторный update/render/shutdown запрещены:
+выполняйте их в обычных `on_event`/`on_click` или основном цикле. Это предотвращает
+удаление элемента во время собственного native обхода. Рисовать можно только в Paint
+текущего элемента. `Create`/`Destroy` не следует использовать как замену component
+`on_mount`/`on_unmount`: native lifetime также охватывает элементы из RML/templates.
+
+Реестр lambda хранится в глобальной таблице daScript, которую видит GC; C++ хранит
+только статический dispatcher и его Context. Захваченные owning значения и таблицы
+состояния сохраняются при GC. Не захватывайте указатели на уже завершившиеся стековые
+переменные. Для состояния отдельного экземпляра используйте таблицу по `event.element`,
+создавайте запись в Create и удаляйте в Destroy (см. Signal foundry).
+
+`ui_reset` удаляет компонентные элементы, сохраняя регистрации. Закрытие документа
+освобождает также его статические native-элементы. `unregister_native_element(tag)`
+возвращает false, пока есть живые экземпляры; при успехе освобождает handler/captures.
+`rui_shutdown` сначала уничтожает элементы, затем снимает GC roots обработчиков.
+Host завершает native context до уничтожения script Context; после нового init типы
+нужно зарегистрировать заново. ID не переиспользуются.
+Завершайте RmlUi до уничтожения SDL renderer или GL context. Host guard защищает
+срок жизни script Context, но не заменяет этот порядок освобождения графических ресурсов.
+
+Исключение callback перехватывается внутри C++-границы, элемент перестаёт получать
+обычные callbacks, но Destroy всё ещё вызывается для cleanup и должен учитывать
+частично завершившийся Create. Диагностика возвращается
+после `ui_frame`, `ui_reset`, `rui_render` или script `rui_shutdown`, когда native
+обход завершён. При работе через raw APIs вызывайте `rui_native_check()` после
+операции; `rui_native_error()` позволяет прочитать отложенную диагностику.
+Необработанная terminal script exception завершает host без повторного входа
+в повреждённый script Context; произвольный пользовательский cleanup при таком
+аварийном завершении не гарантируется.
+
+Для диагностики есть `native_registered`, `native_instance_count`, `native_handler_count`
+и `rui_is_native`. Пример — `examples/native_lab.das`; тесты — `native_elements.das`,
+`native_safety.das`, `native_host_lifetime.das` и `native_render.das` с pixel checker.
+Native contract сверяется с [RmlUi custom elements](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/custom_elements.html)
+и заголовками используемой локальной ревизии.
 

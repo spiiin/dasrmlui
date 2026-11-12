@@ -11,7 +11,9 @@ RCSS-правила, `[ui_template]` — рамки native документов.
 
 ## Запуск
 
-Проверенный профиль: Windows x64, MSVC Release `/MD`, локальный собранный dasSDL3.
+Проверенный профиль: Windows x64, MSVC, конфигурации Release и RelWithDebInfo,
+локально собранный dasSDL3. Про другие конфигурации и переносимый пакет — в разделе
+[«Зависимости и сборка»](#зависимости-и-сборка).
 
 ```powershell
 cd C:/src/dasrmlui
@@ -29,8 +31,9 @@ ctest --test-dir build --output-on-failure
 
 Smoke запускает три кадра в скрытом окне и сохраняет `logs/inventory.png`.
 Папка `logs` создаётся build-скриптом. Большинство тестов работают с SDL dummy video
-driver; Effects, Progress Lab, Animations, Style Lab и Vector Lab используют настоящий
-OpenGL context. Пиксельные тесты ninepatch и SVG/Lottie используют настоящий SDL renderer.
+driver; Effects, Progress Lab, Animations, Style Lab, Vector Lab и Native Lab используют
+настоящий OpenGL context. Пиксельные тесты ninepatch, SVG/Lottie и native-элементов
+используют настоящий SDL renderer.
 
 ## Продвинутые примеры
 
@@ -91,6 +94,7 @@ renderer dummy-драйвера не поддерживает используе
 ./build/bin/dasrmlui.exe examples/event_studio.das
 ./build/bin/dasrmlui.exe examples/navigation_lab.das
 ./build/bin/dasrmlui.exe examples/vector_lab.das
+./build/bin/dasrmlui.exe examples/native_lab.das
 ```
 
 | Пример | Что демонстрирует |
@@ -106,19 +110,20 @@ renderer dummy-драйвера не поддерживает используе
 | Event Studio / Signal desk | Полные snapshots событий, Ctrl+S, keyboard/context menu, popup dismiss, native modal, hide/show редактора с локальным черновиком, move/resize и журнал |
 | Navigation Lab / Vector deck | Native nav Auto/TreeOrder, явные ID-переходы, disabled, scroll и popup; штатный Debugger по F8, Element Info, Event Log, Outlines и Data Models |
 | Vector Lab / Vector atelier | SVG из файла и inline, crop, SVG-декоратор, Lottie JSON; смена источника/цвета/размера, remount и анимация без обновлений компонента |
+| Native Lab / Signal foundry | Три осциллограммы как настоящие custom elements: регистрация из daScript, собственная геометрия, native update/paint, события, keyed reorder, remount, resize, Hold и GC |
 
-Все одиннадцать входят в CTest. Для самостоятельного smoke добавьте `--smoke-test`:
-шесть SDL-примеров выполняют 8 кадров, пять GL-примеров — 12; снимки идут в
+Все двенадцать входят в CTest. Для самостоятельного smoke добавьте `--smoke-test`:
+шесть SDL-примеров выполняют 8 кадров, шесть GL-примеров — 12; снимки идут в
 `logs/`. GL-примерам нужен OpenGL 3.3 и Windows video driver, SDL dummy не подходит.
 Localization использует установленный `C:/Windows/Fonts/segoeui.ttf` для кириллицы;
 шрифт не копируется и не распространяется вместе с проектом.
 
 ```powershell
-# Все 53 теста, включая OpenGL и SDL pixel checks:
+# Все тесты, включая OpenGL и SDL pixel checks:
 ctest --test-dir build --output-on-failure
-# Только одиннадцать примеров native возможностей:
-ctest --test-dir build -R 'demo_(expedition|effects|drag_drop|templates|localization|progress_lab|animations|style_lab|event_studio|navigation_lab|vector_lab)$' --output-on-failure
-# Без графического контекста (46 тестов):
+# Только двенадцать примеров native возможностей:
+ctest --test-dir build -R 'demo_(expedition|effects|drag_drop|templates|localization|progress_lab|animations|style_lab|event_studio|navigation_lab|vector_lab|native_lab)$' --output-on-failure
+# Без графического контекста:
 ctest --test-dir build -LE graphics --output-on-failure
 ```
 
@@ -363,9 +368,11 @@ def external_heading() {
   Native documents/templates, translation bridge и drag-and-drop демонстрируются
   отдельными примерами; ограничения перечислены в матрице покрытия.
   Это не заявление о полном покрытии RmlUi.
-- Проверен Windows/MSVC interpreter. Другие ОС и toolchain не проверены.
-- Демо использует LatoLatin из зависимости RmlUi; для кириллицы подключите подходящий
-  шрифт через `rui_font` и задайте `font-family`.
+- Проверен Windows/MSVC interpreter. CMake больше не привязан к MSVC и к Release, но
+  другие ОС и toolchain не проверялись: для них нужна сборка dasSDL3 тем же toolchain.
+- По умолчанию используется LatoLatin из зависимости RmlUi (`rui_default_font`). Свой
+  шрифт, например с кириллицей, загрузите через `rui_font` и назовите его семейство в
+  `set_base_text("Segoe UI")` — оно станет базовым для всех документов.
 
 ## Зависимости и сборка
 
@@ -379,8 +386,63 @@ def external_heading() {
 | `RMLUI_DIR` | `C:/src/dascript_sdl_gui/third_party/RmlUi` |
 
 Профиль использует совместимые статические библиотеки daScript, SDL3 и FreeType из
-dasSDL3. CMake читает пути к SDL/FreeType из его cache. Отдельная копия daScript или
-SDL в executable не линкуется. Готового переносимого SDK/пакета пока нет.
+dasSDL3. CMake читает пути к SDL/FreeType из его cache, а системные библиотеки SDL3
+берёт из его же CMake-пакета. Отдельная копия daScript или SDL в executable не
+линкуется. Эта логика вынесена в `cmake/dependencies.cmake`.
+
+### Конфигурации
+
+Конфигурация должна линковаться с указанной сборкой dasSDL3. Отладочная сборка меняет
+C runtime и build id daScript, поэтому правило такое:
+
+| Сборка dasSDL3 | Допустимые конфигурации dasrmlui |
+|---|---|
+| Release, RelWithDebInfo, MinSizeRel | Release, RelWithDebInfo, MinSizeRel |
+| Debug | Debug |
+
+Несовместимую конфигурацию CMake отклоняет при конфигурировании с объяснением. Если
+`CMAKE_BUILD_TYPE` не задан, берётся первая допустимая. У генераторов с несколькими
+конфигурациями (Visual Studio) в список попадают только допустимые.
+
+```powershell
+./tools/build.ps1 -Configuration RelWithDebInfo -BuildDir build-relwithdebinfo
+```
+
+Имена библиотек строятся по правилам toolchain, MSVC-флаги и системные библиотеки
+Windows включаются только там, где они нужны. Проверено это только на MSVC с Ninja
+(Release и RelWithDebInfo) и конфигурированием под Visual Studio 2022.
+
+### Где exe ищет скрипты и шрифт
+
+Хост ищет каталоги `daScript`, `dassdl3`, `dasrmlui`, `examples` и файл
+`assets/LatoLatin-Regular.ttf` в таком порядке:
+
+1. в каталоге из переменной окружения `DASRMLUI_HOME`;
+2. рядом с исполняемым файлом и на уровень выше (в пакете exe лежит в `bin/`);
+3. в дереве, из которого он собран, — только если сборка сделана с
+   `DASRMLUI_DEV_PATHS=ON` (так по умолчанию).
+
+`dasrmlui --roots` показывает, что и откуда взято. Без первых трёх каталогов хост
+завершается с кодом 5 и сообщением; `examples` и шрифт необязательны.
+
+### Переносимый пакет
+
+```powershell
+cmake -S . -B build-package -G Ninja -DCMAKE_BUILD_TYPE=Release -DDASRMLUI_DEV_PATHS=OFF
+cmake --build build-package
+cmake --install build-package --component runtime --prefix dist
+./dist/bin/dasrmlui.exe examples/dashboard.das
+```
+
+В `dist` попадают exe, `daslib`, das-модули dasSDL3 и dasrmlui, примеры и шрифт
+LatoLatin с его лицензией. Каталог можно переносить: с `DASRMLUI_DEV_PATHS=OFF` в
+бинарнике не остаётся путей к дереву сборки. Примеры обращаются к своим ресурсам
+относительно текущего каталога, поэтому запускайте их из корня пакета. Тест
+`runtime_package` собирает такой пакет и запускает из него пример.
+
+Что пакет не делает: лицензии остальных библиотек (RmlUi, SDL3, daScript, FreeType,
+lunasvg, rlottie) в него не копируются, а в бинарнике остаются имена исходных файлов
+daScript из его отладочных сообщений.
 
 Проверенная ревизия dasSDL3: `a13e01f1f8a42683d212d4498137d37732529478`.
 Ревизия встроенного daScript: `ebac0ffe46ab30de6c9536f4b0af7a33ede45902`.
@@ -411,7 +473,7 @@ GC и повторный reset. `composition.das` проверяет computed, �
 зависимостей в trace. `viewport.das` проверяет 10 000 строк при ограниченном DOM,
 scroll/shrink/resize и клавиатурный фокус. `forms.das` проверяет черновики, диапазоны,
 переполнение, валидацию, Enter/blur/Escape, checkbox мышью и select клавиатурой.
-Всего в текущем CTest-наборе 53 проверки, включая шестнадцать интерактивных примеров.
+В CTest входят семнадцать интерактивных примеров; полный список — `ctest --test-dir build -N`.
 Новые проверки также покрывают отказ drop при заполненном контейнере, сохранение
 ключей при перестановке, native move/resize, teardown документов, перевод native
 RML и смену языка без изменения модели, заполнение разных участков кривой и размер
@@ -460,11 +522,21 @@ API: [SVG и Lottie](docs/dsl.md#svg-и-lottie). Геометрические SV
 декоратор, tint/opacity и фактическое движение/цикл Lottie при замороженных bindings.
 Native Lottie автоматически повторяется; плагин этой версии не предоставляет pause/seek.
 
+Native-элементы регистрируются через `register_native_element`, создаются через
+`native_element` в компонентах и шаблонах. Обработчики Create/Attribute/Property/Resize/
+Update/Paint/Destroy написаны на daScript; owning lambdas остаются GC roots до снятия
+регистрации или shutdown. Геометрия кешируется и рисуется через RenderManager RmlUi.
+События UI используют обычный DSL. [API и правила lifetime](docs/dsl.md#пользовательские-native-элементы).
+Тесты покрывают ключи, захваченные значения, GC внутри callback, шаблоны, ошибки/reentry,
+unregister, shutdown/restart и завершение script Context; отдельный pixel test —
+геометрию, clipping, opacity, DPI и resize.
+
 ## Файлы
 
 - `dasrmlui/macros.das` — AST-аннотации компонентов, стилей и шаблонов.
 - `dasrmlui/ui.das` — runtime и типизированный API стилей на daScript.
 - `src/rml_module.cpp` — SDL_Renderer, безопасные handles и биндинги RmlUi.
+- `src/native_elements.inc` — custom Element/Instancer, callbacks и кеш native-геометрии.
 - `src/host.cpp` — загрузка модулей и запуск `[export] main(smoke:bool):int`.
 - `examples/inventory_ui.das` — прикладная модель, компоненты и стили.
 - `examples/inventory.das` — окно и цикл приложения на dasSDL3.

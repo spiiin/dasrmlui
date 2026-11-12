@@ -6,6 +6,49 @@ require strings
 require daslib/apply
 require math
 require daslib/strings_convert
+require daslib/strings_boost
+
+enum UiNativeKind {
+    Create
+    Attribute
+    Property
+    Resize
+    Update
+    Paint
+    Destroy
+}
+struct UiNativeEvent { element:uint64; kind:UiNativeKind; name:string; size:float2; time:double }
+typedef UiNativeHandler = lambda<(event:UiNativeEvent):void>
+// GC roots own captured values. C++ retains only this static dispatcher.
+var private native_handlers:table<uint64;UiNativeHandler>
+def private native_dispatch(registration,element:uint64; kind:int; name:string) {
+    if (kind==7) { native_handlers |> erase(registration); return }
+    if (key_exists(native_handlers,registration)) {
+        let phase=(kind==0 ? UiNativeKind.Create : kind==1 ? UiNativeKind.Attribute : kind==2 ? UiNativeKind.Property :
+            kind==3 ? UiNativeKind.Resize : kind==4 ? UiNativeKind.Update : kind==5 ? UiNativeKind.Paint : UiNativeKind.Destroy)
+        let event=UiNativeEvent(element=element,kind=phase,name=name,size=rui_native_size(element),time=rui_native_time())
+        invoke(native_handlers[registration],event)
+    }
+}
+def register_native_element(tag:string; handler:UiNativeHandler; intrinsic:float2=float2(0.); continuous:bool=false):uint64 {
+    if (handler==null) { panic("Native element requires a handler") }
+    let registration=rui_native_register(tag,@@native_dispatch,intrinsic,continuous)
+    if (registration==0ul) { panic("Native registration requires an initialized context, a unique lower-case name containing '-', and a finite positive intrinsic size (or 0,0)") }
+    native_handlers[registration]=handler
+    return registration
+}
+def register_native_element(tag:string; handler:function<(event:UiNativeEvent):void>; intrinsic:float2=float2(0.); continuous:bool=false):uint64 {
+    if (handler==null) { panic("Native element requires a handler") }
+    return register_native_element(tag,@(event:UiNativeEvent) { invoke(handler,event) },intrinsic,continuous)
+}
+def native_registered(tag:string):bool { return rui_native_registration(tag)!=0ul }
+def unregister_native_element(tag:string):bool { return rui_native_unregister(tag) }
+def native_instance_count(tag:string):int { return rui_native_live(tag) }
+def native_handler_count():int { return length(native_handlers) }
+def native_invalidate(element:uint64) { rui_native_invalidate(element) }
+def native_set_intrinsic(element:uint64; size:float2) {
+    if (!rui_native_intrinsic(element,size)) { panic("Native intrinsic size requires a live native element and finite positive dimensions") }
+}
 
 struct private UiComponentState {
     seen : int
@@ -39,7 +82,7 @@ struct private UiPresence { owner:string; handle,generation:uint64; exiting:bool
 var private animation_bindings:table<uint64;UiAnimationBinding>
 var private presences:table<string;UiPresence>
 struct private UiTemplateDefinition {
-    name, source, css_source, markup, css, root_class, root_properties, title : string
+    name, source, css_source, markup, css, root_class, root_properties, title, native_tags : string
 }
 struct private UiTemplateNode { tag,id,classes,properties,attributes,children:string }
 var private templates : table<string;UiTemplateDefinition>
@@ -547,6 +590,11 @@ def row(site : string; body : block) { row(site,"",body) }
 // unless a flex parent blockifies it. A box is a block wherever it stands.
 def box(site, name : string; body : block) { container(site,"div",name,"ru-box",body) }
 def box(site:string; body:block) { box(site,"",body) }
+def native_element(site,name,tag:string; body:block) {
+    if (!native_registered(tag)) { panic("native_element: tag is not registered") }
+    container(site,tag,name,"",body)
+}
+def native_element(site,name,tag:string) { native_element(site,name,tag) {} }
 // The document/template owns the target; reconciliation owns only our children.
 // Attach listeners to the document itself, including native show/hide and custom events.
 def document_events(site:string; document:uint64; body:block) {
@@ -1032,7 +1080,20 @@ def private wake_animation_exits():bool {
 // Inherited text defaults of every document. A native template carries them in
 // its own sheet too: RmlUi lays a document out while loading it, before the DSL
 // stylesheet is attached, and text without a font is reported and not measured.
-let private base_text_css = "font-family: LatoLatin; font-size: 16px; color: #e8edf6;"
+var private base_font = "LatoLatin"
+var private base_text_css = "font-family: LatoLatin; font-size: 16px; color: #e8edf6;"
+// The defaults match rui_default_font. An application with its own font loads
+// the file with rui_font and names its family here, once, at startup: a
+// template document that is already open keeps the defaults it was loaded with.
+def set_base_text(family:string; size:UiLength=UiLength(value=16.,unit="px"); color:UiColor=UiColor(r=232,g=237,b=246)) {
+    verify(!empty(family) && find(family,";")<0 && find(family,"\{")<0 && find(family,"\}")<0 &&
+        find(family,"\"")<0 && find(family,"\n")<0 && find(family,"\r")<0,"Invalid base font family")
+    verify(size.value>0.,"Base font size must be positive")
+    base_font = family
+    base_text_css = "font-family: {family}; font-size: {size.value}{size.unit}; color: rgb({color.r},{color.g},{color.b});"
+    css_dirty = true
+}
+def base_font_family():string { return base_font }
 def private begin_pass() {
     path = ""
     current = rui_root()
@@ -1171,6 +1232,7 @@ def ui_frame(body : block) {
     // Complete exits before rendering: native CSS animations restore base values
     // when they finish, so deferring removal to the next frame would flash.
     if (wake_animation_exits()) { reconcile(body) }
+    rui_native_check()
 }
 def ui_reset() {
     verify(empty(active_component) && !unmounting, "ui_reset must run outside component rendering and teardown")
@@ -1195,6 +1257,7 @@ def ui_reset() {
     style_defining=false; keyframes_building=false; keyframe_building=false; in_media=false; in_spritesheet=false
     ui_clear_stats()
     epoch = 0; css_dirty = true; dispatching = false
+    rui_native_check()
 }
 def ui_find(part_name : string; item_key : int = -1) : uint64 {
     for (key, value in keys(nodes), values(nodes)) {
@@ -1208,6 +1271,18 @@ def ui_find(part_name : string; item_key : int = -1) : uint64 {
 // Style declarations are ordinary typed calls, evaluated once per sheet.
 struct UiLength { value : float; unit : string }
 struct UiColor { r,g,b : int }
+def private native_rgba(ink:UiColor; alpha:float):uint4 {
+    return uint4(uint(clamp(ink.r,0,255)),uint(clamp(ink.g,0,255)),uint(clamp(ink.b,0,255)),uint(clamp(alpha,0.,1.)*255.))
+}
+def native_rect(element:uint64; bounds:float4; ink:UiColor; alpha:float=1.) { rui_native_rect(element,bounds,native_rgba(ink,alpha)) }
+def native_triangle(element:uint64; a,b,c:float2; ink:UiColor; alpha:float=1.) { rui_native_triangle(element,a,b,c,native_rgba(ink,alpha)) }
+def native_line(element:uint64; a,b:float2; thickness:float; ink:UiColor; alpha:float=1.) {
+    let delta=b-a; let distance=length(delta)
+    if (distance<=0. || thickness<=0.) { return }
+    let n=float2(-delta.y,delta.x)*(thickness*0.5/distance)
+    native_triangle(element,a+n,b+n,b-n,ink,alpha)
+    native_triangle(element,a+n,b-n,a-n,ink,alpha)
+}
 struct UiMediaQuery { condition:string }
 def px(value : float) : UiLength { return UiLength(value=value,unit="px") }
 def px(value : int) : UiLength { return px(float(value)) }
@@ -1488,6 +1563,12 @@ def rt_template_row(name:string; body:block) { template_node("div",name,"ru-row"
 def rt_template_row(body:block) { rt_template_row("",body) }
 def rt_template_box(name:string; body:block) { template_node("div",name,"ru-box",body) }
 def rt_template_box(body:block) { rt_template_box("",body) }
+def rt_template_native_element(name,tag:string; body:block) {
+    if (!native_registered(tag)) { panic("native_element: tag is not registered") }
+    template_definition.native_tags+="{tag};"
+    template_node(tag,name,"",body)
+}
+def rt_template_native_element(name,tag:string) { rt_template_native_element(name,tag) {} }
 def rt_template_text(name,value:string) {
     template_node("span",name,"") { template_stack[length(template_stack)-1].children=template_escape(value) }
 }
@@ -1510,7 +1591,7 @@ def rt_template_svg_inline(name,fragment:string; viewport:float2; crop:bool=fals
 def rt_template_lottie(name,source:string) { template_node("lottie",name,"") { attribute("src",source) } }
 def rt_template_end() {
     verify(template_building && template_has_root && empty(template_stack),"[ui_template] requires one completed window_frame")
-    template_definition.css="body \{ {base_text_css} \}\n.ru-column \{ display:flex; flex-direction:column; \} .ru-row \{ display:flex; flex-direction:row; align-items:center; \} .ru-box \{ display:block; \}\n"
+    template_definition.css=".ru-column \{ display:flex; flex-direction:column; \} .ru-row \{ display:flex; flex-direction:row; align-items:center; \} .ru-box \{ display:block; \}\n"
     for (sheet in template_sheets) { template_definition.css += styles[sheet] }
     let t=template_definition
     template_definition.markup="<template name=\"{t.name}\"><head><link type=\"text/css\" href=\"{t.css_source}\"/></head><body>{t.markup}</body></template>"
@@ -1522,6 +1603,9 @@ def private template_select(fn:function<():void>):UiTemplateDefinition {
     template_selected=""
     invoke(fn)
     verify(!empty(template_selected),"open_template requires an [ui_template] function")
+    for (tag in split(templates[template_selected].native_tags,";")) {
+        if (!empty(tag) && !native_registered(tag)) { panic("native_element: cached template tag is not registered") }
+    }
     return templates[template_selected]
 }
 // Useful for inspecting the actual native template emitted by the DSL.
@@ -1555,7 +1639,9 @@ def show_popup(document:uint64; position:float2) {
 }
 def open_template(fn:function<():void>; title:string; position:float2; config:UiDocumentOptions=UiDocumentOptions()):uint64 {
     let t=template_select(fn)
-    rui_resource(t.css_source,t.css)
+    // The text defaults are added here rather than cached with the definition,
+    // so a document opened after set_base_text loads with the current ones.
+    rui_resource(t.css_source,"body \{ {base_text_css} \}\n{t.css}")
     rui_resource(t.source,t.markup)
     let properties="{t.root_properties} left:{position.x}px; top:{position.y}px;"
     let document=rui_document_load("<rml><head><title>{template_escape(title)}</title><link type=\"text/template\" href=\"{t.source}\"/></head>"+
