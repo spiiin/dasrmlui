@@ -90,11 +90,25 @@ def private static_value(expr : ExpressionPtr) : bool {
     if (expr is ExprCall) {
         let call = expr as ExprCall
         let name = string(call.name)
-        if (name != "px" && name != "dp" && name != "pct" && name != "rgb") { return false }
+        if (name != "px" && name != "dp" && name != "pct" && name != "rgb" &&
+            name != "em" && name != "rem" && name != "vw" && name != "vh") { return false }
         for (arg in call.arguments) { if (!static_value(arg)) { return false } }
         return true
     }
     return false
+}
+
+// Typed style helpers that only forward to property(). Both the phase rewrite
+// and the binding wrapper ask here, so a new helper is listed once.
+def private typed_property(name:string) : bool {
+    return (name == "min_width" || name == "min_height" || name == "max_width" || name == "max_height" ||
+        name == "margin" || name == "margin_left" || name == "margin_right" || name == "margin_x" || name == "margin_y" ||
+        name == "padding_left" || name == "padding_right" || name == "padding_top" || name == "padding_bottom" ||
+        name == "gap" || name == "letter_spacing" ||
+        name == "border" || name == "border_top" || name == "border_right" || name == "border_bottom" || name == "border_left" ||
+        name == "border_radius" || name == "border_width" || name == "border_color" ||
+        name == "position" || name == "left" || name == "top" || name == "right" || name == "bottom" || name == "z_index" ||
+        name == "display" || name == "flex_grow" || name == "flex_shrink")
 }
 
 class private UiPhase : UiStatements {
@@ -111,7 +125,7 @@ class private UiPhase : UiStatements {
                 call.name := "rt_static_text"
             }
         }
-        if (name == "property" || name == "width" || name == "height" ||
+        if (typed_property(name) || name == "property" || name == "width" || name == "height" ||
             name == "padding" || name == "padding_x" || name == "padding_y" ||
             name == "margin_top" || name == "margin_bottom" || name == "font_size" ||
             name == "background" || name == "color" || name == "opacity" || name == "disabled" ||
@@ -234,7 +248,7 @@ class private UiBindings : UiStatements {
         elif (condition_binding) { required = 2 }
         elif (input_binding) { required = 1 }
         if (length(call.arguments) < required) { return call }
-        let property_binding = (name == "property" || name == "width" || name == "height" ||
+        let property_binding = (typed_property(name) || name == "property" || name == "width" || name == "height" ||
             name == "padding" || name == "padding_x" || name == "padding_y" ||
             name == "margin_top" || name == "margin_bottom" || name == "font_size" ||
             name == "background" || name == "color" || name == "opacity" || name == "disabled" ||

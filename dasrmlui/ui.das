@@ -1650,6 +1650,77 @@ def rt_template_column(body:block) { rt_template_column("",body) }
 def rt_template_row(name:string; body:block) { template_node("div",name,"ru-row",body) }
 def rt_template_row(body:block) { rt_template_row("",body) }
 def rt_template_box(name:string; body:block) { template_node("div",name,"ru-box",body) }
+
+// The rest of the typed style API. Each helper only forwards to property(), so
+// it works wherever property() does: rules, keyframes, templates, components.
+// A length and a colour are different types, and a keyword is checked against
+// the values RmlUi accepts, so a slip fails at compile time or on first use
+// instead of surfacing as a parser warning.
+def em(value:float):UiLength { return UiLength(value=value,unit="em") }
+def em(value:int):UiLength { return em(float(value)) }
+def rem(value:float):UiLength { return UiLength(value=value,unit="rem") }
+def rem(value:int):UiLength { return rem(float(value)) }
+def vw(value:float):UiLength { return UiLength(value=value,unit="vw") }
+def vw(value:int):UiLength { return vw(float(value)) }
+def vh(value:float):UiLength { return UiLength(value=value,unit="vh") }
+def vh(value:int):UiLength { return vh(float(value)) }
+def private css_length(value:UiLength):string { return "{value.value}{value.unit}" }
+// RCSS takes alpha as 0..255; the API takes 0..1 like the other colour helpers.
+def private css_color(value:UiColor; alpha:float=1.):string {
+    if (alpha >= 1.) { return "rgb({value.r},{value.g},{value.b})" }
+    return "rgba({value.r},{value.g},{value.b},{int(clamp(alpha,0.,1.)*255.)})"
+}
+def background(value:UiColor; alpha:float) { property("background-color",css_color(value,alpha)) }
+def color(value:UiColor; alpha:float) { property("color",css_color(value,alpha)) }
+
+def min_width(value:UiLength) { property("min-width",css_length(value)) }
+def min_height(value:UiLength) { property("min-height",css_length(value)) }
+def max_width(value:UiLength) { property("max-width",css_length(value)) }
+def max_height(value:UiLength) { property("max-height",css_length(value)) }
+
+def margin(value:UiLength) { property("margin",css_length(value)) }
+def margin_left(value:UiLength) { property("margin-left",css_length(value)) }
+def margin_right(value:UiLength) { property("margin-right",css_length(value)) }
+def margin_x(value:UiLength) { property("margin-left",css_length(value)); property("margin-right",css_length(value)) }
+def margin_y(value:UiLength) { property("margin-top",css_length(value)); property("margin-bottom",css_length(value)) }
+def padding_left(value:UiLength) { property("padding-left",css_length(value)) }
+def padding_right(value:UiLength) { property("padding-right",css_length(value)) }
+def padding_top(value:UiLength) { property("padding-top",css_length(value)) }
+def padding_bottom(value:UiLength) { property("padding-bottom",css_length(value)) }
+def gap(value:UiLength) { property("gap",css_length(value)) }
+def letter_spacing(value:UiLength) { property("letter-spacing",css_length(value)) }
+
+def border_radius(value:UiLength) { property("border-radius",css_length(value)) }
+def border_width(value:UiLength) { property("border-width",css_length(value)) }
+def border_color(value:UiColor; alpha:float=1.) { property("border-color",css_color(value,alpha)) }
+def private border_side(side:string; thickness:UiLength; ink:UiColor; alpha:float) {
+    property(side,"{css_length(thickness)} {css_color(ink,alpha)}")
+}
+def border(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border",thickness,ink,alpha) }
+def border_top(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-top",thickness,ink,alpha) }
+def border_right(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-right",thickness,ink,alpha) }
+def border_bottom(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-bottom",thickness,ink,alpha) }
+def border_left(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-left",thickness,ink,alpha) }
+
+def position(kind:string) {
+    verify(kind == "static" || kind == "relative" || kind == "absolute" || kind == "fixed",
+        "position: use static, relative, absolute or fixed")
+    property("position",kind)
+}
+def left(value:UiLength) { property("left",css_length(value)) }
+def top(value:UiLength) { property("top",css_length(value)) }
+def right(value:UiLength) { property("right",css_length(value)) }
+def bottom(value:UiLength) { property("bottom",css_length(value)) }
+def z_index(value:int) { property("z-index","{value}") }
+def display(kind:string) {
+    verify(kind == "none" || kind == "block" || kind == "inline" || kind == "inline-block" || kind == "flow-root" ||
+        kind == "flex" || kind == "inline-flex" || kind == "table" || kind == "inline-table" || kind == "table-row" ||
+        kind == "table-row-group" || kind == "table-column" || kind == "table-column-group" || kind == "table-cell",
+        "display: not a display value RmlUi knows")
+    property("display",kind)
+}
+def flex_grow(value:float) { property("flex-grow","{value}") }
+def flex_shrink(value:float) { property("flex-shrink","{value}") }
 def rt_template_box(body:block) { rt_template_box("",body) }
 def rt_template_native_element(name,tag:string; body:block) {
     if (!native_registered(tag)) { panic("native_element: tag is not registered") }

@@ -512,6 +512,56 @@ text_input("name") { attribute("id","name_field") }
 любой flex-элемент, ведёт себя как блок. Тег места вызова не должен меняться между
 проходами. Обе конструкции работают и в `[ui_template]`.
 
+## Типизированные свойства
+
+```das
+rule(part("card")) {
+    padding(px(12)); margin_x(dp(8)); min_width(px(180)); max_width(pct(60))
+    border(px(1), rgb(54,116,84)); border_radius(px(6))
+    background(rgb(20,28,40), 0.85)
+}
+rule(part("badge")) { position("absolute"); top(px(-6)); right(px(-6)); z_index(2) }
+```
+
+Каждый helper только записывает одно объявление через `property`, поэтому работает
+везде, где работает `property`: в `rule`, `keyframe`, `[ui_template]` и в теле
+компонента. Внутри компонента вызов helper'а — привязка с зависимостями, как у `width`.
+
+| Группа | Helper'ы | Аргументы |
+|---|---|---|
+| Единицы | `px`, `dp`, `pct`, `em`, `rem`, `vw`, `vh` | число → `UiLength` |
+| Размеры | `width`, `height`, `min_width`, `min_height`, `max_width`, `max_height` | `UiLength` |
+| Внешние отступы | `margin`, `margin_top`, `margin_bottom`, `margin_left`, `margin_right`, `margin_x`, `margin_y` | `UiLength` |
+| Внутренние отступы | `padding`, `padding_top`, `padding_bottom`, `padding_left`, `padding_right`, `padding_x`, `padding_y` | `UiLength` |
+| Рамка | `border`, `border_top`, `border_right`, `border_bottom`, `border_left` | толщина, цвет, альфа |
+| | `border_width`, `border_radius` | `UiLength` |
+| | `border_color` | цвет, альфа |
+| Цвет | `background`, `color` | цвет, альфа |
+| Позиция | `position` | `static`, `relative`, `absolute`, `fixed` |
+| | `left`, `top`, `right`, `bottom` | `UiLength` |
+| | `z_index` | `int` |
+| Раскладка | `display` | значение `display` из RCSS |
+| | `gap` | `UiLength` |
+| | `flex_grow`, `flex_shrink` | `float` |
+| Текст | `font_size`, `letter_spacing` | `UiLength` |
+| Прочее | `opacity` | `float` |
+
+Альфа необязательна и задаётся от 0 до 1, как в остальных цветовых функциях DSL.
+`margin_x` и `padding_x` записывают левую и правую стороны, `_y` — верхнюю и нижнюю.
+
+Что даёт типизация. Длина и цвет — разные типы, поэтому `border_radius(rgb(1,2,3))` не
+компилируется. `position` и `display` принимают строку и сверяют её со значениями,
+которые понимает RmlUi: опечатка останавливает программу с понятным сообщением при
+первом использовании таблицы стилей, а не превращается в предупреждение разборщика.
+
+Имена этих helper'ов, как и остальных примитивов, аннотация `[ui_component]` узнаёт по
+вызову-оператору. Собственную функцию с именем `left`, `top`, `position`, `display`,
+`margin`, `border` или `gap`, вызываемую как оператор внутри компонента, пишите с
+модулем: `_::display(text)`. Вызов, использованный как значение, не затрагивается.
+
+`transform`, `transition`, `box-shadow`, `font-effect`, `decorator` и `filter` остаются
+строками: у них составной синтаксис, и helper'а для них пока нет.
+
 ## Границы текущей реализации
 
 DSL покрывает перечисленные структурные конструкции, формы, стили и композицию,

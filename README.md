@@ -207,7 +207,11 @@ def inventory_style() {
 ```
 
 `UiLength` и `UiColor` — разные типы: `width(rgb(...))` не компилируется.
-`property("border-width", "1px")` открывает доступ к остальным RCSS-свойствам.
+Типизированные helper'ы есть для размеров, отступов, рамок, позиционирования и
+flex-свойств: `border(px(1), rgb(54,116,84))`, `border_radius(px(6))`, `margin_x(dp(8))`,
+`position("absolute")`, `left(px(40))`; полный список — в
+[docs/dsl.md](docs/dsl.md#типизированные-свойства). Для остальных RCSS-свойств остаётся
+`property("transform", "rotate(4deg)")`.
 `root`, `part`, `hover`, `disabled_state` генерируют селекторы с префиксом таблицы стилей;
 `with_class(selector, name)` и `with_pseudo(selector, name)` добавляют к ним класс из
 `class_if` или псевдокласс, например `focus`.

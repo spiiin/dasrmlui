@@ -130,4 +130,11 @@ set_tests_properties(native_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_D
 add_test(NAME native_mesh_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_native_mesh.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/native_mesh.das)
 set_tests_properties(native_mesh_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+# The typed style helpers: what they write, a wrong argument type, a wrong keyword.
+add_test(NAME style_helpers COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/style_helpers.das --smoke-test)
+set_tests_properties(style_helpers PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+add_test(NAME style_helper_type_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_style_helper.das -Expected "no matching functions or generics: border_radius(ui::UiColor)")
+add_test(NAME style_keyword_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_position.das -Expected "position: use static, relative, absolute or fixed")
   ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;sdl;opengl" RUN_SERIAL TRUE TIMEOUT 60)
