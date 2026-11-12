@@ -34,15 +34,15 @@ def sample_phrase(count:int; language:string):string {
 }
 [ui_style]
 def passport_style() {
-    rule(part("shell")) { padding(px(40)); background(rgb(244,239,232)); color(rgb(50,53,75)); property("min-height","740px"); property("font-family","Segoe UI") }
+    rule(part("shell")) { padding(px(40)); background(rgb(244,239,232)); color(rgb(50,53,75)); min_height(px(740)); property("font-family","Segoe UI") }
     rule(part("heading")) { font_size(px(36)); margin_bottom(px(12)) }
     rule(part("muted")) { color(rgb(119,110,122)); margin_bottom(px(20)) }
-    rule(part("card")) { padding(px(28)); width(px(720)); background(rgb(255,253,249)); property("border","1px #ddd1cb"); property("border-radius","12px"); margin_top(px(18)) }
+    rule(part("card")) { padding(px(28)); width(px(720)); background(rgb(255,253,249)); border(px(1),rgb(221,209,203)); border_radius(px(12)); margin_top(px(18)) }
     rule(part("caption")) { font_size(px(18)); margin_bottom(px(10)) }
-    rule(part("name")) { width(px(600)); padding(px(12)); background(rgb(246,239,236)); color(rgb(62,49,66)); property("border","1px #baa5ae"); margin_bottom(px(22)) }
+    rule(part("name")) { width(px(600)); padding(px(12)); background(rgb(246,239,236)); color(rgb(62,49,66)); border(px(1),rgb(186,165,174)); margin_bottom(px(22)) }
     rule(part("greeting")) { font_size(px(26)); color(rgb(159,76,106)); margin_bottom(px(22)) }
     rule(part("count")) { font_size(px(32)); margin_bottom(px(20)) }
-    rule(part("shell")+" button") { padding(px(12)); background(rgb(139,82,105)); color(rgb(255,246,237)); property("margin-right","12px"); margin_bottom(px(12)); property("border-radius","6px") }
+    rule(part("shell")+" button") { padding(px(12)); background(rgb(139,82,105)); color(rgb(255,246,237)); margin_right(px(12)); margin_bottom(px(12)); border_radius(px(6)) }
     rule(part("shell")+" button:hover") { background(rgb(170,106,132)) }
 }
 [ui_component]

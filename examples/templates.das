@@ -16,19 +16,19 @@ var editors_mounted,editors_unmounted:int
 [ui_style]
 def window_frame_style() {
     rule(root()) {
-        property("position","absolute"); width(px(460)); height(px(460))
+        position("absolute"); width(px(460)); height(px(460))
         // Opening a window focuses the desktop button first. Keep every tool
         // window above that full-size desktop document, including idle windows.
-        property("z-index","1")
-        property("min-width","320px"); property("min-height","300px")
-        property("margin","0px"); padding(px(0)); background(rgb(247,240,226)); color(rgb(65,61,56))
-        property("border","2px #97816d"); property("border-radius","12px"); property("overflow","hidden")
+        z_index(1)
+        min_width(px(320)); min_height(px(300))
+        margin(px(0)); padding(px(0)); background(rgb(247,240,226)); color(rgb(65,61,56))
+        border(px(2),rgb(151,129,109)); border_radius(px(12)); property("overflow","hidden")
     }
-    rule(part("move")) { property("display","block"); height(px(42)); padding_y(px(12)); padding_x(px(18)); background(rgb(121,91,73)); color(rgb(255,244,220)); font_size(px(23)); property("cursor","move") }
-    rule(part("mission_actions")) { property("display","block"); padding(px(12)); background(rgb(226,218,197)); property("border-bottom","1px #c7b99b") }
-    rule(part("field_notes")) { property("display","block"); padding(px(22)) }
-    rule(part("crew_status")) { property("position","absolute"); property("left","0px"); property("right","0px"); property("bottom","0px"); padding_y(px(14)); padding_x(px(22)); background(rgb(230,224,205)); property("border-top","1px #c7b99b") }
-    rule(part("resize")) { property("position","absolute"); property("right","2px"); property("bottom","2px"); width(px(28)); height(px(28)); background(rgb(179,154,119)); property("cursor","resize") }
+    rule(part("move")) { display("block"); height(px(42)); padding_y(px(12)); padding_x(px(18)); background(rgb(121,91,73)); color(rgb(255,244,220)); font_size(px(23)); property("cursor","move") }
+    rule(part("mission_actions")) { display("block"); padding(px(12)); background(rgb(226,218,197)); border_bottom(px(1),rgb(199,185,155)) }
+    rule(part("field_notes")) { display("block"); padding(px(22)) }
+    rule(part("crew_status")) { position("absolute"); left(px(0)); right(px(0)); bottom(px(0)); padding_y(px(14)); padding_x(px(22)); background(rgb(230,224,205)); border_top(px(1),rgb(199,185,155)) }
+    rule(part("resize")) { position("absolute"); right(px(2)); bottom(px(2)); width(px(28)); height(px(28)); background(rgb(179,154,119)); property("cursor","resize") }
 }
 [ui_template]
 def workbench_window() {
@@ -47,15 +47,15 @@ def open_window(index:int):uint64 {
 }
 [ui_style]
 def window_style() {
-    rule(part("shell")) { padding(px(32)); background(rgb(210,218,211)); color(rgb(52,70,61)); property("min-height","756px") }
+    rule(part("shell")) { padding(px(32)); background(rgb(210,218,211)); color(rgb(52,70,61)); min_height(px(756)) }
     rule(part("heading")) { font_size(px(36)); margin_bottom(px(12)) }
     rule(part("caption")) { margin_bottom(px(20)); color(rgb(90,106,94)) }
-    rule(part("action")) { padding(px(12)); background(rgb(82,110,92)); color(rgb(250,249,232)); property("margin-right","12px"); margin_bottom(px(12)); property("border-radius","5px") }
-    rule(part("shell")+" button, "+part("actions")+" button") { padding(px(10)); background(rgb(82,110,92)); color(rgb(250,249,232)); property("margin-right","10px"); property("border-radius","5px") }
-    rule(part("editor")) { width(pct(95)); height(px(100)); padding(px(8)); property("border","1px #baa58b"); background(rgb(255,252,244)); color(rgb(65,61,56)); margin_bottom(px(20)); property("white-space","pre-wrap") }
+    rule(part("action")) { padding(px(12)); background(rgb(82,110,92)); color(rgb(250,249,232)); margin_right(px(12)); margin_bottom(px(12)); border_radius(px(5)) }
+    rule(part("shell")+" button, "+part("actions")+" button") { padding(px(10)); background(rgb(82,110,92)); color(rgb(250,249,232)); margin_right(px(10)); border_radius(px(5)) }
+    rule(part("editor")) { width(pct(95)); height(px(100)); padding(px(8)); border(px(1),rgb(186,165,139)); background(rgb(255,252,244)); color(rgb(65,61,56)); margin_bottom(px(20)); property("white-space","pre-wrap") }
     rule(part("subheading")) { font_size(px(24)); margin_bottom(px(12)) }
     rule(part("status")) { font_size(px(14)); color(rgb(99,86,68)) }
-    rule(part("slot_hint")) { font_size(px(12)); color(rgb(150,119,89)); margin_bottom(px(12)); property("letter-spacing","1px") }
+    rule(part("slot_hint")) { font_size(px(12)); color(rgb(150,119,89)); margin_bottom(px(12)); letter_spacing(px(1)) }
 }
 [ui_component]
 def window_actions(var model:Windows; index:int) {
@@ -76,7 +76,7 @@ def window_notes(var model:Windows; index:int) {
         text("subheading",index==0 ? "Plan the next expedition" : "Leave a message for the crew")
         text_area("editor") { bind_value(model.notes[index]) $(value:string) { model.notes[index]=value } }
         text("caption","Hide this editor independently. Its notes stay in the model.")
-        property("font-size","16px")
+        font_size(px(16))
     }
 }
 [ui_component]

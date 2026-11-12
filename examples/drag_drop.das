@@ -42,18 +42,18 @@ def drop_cargo(var model:Manifest; payload:string; zone,before:int) {
 [ui_style]
 def cargo_style() {
     expedition_sprites(); showcase_controls()
-    rule(part("shell")) { padding(px(32)); background(rgb(237,227,207)); color(rgb(44,52,44)); property("min-height","756px") }
+    rule(part("shell")) { padding(px(32)); background(rgb(237,227,207)); color(rgb(44,52,44)); min_height(px(756)) }
     rule(part("heading")) { font_size(px(38)); margin_bottom(px(10)) }
     rule(part("caption")) { font_size(px(14)); color(rgb(94,106,87)); margin_bottom(px(24)) }
-    rule(part("bay")) { width(px(480)); padding(px(20)); property("margin-right","24px"); background(rgb(247,243,231)); property("border","2px #bac3a7"); property("border-radius","12px") }
-    rule(part("bay")+":drop, "+part("pad")+":drop") { background(rgb(208,233,185)); property("border-color","#547d39") }
-    rule(part("cargo")) { padding(px(8)); height(px(68)); background(rgb(222,227,208)); margin_bottom(px(12)); property("border","2px #c1ccb0"); property("border-radius","8px"); property("cursor","move") }
-    rule(part("cargo")+":drag") { opacity(0.8); background(rgb(178,210,150)); property("border-color","#527338") }
-    rule(part("cargo")+":drop") { property("border-top","4px #527338") }
-    rule(part("icon")) { width(px(68)); height(px(68)); property("margin-right","18px"); property("pointer-events","none") }
+    rule(part("bay")) { width(px(480)); padding(px(20)); margin_right(px(24)); background(rgb(247,243,231)); border(px(2),rgb(186,195,167)); border_radius(px(12)) }
+    rule(part("bay")+":drop, "+part("pad")+":drop") { background(rgb(208,233,185)); border_color(rgb(84,125,57)) }
+    rule(part("cargo")) { padding(px(8)); height(px(68)); background(rgb(222,227,208)); margin_bottom(px(12)); border(px(2),rgb(193,204,176)); border_radius(px(8)); property("cursor","move") }
+    rule(part("cargo")+":drag") { opacity(0.8); background(rgb(178,210,150)); border_color(rgb(82,115,56)) }
+    rule(part("cargo")+":drop") { border_top(px(4),rgb(82,115,56)) }
+    rule(part("icon")) { width(px(68)); height(px(68)); margin_right(px(18)); property("pointer-events","none") }
     rule(part("name")) { font_size(px(22)); property("pointer-events","none") }
-    rule(part("pad")) { height(px(70)); padding(px(12)); property("border","2px #b6c2a4"); color(rgb(94,106,87)) }
-    rule(part("status")) { padding(px(18)); margin_top(px(20)); background(rgb(55,76,49)); color(rgb(240,249,229)); property("border-radius","6px") }
+    rule(part("pad")) { height(px(70)); padding(px(12)); border(px(2),rgb(182,194,164)); color(rgb(94,106,87)) }
+    rule(part("status")) { padding(px(18)); margin_top(px(20)); background(rgb(55,76,49)); color(rgb(240,249,229)); border_radius(px(6)) }
 }
 [ui_component]
 def cargo_bay(var model:Manifest; zone:int; title:string) {
@@ -73,7 +73,7 @@ def cargo_bay(var model:Manifest; zone:int; title:string) {
             }
         }
         box(zone==0 ? "storage_drop" : "flight_drop") {
-            property("height","70px"); padding(px(12)); property("border","2px #b6c2a4")
+            height(px(70)); padding(px(12)); border(px(2),rgb(182,194,164))
             text("caption","DROP HERE TO APPEND")
         }
     }

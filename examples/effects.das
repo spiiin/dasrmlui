@@ -15,25 +15,25 @@ def filter_string(values:array<float>):string {
 [ui_style]
 def effects_style() {
     expedition_sprites(); showcase_controls()
-    rule(part("shell")) { padding(px(28)); background(rgb(159,181,181)); color(rgb(24,45,44)); property("min-height","764px") }
+    rule(part("shell")) { padding(px(28)); background(rgb(159,181,181)); color(rgb(24,45,44)); min_height(px(764)) }
     rule(part("heading")) { font_size(px(32)); color(rgb(248,255,224)); property("font-effect","shadow(1px 2px #284d37)"); margin_bottom(px(8)) }
     rule(part("header")) { padding(px(20)); background(rgb(83,130,91)); property("border-radius","22px 5px"); margin_bottom(px(18)) }
     rule(part("muted")) { font_size(px(14)); color(rgb(45,73,68)); margin_bottom(px(10)) }
-    rule(part("canvas")) { width(px(670)); height(px(620)); property("position","relative") }
-    rule(part("stack")) { width(px(310)); padding(px(14)); property("margin-left","80px"); margin_top(px(18)); margin_bottom(px(85)); background(rgb(252,247,224)); property("border","2px #fff9e6"); property("border-radius","30px 8px"); property("box-shadow","#ee399f 24px 24px 0px 0px, #f57cc1 48px 48px 0px 0px, #cfb1bc 72px 72px 0px 0px, #fffacb 0px 0px 12px 5px inset") }
-    rule(part("inset")) { width(px(310)); padding(px(14)); property("margin-left","80px"); margin_bottom(px(22)); background(rgb(255,220,230)); property("border","2px #fff"); property("border-radius","28px 8px"); property("box-shadow","#9144ff 10px 4px 9px 3px inset") }
-    rule(part("icon")) { width(px(54)); height(px(54)); property("margin-right","12px") }
-    rule(part("shader")) { width(px(540)); height(px(155)); property("margin-left","28px"); property("decorator","shader(\"creation\")"); property("border-radius","28px"); property("overflow","hidden"); property("box-shadow","#f66a 10px 8px 18px 0px") }
-    rule(part("glass")) { property("position","absolute"); property("right","28px"); property("top","115px"); width(px(350)); padding(px(22)); property("background-color","#f8fcf6d9"); property("backdrop-filter","blur(8px)"); property("border","1px #516b64"); property("border-radius","18px"); property("z-index","5") }
-    rule(part("shell")+" tab") { color(rgb(56,79,70)); property("margin-right","6px"); padding(px(8)) }
-    rule(part("shell")+" tab:selected") { color(rgb(24,123,139)); property("border-bottom","3px #187b8b") }
+    rule(part("canvas")) { width(px(670)); height(px(620)); position("relative") }
+    rule(part("stack")) { width(px(310)); padding(px(14)); margin_left(px(80)); margin_top(px(18)); margin_bottom(px(85)); background(rgb(252,247,224)); border(px(2),rgb(255,249,230)); property("border-radius","30px 8px"); property("box-shadow","#ee399f 24px 24px 0px 0px, #f57cc1 48px 48px 0px 0px, #cfb1bc 72px 72px 0px 0px, #fffacb 0px 0px 12px 5px inset") }
+    rule(part("inset")) { width(px(310)); padding(px(14)); margin_left(px(80)); margin_bottom(px(22)); background(rgb(255,220,230)); border(px(2),rgb(255,255,255)); property("border-radius","28px 8px"); property("box-shadow","#9144ff 10px 4px 9px 3px inset") }
+    rule(part("icon")) { width(px(54)); height(px(54)); margin_right(px(12)) }
+    rule(part("shader")) { width(px(540)); height(px(155)); margin_left(px(28)); property("decorator","shader(\"creation\")"); border_radius(px(28)); property("overflow","hidden"); property("box-shadow","#f66a 10px 8px 18px 0px") }
+    rule(part("glass")) { position("absolute"); right(px(28)); top(px(115)); width(px(350)); padding(px(22)); property("background-color","#f8fcf6d9"); property("backdrop-filter","blur(8px)"); border(px(1),rgb(81,107,100)); border_radius(px(18)); z_index(5) }
+    rule(part("shell")+" tab") { color(rgb(56,79,70)); margin_right(px(6)); padding(px(8)) }
+    rule(part("shell")+" tab:selected") { color(rgb(24,123,139)); border_bottom(px(3),rgb(24,123,139)) }
     rule(part("control")) { height(px(38)); property("align-items","center") }
     rule(part("control_name")) { width(px(98)); font_size(px(14)) }
     rule(part("control_value")) { width(px(48)); property("text-align","right"); font_size(px(13)) }
     rule(part("shell")+" input.range") { width(px(190)); margin_bottom(px(0)) }
     rule(part("shell")+" input.range slidertrack") { background(rgb(224,228,228)) }
     rule(part("shell")+" input.range sliderbar") { background(rgb(65,103,103)) }
-    rule(part("type_card")) { margin_top(px(18)); padding(px(20)); background(rgb(22,36,40)); property("border-radius","12px"); color(rgb(235,255,251)) }
+    rule(part("type_card")) { margin_top(px(18)); padding(px(20)); background(rgb(22,36,40)); border_radius(px(12)); color(rgb(235,255,251)) }
     rule(part("type_title")) { font_size(px(32)); margin_bottom(px(12)) }
 }
 [ui_component]

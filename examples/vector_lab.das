@@ -14,25 +14,25 @@ def badge(blue:bool):string {
 def atelier_style() {
     rule("body") { background(rgb(246,241,234)) }
     rule(part("page")) { background(rgb(246,241,234)); color(rgb(69,54,85)); padding(px(38)); width(pct(100)); height(px(820)); property("box-sizing","border-box") }
-    rule(part("eyebrow")) { font_size(px(12)); property("letter-spacing","3px"); color(rgb(149,108,120)); margin_top(px(18)); margin_bottom(px(14)) }
+    rule(part("eyebrow")) { font_size(px(12)); letter_spacing(px(3)); color(rgb(149,108,120)); margin_top(px(18)); margin_bottom(px(14)) }
     rule(part("heading")) { font_size(px(49)); margin_bottom(px(10)) }
     rule(part("intro")) { font_size(px(17)); color(rgb(127,113,137)); margin_bottom(px(30)) }
     rule(part("cards")) { property("align-items","stretch") }
-    rule(part("card")) { width(px(330)); padding(px(19)); property("box-sizing","border-box"); property("margin-right","18px"); background(rgb(255,251,246)); property("border","1px #dfd2de"); property("border-radius","18px") }
+    rule(part("card")) { width(px(330)); padding(px(19)); property("box-sizing","border-box"); margin_right(px(18)); background(rgb(255,251,246)); border(px(1),rgb(223,210,222)); border_radius(px(18)) }
     rule(part("number")) { color(rgb(160,125,144)); font_size(px(12)); margin_bottom(px(12)) }
     rule(part("title")) { font_size(px(24)); margin_bottom(px(6)) }
     rule(part("description")) { font_size(px(14)); color(rgb(135,119,141)); height(px(48)); property("line-height","21px") }
-    rule(part("stage")) { width(px(290)); height(px(245)); property("position","relative"); background(rgb(241,231,238)); property("border-radius","12px"); margin_bottom(px(16)) }
+    rule(part("stage")) { width(px(290)); height(px(245)); position("relative"); background(rgb(241,231,238)); border_radius(px(12)); margin_bottom(px(16)) }
     rule(part("art")) { width(pct(100)); height(pct(100)) }
-    rule(part("art_size")) { property("position","absolute"); property("left","25px"); property("top","22px") }
+    rule(part("art_size")) { position("absolute"); left(px(25)); top(px(22)) }
     rule(part("controls")) { property("flex-wrap","wrap"); height(px(72)); property("align-content","flex-start") }
-    rule(part("controls")+" button") { padding(px(9)); property("margin-right","8px"); margin_bottom(px(8)); background(rgb(229,219,237)); color(rgb(79,60,97)); property("border-radius","7px"); nav(UiNav.Horizontal) }
+    rule(part("controls")+" button") { padding(px(9)); margin_right(px(8)); margin_bottom(px(8)); background(rgb(229,219,237)); color(rgb(79,60,97)); border_radius(px(7)); nav(UiNav.Horizontal) }
     rule(part("controls")+" button:hover") { background(rgb(216,199,229)) }
     rule(part("controls")+" button:focus-visible") { background(rgb(199,178,217)) }
     rule(part("note")) { color(rgb(152,130,151)); font_size(px(12)); property("line-height","19px") }
-    rule(part("footer")) { margin_top(px(20)); width(px(1026)); height(px(58)); property("flex-shrink","0"); background(rgb(231,223,237)); property("border-radius","14px"); property("position","relative") }
-    rule(part("seal")) { width(px(64)); height(px(42)); property("flex-shrink","0"); property("margin-left","18px"); svg_decorator("examples/assets/vector_orbit.svg",true) }
-    rule(part("footer_text")) { property("margin-left","18px"); font_size(px(15)); color(rgb(108,86,126)) }
+    rule(part("footer")) { margin_top(px(20)); width(px(1026)); height(px(58)); flex_shrink(0.); background(rgb(231,223,237)); border_radius(px(14)); position("relative") }
+    rule(part("seal")) { width(px(64)); height(px(42)); flex_shrink(0.); margin_left(px(18)); svg_decorator("examples/assets/vector_orbit.svg",true) }
+    rule(part("footer_text")) { margin_left(px(18)); font_size(px(15)); color(rgb(108,86,126)) }
 }
 [ui_component]
 def atelier(var model:Atelier) {

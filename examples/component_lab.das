@@ -29,7 +29,7 @@ def quote_frame(title:string; content:block) {
     use_style(@@component_lab_style)
     column("card") {
         width(px(ui_width() < 1000.0 ? max(280.0,ui_width()-96.0) : 308.0))
-        property("margin-right","14px")
+        margin_right(px(14))
         text("package_title",title)
         slot(content)
     }

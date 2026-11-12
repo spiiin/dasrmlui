@@ -86,12 +86,12 @@ def mesh_style() {
     rule(part("kicker")) { color(rgb(83,215,204)); font_size(px(13)); margin_bottom(px(14)) }
     rule(part("title")) { font_size(px(44)); margin_bottom(px(10)) }
     rule(part("intro")) { color(rgb(142,161,185)); margin_bottom(px(22)) }
-    rule(part("canvas")) { width(px(1050)); height(px(410)); property("display","block"); property("border-radius","14px"); property("overflow","hidden") }
+    rule(part("canvas")) { width(px(1050)); height(px(410)); display("block"); border_radius(px(14)); property("overflow","hidden") }
     rule(part("legend")) { color(rgb(142,161,185)); font_size(px(13)); margin_top(px(12)); margin_bottom(px(22)) }
     rule(part("controls")) { property("align-items","center"); margin_bottom(px(18)) }
-    rule(part("controls")+" button") { background(rgb(35,53,76)); color(rgb(225,236,247)); padding(px(12)); property("margin-right","12px"); property("border-radius","7px") }
+    rule(part("controls")+" button") { background(rgb(35,53,76)); color(rgb(225,236,247)); padding(px(12)); margin_right(px(12)); border_radius(px(7)) }
     rule(part("controls")+" button:hover") { background(rgb(51,78,105)) }
-    rule(part("progress")) { width(px(240)); height(px(24)); property("margin-right","20px") }
+    rule(part("progress")) { width(px(240)); height(px(24)); margin_right(px(20)) }
     rule(part("progress")+" slidertrack") { height(px(5)); margin_top(px(8)); background(rgb(65,86,110)) }
     rule(part("progress")+" sliderbar") { width(px(15)); height(px(22)); background(rgb(255,175,85)) }
     rule(part("note")) { color(rgb(113,137,164)); font_size(px(13)) }

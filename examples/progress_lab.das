@@ -40,17 +40,17 @@ def route_position(progress:float):float2 {
 [ui_style]
 def journey_style() {
     expedition_sprites(); showcase_controls()
-    rule(part("shell")) { padding(px(30)); background(rgb(16,16,39)); color(rgb(237,229,255)); property("min-height","760px") }
+    rule(part("shell")) { padding(px(30)); background(rgb(16,16,39)); color(rgb(237,229,255)); min_height(px(760)) }
     rule(part("heading")) { font_size(px(38)); margin_bottom(px(12)) }
     rule(part("muted")) { color(rgb(158,149,193)); margin_bottom(px(20)) }
-    rule(part("map")) { width(px(740)); height(px(340)); property("position","relative"); background(rgb(28,27,57)); property("border-radius","18px"); property("margin-right","20px") }
-    rule(part("point")) { property("position","absolute"); width(px(9)); height(px(9)); property("border-radius","5px"); background(rgb(68,59,105)) }
-    rule(part("light")) { width(px(9)); height(px(9)); property("border-radius","5px"); background(rgb(178,148,255)); property("box-shadow","#9c6fff 0px 0px 6px 1px") }
-    rule(part("craft")) { property("position","absolute"); width(px(80)); height(px(80)); property("pointer-events","none") }
-    rule(part("radial_card")) { width(px(280)); padding(px(20)); background(rgb(38,30,67)); property("border-radius","18px") }
-    rule(part("shell")+" "+part("radial")) { width(px(250)); height(px(250)); property("fill-image",sprite_name("probe")); property("background-color","#201c38"); property("border-radius","125px") }
+    rule(part("map")) { width(px(740)); height(px(340)); position("relative"); background(rgb(28,27,57)); border_radius(px(18)); margin_right(px(20)) }
+    rule(part("point")) { position("absolute"); width(px(9)); height(px(9)); border_radius(px(5)); background(rgb(68,59,105)) }
+    rule(part("light")) { width(px(9)); height(px(9)); border_radius(px(5)); background(rgb(178,148,255)); property("box-shadow","#9c6fff 0px 0px 6px 1px") }
+    rule(part("craft")) { position("absolute"); width(px(80)); height(px(80)); property("pointer-events","none") }
+    rule(part("radial_card")) { width(px(280)); padding(px(20)); background(rgb(38,30,67)); border_radius(px(18)) }
+    rule(part("shell")+" "+part("radial")) { width(px(250)); height(px(250)); property("fill-image",sprite_name("probe")); background(rgb(32,28,56)); border_radius(px(125)) }
     rule(part("shell")+" "+part("radial")+" fill") { property("background-color","transparent") }
-    rule(part("controls")) { margin_top(px(24)); padding(px(24)); width(px(1040)); background(rgb(28,27,57)); property("border-radius","12px") }
+    rule(part("controls")) { margin_top(px(24)); padding(px(24)); width(px(1040)); background(rgb(28,27,57)); border_radius(px(12)) }
     rule(part("percentage")) { font_size(px(42)); color(rgb(190,162,255)); margin_bottom(px(12)) }
 }
 [ui_component]
@@ -65,7 +65,7 @@ def journey(var model:Journey) {
                 box("map") {
                     path_points |> each_keyed($(p:PathPoint)=>p.id) $(p:PathPoint) {
                         box("point") {
-                            property("left","{p.x}px"); property("top","{p.y}px")
+                            left(px(p.x)); top(px(p.y))
                             box("light") {
                                 // Fractional final segment. The threshold follows arc length, not x.
                                 opacity(segment_fill(p,model.progress))
@@ -73,9 +73,9 @@ def journey(var model:Journey) {
                         }
                     }
                     box("traveller") {
-                        property("position","absolute")
-                        property("left","{route_position(model.progress).x-35.}px")
-                        property("top","{route_position(model.progress).y-35.}px")
+                        position("absolute")
+                        left(px(route_position(model.progress).x-35.))
+                        top(px(route_position(model.progress).y-35.))
                         sprite_image("craft","scout")
                     }
                 }

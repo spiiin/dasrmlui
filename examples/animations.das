@@ -40,39 +40,39 @@ def orbital_style() {
         keyframe(45.) { opacity(1.); property("transform","scale(1.12)") }
         keyframe(100.) { opacity(1.); property("transform","scale(1)") }
     }
-    rule(part("shell")) { padding(px(32)); background(rgb(16,22,25)); color(rgb(232,238,223)); property("min-height","756px") }
-    rule(part("header")) { property("justify-content","space-between"); property("align-items","center"); padding_y(px(14)); margin_bottom(px(30)); property("border-bottom","1px #405044") }
-    rule(part("brand")) { font_size(px(30)); property("letter-spacing","6px") }
-    rule(part("eyebrow")) { color(rgb(181,222,111)); font_size(px(12)); property("letter-spacing","2px"); margin_bottom(px(12)) }
+    rule(part("shell")) { padding(px(32)); background(rgb(16,22,25)); color(rgb(232,238,223)); min_height(px(756)) }
+    rule(part("header")) { property("justify-content","space-between"); property("align-items","center"); padding_y(px(14)); margin_bottom(px(30)); border_bottom(px(1),rgb(64,80,68)) }
+    rule(part("brand")) { font_size(px(30)); letter_spacing(px(6)) }
+    rule(part("eyebrow")) { color(rgb(181,222,111)); font_size(px(12)); letter_spacing(px(2)); margin_bottom(px(12)) }
     rule(part("muted")) { color(rgb(145,163,153)); font_size(px(14)); margin_bottom(px(16)) }
-    rule(part("nav")) { width(px(224)); property("flex-shrink","0"); property("margin-right","28px") }
+    rule(part("nav")) { width(px(224)); flex_shrink(0.); margin_right(px(28)) }
     rule(part("shell")+" button") {
         padding_y(px(13)); padding_x(px(16)); background(rgb(34,44,41)); color(rgb(223,235,213));
-        property("border","1px #425446"); property("border-radius","6px"); margin_bottom(px(10));
+        border(px(1),rgb(66,84,70)); border_radius(px(6)); margin_bottom(px(10));
         property("transition","background-color 0.2s, transform 0.2s"); property("cursor","pointer")
     }
     rule(part("shell")+" button:hover") { background(rgb(60,79,52)); property("transform","translateX(3px)") }
-    rule(part("shell")+" button:focus") { property("border-color","#c5ef84") }
+    rule(part("shell")+" button:focus") { border_color(rgb(197,239,132)) }
     rule(part("shell")+" "+part("launch_button")) { background(rgb(186,226,116)); color(rgb(25,38,26)); margin_top(px(22)) }
-    rule(part("stage")) { width(px(460)); height(px(500)); property("position","relative"); property("flex-shrink","0"); property("margin-right","26px"); property("overflow","hidden"); property("border","1px #405044"); property("border-radius","18px"); property("decorator","vertical-gradient(#283d32 #121d20)"); padding(px(24)) }
-    rule(part("orbit")) { property("position","absolute"); property("left","59px"); property("top","95px"); width(px(338)); height(px(338)); property("border","1px #718d54"); property("border-radius","180px") }
-    rule(part("inner_orbit")) { property("position","absolute"); property("left","89px"); property("top","125px"); width(px(278)); height(px(278)); property("border","1px #425b46"); property("border-radius","150px") }
-    rule(part("vehicle")) { property("position","absolute"); property("left","58px"); property("top","88px"); width(px(350)); height(px(350)); property("transform","translateY(0px) rotate(0deg)") }
+    rule(part("stage")) { width(px(460)); height(px(500)); position("relative"); flex_shrink(0.); margin_right(px(26)); property("overflow","hidden"); border(px(1),rgb(64,80,68)); border_radius(px(18)); property("decorator","vertical-gradient(#283d32 #121d20)"); padding(px(24)) }
+    rule(part("orbit")) { position("absolute"); left(px(59)); top(px(95)); width(px(338)); height(px(338)); border(px(1),rgb(113,141,84)); border_radius(px(180)) }
+    rule(part("inner_orbit")) { position("absolute"); left(px(89)); top(px(125)); width(px(278)); height(px(278)); border(px(1),rgb(66,91,70)); border_radius(px(150)) }
+    rule(part("vehicle")) { position("absolute"); left(px(58)); top(px(88)); width(px(350)); height(px(350)); property("transform","translateY(0px) rotate(0deg)") }
     rule(part("ship")) { width(pct(100)); height(pct(100)) }
-    rule(part("beacon")) { property("position","absolute"); property("left","49px"); property("top","245px"); width(px(20)); height(px(20)); background(rgb(192,236,120)); property("border-radius","12px"); opacity(1.) }
-    rule(part("vehicle_name")) { property("position","absolute"); property("left","24px"); property("bottom","74px"); font_size(px(34)) }
-    rule(part("vehicle_detail")) { property("position","absolute"); property("left","24px"); property("bottom","44px"); color(rgb(159,184,160)); font_size(px(14)) }
-    rule(part("badge")) { property("position","absolute"); property("right","24px"); property("top","24px"); background(rgb(176,217,108)); color(rgb(24,40,28)); padding(px(10)); property("border-radius","4px"); opacity(1.); property("transform","scale(1)") }
-    rule(part("side")) { property("flex","1"); property("min-width","240px") }
-    rule(part("briefing")) { padding(px(20)); background(rgb(31,42,38)); property("border","1px #526448"); property("border-radius","12px"); margin_bottom(px(18)); opacity(1.); property("transform","translateX(0px)") }
+    rule(part("beacon")) { position("absolute"); left(px(49)); top(px(245)); width(px(20)); height(px(20)); background(rgb(192,236,120)); border_radius(px(12)); opacity(1.) }
+    rule(part("vehicle_name")) { position("absolute"); left(px(24)); bottom(px(74)); font_size(px(34)) }
+    rule(part("vehicle_detail")) { position("absolute"); left(px(24)); bottom(px(44)); color(rgb(159,184,160)); font_size(px(14)) }
+    rule(part("badge")) { position("absolute"); right(px(24)); top(px(24)); background(rgb(176,217,108)); color(rgb(24,40,28)); padding(px(10)); border_radius(px(4)); opacity(1.); property("transform","scale(1)") }
+    rule(part("side")) { property("flex","1"); min_width(px(240)) }
+    rule(part("briefing")) { padding(px(20)); background(rgb(31,42,38)); border(px(1),rgb(82,100,72)); border_radius(px(12)); margin_bottom(px(18)); opacity(1.); property("transform","translateX(0px)") }
     rule(part("section")) { font_size(px(23)); margin_bottom(px(18)) }
-    rule(part("callsign")) { width(pct(100)); height(px(36)); padding(px(7)); background(rgb(17,27,25)); color(rgb(222,238,205)); property("border","1px #718659"); margin_bottom(px(14)) }
-    rule(part("readout")) { padding_y(px(12)); property("border-top","1px #405044"); color(rgb(189,209,178)); font_size(px(14)) }
-    rule(part("toast")) { padding(px(16)); background(rgb(48,64,46)); property("border-left","3px #bee87b"); property("border-radius","6px"); margin_bottom(px(12)); opacity(1.); property("transform","translateX(0px)") }
+    rule(part("callsign")) { width(pct(100)); height(px(36)); padding(px(7)); background(rgb(17,27,25)); color(rgb(222,238,205)); border(px(1),rgb(113,134,89)); margin_bottom(px(14)) }
+    rule(part("readout")) { padding_y(px(12)); border_top(px(1),rgb(64,80,68)); color(rgb(189,209,178)); font_size(px(14)) }
+    rule(part("toast")) { padding(px(16)); background(rgb(48,64,46)); border_left(px(3),rgb(190,232,123)); border_radius(px(6)); margin_bottom(px(12)); opacity(1.); property("transform","translateX(0px)") }
     rule(part("toast_title")) { font_size(px(17)); margin_bottom(px(7)) }
     rule(part("toast_copy")) { font_size(px(13)); color(rgb(176,194,164)); margin_bottom(px(12)) }
     rule(part("shell")+" "+part("dismiss")) { padding_y(px(6)); font_size(px(12)); margin_bottom(px(0)); background(rgb(37,50,35)) }
-    rule(part("footer")) { margin_top(px(28)); padding_y(px(16)); property("border-top","1px #405044"); property("justify-content","space-between"); font_size(px(13)); color(rgb(149,170,151)) }
+    rule(part("footer")) { margin_top(px(28)); padding_y(px(16)); border_top(px(1),rgb(64,80,68)); property("justify-content","space-between"); font_size(px(13)); color(rgb(149,170,151)) }
 }
 [ui_component]
 def briefing_content() {

@@ -25,8 +25,8 @@ def delete_card(var board:Board; id:int) {
 def lane(var board:Board; stage:int; title:string) {
     use_style(@@board_style)
     column("card") {
-        width(px(328.0)); property("margin-right","12px")
-        property("border-top",stage == 0 ? "4px #b99bce" : (stage == 1 ? "4px #d9a461" : "4px #7cbaa0"))
+        width(px(328.0)); margin_right(px(12))
+        border_top(px(4),stage == 0 ? rgb(185,155,206) : (stage == 1 ? rgb(217,164,97) : rgb(124,186,160)))
         row("toolbar") {
             text("section",title)
             text("muted") { return "   /   {stage_count(board.cards,stage)}" }
@@ -67,7 +67,7 @@ def inspector(var board:Board) {
                         }
                     }
                     button("urgent",card.urgent ? "High priority" : "Normal priority") {
-                        padding(px(12.0)); property("margin-left","12px")
+                        padding(px(12.0)); margin_left(px(12))
                         on_click() { for (target in board.cards) { if (target.id == card.id) { target.urgent = !target.urgent } } }
                     }
                     button("delete_card","Delete") { padding(px(12.0)); color(rgb(177,63,88)); on_click() { delete_card(board,card.id) } }
@@ -88,7 +88,7 @@ def kanban(var board:Board) {
                 bind_value(board.draft) $(value:string) { board.draft = value }
             }
             button("add_card","+ Add to backlog") {
-                padding(px(12.0)); background(rgb(40,115,99)); property("margin-left","12px")
+                padding(px(12.0)); background(rgb(40,115,99)); margin_left(px(12))
                 disabled() { return empty(board.draft) }
                 on_click() {
                     board.cards |> push <| Card(id=board.next_id,title=board.draft,owner="You")

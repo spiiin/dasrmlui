@@ -54,24 +54,24 @@ def install_waveform() {
 [ui_style]
 def bench_style() {
     rule(part("page")) { padding(px(38)); property("box-sizing","border-box"); background(rgb(225,225,211)); color(rgb(37,47,42)) }
-    rule(part("kicker")) { font_size(px(12)); property("letter-spacing","3px"); color(rgb(108,113,94)); margin_top(px(12)); margin_bottom(px(14)) }
+    rule(part("kicker")) { font_size(px(12)); letter_spacing(px(3)); color(rgb(108,113,94)); margin_top(px(12)); margin_bottom(px(14)) }
     rule(part("heading")) { font_size(px(48)); margin_bottom(px(10)) }
     rule(part("intro")) { color(rgb(108,113,94)); font_size(px(16)); margin_bottom(px(24)) }
     rule(part("workspace")) { property("align-items","flex-start") }
-    rule(part("rack")) { width(px(720)); property("margin-right","22px") }
-    rule(part("channel")) { padding(px(15)); background(rgb(49,58,51)); color(rgb(226,224,201)); property("border-radius","9px"); margin_bottom(px(12)) }
+    rule(part("rack")) { width(px(720)); margin_right(px(22)) }
+    rule(part("channel")) { padding(px(15)); background(rgb(49,58,51)); color(rgb(226,224,201)); border_radius(px(9)); margin_bottom(px(12)) }
     rule(part("channel_head")) { margin_bottom(px(10)); property("justify-content","space-between") }
     rule(part("channel_name")) { font_size(px(18)) }
     rule(part("channel_info")) { font_size(px(12)); color(rgb(148,163,140)) }
     rule(part("trace")) { width(pct(100)); height(px(90)); property("cursor","pointer"); nav() }
-    rule(part("trace")+":focus-visible") { property("border","2px #ffc554") }
-    rule(part("side")) { width(px(300)); padding(px(22)); property("box-sizing","border-box"); background(rgb(239,238,224)); property("border-radius","9px") }
+    rule(part("trace")+":focus-visible") { border(px(2),rgb(255,197,84)) }
+    rule(part("side")) { width(px(300)); padding(px(22)); property("box-sizing","border-box"); background(rgb(239,238,224)); border_radius(px(9)) }
     rule(part("side_title")) { font_size(px(24)); margin_bottom(px(16)) }
-    rule(part("caption")) { font_size(px(12)); color(rgb(119,119,99)); margin_top(px(16)); margin_bottom(px(8)); property("letter-spacing","1px") }
+    rule(part("caption")) { font_size(px(12)); color(rgb(119,119,99)); margin_top(px(16)); margin_bottom(px(8)); letter_spacing(px(1)) }
     rule(part("gain")) { width(px(245)); height(px(22)) }
-    rule(part("gain")+" slidertrack") { height(px(5)); background(rgb(183,187,163)); property("margin-top","8px") }
+    rule(part("gain")+" slidertrack") { height(px(5)); background(rgb(183,187,163)); margin_top(px(8)) }
     rule(part("gain")+" sliderbar") { width(px(16)); height(px(20)); background(rgb(172,103,39)) }
-    rule(part("actions")+" button") { width(px(238)); padding(px(11)); background(rgb(64,80,63)); color(rgb(243,237,211)); property("border-radius","5px"); margin_bottom(px(8)); nav(UiNav.Vertical) }
+    rule(part("actions")+" button") { width(px(238)); padding(px(11)); background(rgb(64,80,63)); color(rgb(243,237,211)); border_radius(px(5)); margin_bottom(px(8)); nav(UiNav.Vertical) }
     rule(part("actions")+" button:hover") { background(rgb(92,105,73)) }
     rule(part("actions")+" button:focus-visible") { background(rgb(152,106,49)) }
     rule(part("note")) { color(rgb(121,123,103)); font_size(px(13)); property("line-height","21px"); margin_top(px(15)) }

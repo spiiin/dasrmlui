@@ -89,7 +89,7 @@ def catalog(var model:Catalog) {
             flow("workspace",900.0) {
                 column("card") {
                     width(px(ui_width() < 900.0 ? max(280.0,ui_width()-96.0) : ui_width()-440.0))
-                    property("margin-right","16px")
+                    margin_right(px(16))
                     text_input("search") {
                         width(pct(94)); padding(px(12)); margin_bottom(px(12))
                         bind_value(model.query) $(value:string) { model.query=value }

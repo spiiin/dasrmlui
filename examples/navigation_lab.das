@@ -13,36 +13,36 @@ var menu:uint64
 [ui_style]
 def deck_style() {
     rule(part("desktop")) { background(rgb(17,30,38)); color(rgb(225,236,235)); padding(px(40)); height(px(740)) }
-    rule(part("eyebrow")) { property("letter-spacing","3px"); color(rgb(120,187,175)); font_size(px(12)); margin_bottom(px(10)); margin_top(px(30)) }
+    rule(part("eyebrow")) { letter_spacing(px(3)); color(rgb(120,187,175)); font_size(px(12)); margin_bottom(px(10)); margin_top(px(30)) }
     rule(part("heading")) { font_size(px(44)); margin_bottom(px(12)) }
     rule(part("intro")) { color(rgb(143,167,175)); margin_bottom(px(20)) }
-    rule(part("toolbar")+" button") { nav(UiNav.Horizontal); padding(px(10)); property("margin-right","10px"); background(rgb(37,61,69)); color(rgb(208,231,226)); property("border","1px #526e77"); property("border-radius","4px") }
-    rule(part("toolbar")+" button:focus-visible") { property("border-color","#f5cf70") }
-    rule(part("grid")) { property("position","absolute"); property("left","40px"); property("top","275px"); width(px(690)); height(px(350)); property("overflow","auto") }
-    rule(part("tile")) { property("position","absolute"); width(px(210)); height(px(145)); property("box-sizing","border-box"); padding(px(18)); property("border","2px #37535e"); property("border-radius","9px"); background(rgb(29,48,58)); color(rgb(219,235,233)); nav() }
+    rule(part("toolbar")+" button") { nav(UiNav.Horizontal); padding(px(10)); margin_right(px(10)); background(rgb(37,61,69)); color(rgb(208,231,226)); border(px(1),rgb(82,110,119)); border_radius(px(4)) }
+    rule(part("toolbar")+" button:focus-visible") { border_color(rgb(245,207,112)) }
+    rule(part("grid")) { position("absolute"); left(px(40)); top(px(275)); width(px(690)); height(px(350)); property("overflow","auto") }
+    rule(part("tile")) { position("absolute"); width(px(210)); height(px(145)); property("box-sizing","border-box"); padding(px(18)); border(px(2),rgb(55,83,94)); border_radius(px(9)); background(rgb(29,48,58)); color(rgb(219,235,233)); nav() }
     rule(part("tile")+":hover") { background(rgb(38,63,73)) }
-    rule(part("tile")+":focus") { property("border-color","#83b8ad") }
-    rule(part("tile")+":focus-visible") { property("border-color","#f4cf75"); background(rgb(53,70,66)); color(rgb(255,233,177)) }
+    rule(part("tile")+":focus") { border_color(rgb(131,184,173)) }
+    rule(part("tile")+":focus-visible") { border_color(rgb(244,207,117)); background(rgb(53,70,66)); color(rgb(255,233,177)) }
     rule(part("tile")+":disabled") { opacity(0.35) }
     rule(part("number")) { font_size(px(13)); color(rgb(110,162,157)); margin_bottom(px(15)) }
     rule(part("tile_title")) { font_size(px(23)); margin_bottom(px(8)) }
     rule(part("tile_detail")) { font_size(px(13)); color(rgb(151,180,182)) }
-    rule(part("side")) { property("position","absolute"); property("left","770px"); property("top","275px"); width(px(335)); padding(px(22)); background(rgb(26,43,51)); property("border-radius","9px") }
+    rule(part("side")) { position("absolute"); left(px(770)); top(px(275)); width(px(335)); padding(px(22)); background(rgb(26,43,51)); border_radius(px(9)) }
     rule(part("side_title")) { font_size(px(22)); margin_bottom(px(14)) }
     rule(part("side_text")) { color(rgb(151,180,182)); property("line-height","24px"); margin_bottom(px(18)) }
     rule(part("scroll")) { width(px(290)); height(px(115)); property("overflow-y","auto"); padding(px(8)); background(rgb(17,30,38)) }
-    rule(part("scroll")+" button") { nav(UiNav.Vertical); height(px(36)); property("flex-shrink","0"); padding(px(8)); property("border-bottom","1px #37535e"); color(rgb(175,206,199)) }
+    rule(part("scroll")+" button") { nav(UiNav.Vertical); height(px(36)); flex_shrink(0.); padding(px(8)); border_bottom(px(1),rgb(55,83,94)); color(rgb(175,206,199)) }
     rule(part("scroll")+" button:focus-visible") { background(rgb(66,83,65)); color(rgb(255,230,170)) }
-    rule(part("status")) { property("position","absolute"); property("left","40px"); property("top","660px"); font_size(px(16)); color(rgb(183,207,198)) }
-    rule(part("debug_status")) { property("position","absolute"); property("left","40px"); property("top","710px"); font_size(px(13)); color(rgb(120,187,175)) }
-    rule(part("menu_items")+" button") { nav(UiNav.Horizontal); padding(px(16)); background(rgb(235,205,129)); color(rgb(45,53,44)); property("margin-right","8px") }
+    rule(part("status")) { position("absolute"); left(px(40)); top(px(660)); font_size(px(16)); color(rgb(183,207,198)) }
+    rule(part("debug_status")) { position("absolute"); left(px(40)); top(px(710)); font_size(px(13)); color(rgb(120,187,175)) }
+    rule(part("menu_items")+" button") { nav(UiNav.Horizontal); padding(px(16)); background(rgb(235,205,129)); color(rgb(45,53,44)); margin_right(px(8)) }
     rule(part("menu_items")+" button:focus-visible") { background(rgb(255,236,183)) }
 }
 [ui_template]
 def command_popup() {
     window_frame("frame") {
-        nav(); property("position","absolute"); property("z-index","3"); width(px(300)); height(px(80)); padding(px(16))
-        property("margin","0px"); background(rgb(58,75,65)); property("border","2px #d9bb6f"); property("border-radius","8px")
+        nav(); position("absolute"); z_index(3); width(px(300)); height(px(80)); padding(px(16))
+        margin(px(0)); background(rgb(58,75,65)); border(px(2),rgb(217,187,111)); border_radius(px(8))
         slot("items")
     }
 }
@@ -56,7 +56,7 @@ def tile_view(var model:Lab; tile:Tile) {
     use_style(@@deck_style)
     button("tile") {
         nav_id("deck_tile_{tile.id}"); nav(model.mode)
-        property("left","{(tile.id % 3)*230}px"); property("top","{(tile.id / 3)*165}px")
+        left(px((tile.id % 3)*230)); top(px((tile.id / 3)*165))
         disabled() { return model.blocked && tile.id==1 }
         // A deliberate native ID edge: Left on 01 jumps to 06.
         if (tile.id==0) { nav_left(nav_to("deck_tile_5")) }

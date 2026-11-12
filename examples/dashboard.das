@@ -42,7 +42,7 @@ def dashboard(var model:Dashboard) {
         row() {
             property("align-items","flex-start")
             column("card") {
-                width(px(680.0)); property("margin-right","16px")
+                width(px(680.0)); margin_right(px(16))
                 text("section","Work queue")
                 text_input("search") {
                     width(px(632.0)); padding(px(10.0)); background(rgb(12,20,33)); color(rgb(233,242,253))
@@ -70,7 +70,7 @@ def dashboard(var model:Dashboard) {
                                 text("task_title",item.title)
                                 row() {
                                     text("muted") { return "{item.owner}   /   {item.done ? "Complete" : "In progress"}" }
-                                    button("inspect","Inspect") { padding(px(7.0)); property("margin-left","14px"); on_click() { model.selected = item.id } }
+                                    button("inspect","Inspect") { padding(px(7.0)); margin_left(px(14)); on_click() { model.selected = item.id } }
                                     button("toggle",item.done ? "Reopen" : "Complete") { padding(px(7.0)); on_click() { set_done(model,item.id) } }
                                 }
                             }

@@ -14,25 +14,25 @@ def station_style() {
         sprite("night_frame",0,0,96,96); sprite("night_inner",24,24,48,48)
         sprite("paper_frame",96,0,96,96); sprite("paper_inner",120,24,48,48)
     }
-    rule(part("shell")) { width(pct(100)); property("box-sizing","border-box"); padding(dp(28)); property("min-height","100%") }
-    rule(part("header")) { font_size(dp(32)); margin_bottom(dp(8)); property("letter-spacing","3px") }
+    rule(part("shell")) { width(pct(100)); property("box-sizing","border-box"); padding(dp(28)); min_height(pct(100)) }
+    rule(part("header")) { font_size(dp(32)); margin_bottom(dp(8)); letter_spacing(px(3)) }
     rule(part("caption")) { font_size(dp(14)); margin_bottom(dp(22)) }
     rule(part("controls")) { property("flex-wrap","wrap"); margin_bottom(dp(20)) }
-    rule(part("shell")+" button") { padding_y(dp(10)); padding_x(dp(15)); font_size(dp(14)); property("margin-right","8dp"); margin_bottom(dp(8)); property("border-radius","4dp"); property("cursor","pointer") }
-    rule(part("shell")+" button:focus") { property("border","1dp #dcb566") }
+    rule(part("shell")+" button") { padding_y(dp(10)); padding_x(dp(15)); font_size(dp(14)); margin_right(dp(8)); margin_bottom(dp(8)); border_radius(dp(4)); property("cursor","pointer") }
+    rule(part("shell")+" button:focus") { border(dp(1),rgb(220,181,102)) }
     rule(part("gallery")) { property("align-items","flex-start") }
-    rule(part("main")) { property("flex","1"); property("min-width","0px"); property("margin-right","24dp") }
-    rule(part("eyebrow")) { font_size(dp(12)); property("letter-spacing","2px"); margin_bottom(dp(12)) }
-    rule(part("preview")) { property("box-sizing","border-box"); property("max-width","100%"); padding(dp(24)); margin_bottom(dp(20)) }
+    rule(part("main")) { property("flex","1"); min_width(px(0)); margin_right(dp(24)) }
+    rule(part("eyebrow")) { font_size(dp(12)); letter_spacing(px(2)); margin_bottom(dp(12)) }
+    rule(part("preview")) { property("box-sizing","border-box"); max_width(pct(100)); padding(dp(24)); margin_bottom(dp(20)) }
     rule(part("title")) { font_size(dp(24)); margin_bottom(dp(14)) }
     rule(part("body_copy")) { font_size(dp(15)); margin_bottom(dp(16)) }
     rule(part("pills")) { property("flex-wrap","wrap") }
-    rule(part("small_patch")) { width(dp(144)); padding(dp(18)); property("margin-right","14dp"); margin_bottom(dp(16)) }
+    rule(part("small_patch")) { width(dp(144)); padding(dp(18)); margin_right(dp(14)); margin_bottom(dp(16)) }
     rule(part("metric")) { font_size(dp(22)); margin_top(dp(8)) }
-    rule(part("sidebar")) { width(dp(280)); property("box-sizing","border-box"); padding(dp(24)); property("flex-shrink","0") }
-    rule(part("note")) { width(pct(100)); property("box-sizing","border-box"); height(dp(128)); padding(dp(12)); font_size(dp(15)); property("white-space","pre-wrap"); property("border","1dp #6c8490"); margin_bottom(dp(16)) }
+    rule(part("sidebar")) { width(dp(280)); property("box-sizing","border-box"); padding(dp(24)); flex_shrink(0.) }
+    rule(part("note")) { width(pct(100)); property("box-sizing","border-box"); height(dp(128)); padding(dp(12)); font_size(dp(15)); property("white-space","pre-wrap"); border(dp(1),rgb(108,132,144)); margin_bottom(dp(16)) }
     rule(part("environment")) { font_size(dp(13)); margin_top(dp(14)) }
-    rule(part("dpi_badge")) { property("display","none"); font_size(dp(12)); margin_top(dp(10)) }
+    rule(part("dpi_badge")) { display("none"); font_size(dp(12)); margin_top(dp(10)) }
     theme("night") {
         rule(part("shell")) { background(rgb(12,28,38)); color(rgb(218,235,237)) }
         rule(part("caption")+", "+part("body_copy")+", "+part("environment")) { color(rgb(155,185,196)) }
@@ -53,10 +53,10 @@ def station_style() {
     }
     media(media_max_width(dp(900))) {
         rule(part("gallery")) { property("flex-direction","column") }
-        rule(part("main")) { width(pct(100)); property("flex","none"); property("margin-right","0px") }
+        rule(part("main")) { width(pct(100)); property("flex","none"); margin_right(px(0)) }
         rule(part("sidebar")) { width(pct(100)); margin_top(dp(12)) }
     }
-    media(media_min_resolution(1.25)) { rule(part("dpi_badge")) { property("display","block") } }
+    media(media_min_resolution(1.25)) { rule(part("dpi_badge")) { display("block") } }
     media(media_orientation("portrait")) { rule(part("header")) { font_size(dp(26)) } }
 }
 [ui_component]
@@ -70,7 +70,7 @@ def station(var model:Lab) {
     on_unmount() { unmounts+=1 }
     use_style(@@station_style)
     column("shell") {
-        width(px(ui_width())); property("min-height","{ui_height()}px")
+        width(px(ui_width())); min_height(px(ui_height()))
         text("eyebrow","REMOTE OPERATIONS / STATION 04")
         text("header","The relay station")
         text("caption","Change the light, enlarge the controls, stretch a panel. Your field notes stay with you.")

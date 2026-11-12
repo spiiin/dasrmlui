@@ -37,9 +37,9 @@ def inventory_style() {
     rule(part("heading")) { font_size(px(28.0)); margin_bottom(px(8.0)) }
     rule(part("subtitle")) { color(rgb(148,163,184)); margin_bottom(px(20.0)) }
     rule(part("item")) { padding(px(12.0)); margin_bottom(px(10.0)); background(rgb(31,41,59)) }
-    rule(part("title")) { width(px(300.0)); padding(px(8.0)); background(rgb(12,18,29)); color(rgb(235,240,249)); property("border-width","1px"); property("border-color","#51647c") }
+    rule(part("title")) { width(px(300.0)); padding(px(8.0)); background(rgb(12,18,29)); color(rgb(235,240,249)); border_width(px(1)); border_color(rgb(81,100,124)) }
     rule(part("count")) { width(px(65.0)); padding(px(8.0)) }
-    rule(part("action")) { padding(px(8.0)); background(rgb(49,85,140)); property("margin-left","8px") }
+    rule(part("action")) { padding(px(8.0)); background(rgb(49,85,140)); margin_left(px(8)) }
     part("action") |> hover() |> rule() { background(rgb(65,117,183)) }
     rule(part("details")) { padding(px(10.0)); color(rgb(112,218,175)) }
     rule(part("empty")) { padding(px(20.0)); color(rgb(148,163,184)) }
@@ -90,11 +90,11 @@ def inventory_panel(var model:InventoryUi) {
                     }
                     stock_badge(item.count)
                     button("select","Details") {
-                        property("padding","8px")
+                        padding(px(8))
                         on_click() { model.selected_id = item.id }
                     }
                     button("remove","Remove") {
-                        property("padding","8px")
+                        padding(px(8))
                         on_click() { remove_item(model,item.id) }
                     }
                 }

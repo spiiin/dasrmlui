@@ -35,20 +35,20 @@ def preview(value:Preferences) {
         text("caption","LIVE PREVIEW")
         column("preview_banner") {
             width(px(286.0)); padding(px(16.0)); margin_bottom(px(20.0))
-            background(value.mint ? rgb(208,231,217) : rgb(220,215,239))
+            class_if("mint",value.mint)
             text("task_title",value.name)
             text("muted","Your workspace, your preferences")
         }
         text("section","Today's activity")
         column("task") {
             width(px(282.0))
-            padding(value.compact ? px(7.0) : px(18.0))
+            class_if("compact",value.compact)
             text("task_title","Design review")
             text("muted","10:30 / Product team")
         }
         column("task") {
             width(px(282.0))
-            padding(value.compact ? px(7.0) : px(18.0))
+            class_if("compact",value.compact)
             text("task_title","Release readiness")
             text("muted","14:00 / Engineering")
         }
@@ -64,15 +64,16 @@ def settings(var model:Settings) {
         row() {
             property("align-items","flex-start")
             column("nav") {
-                button("profile_tab","Workspace") { padding(px(13.0)); margin_bottom(px(8.0)); background(model.tab == 0 ? rgb(229,190,191) : rgb(225,216,211)); on_click() { model.tab = 0 } }
-                button("appearance_tab","Appearance") { padding(px(13.0)); margin_bottom(px(8.0)); background(model.tab == 1 ? rgb(229,190,191) : rgb(225,216,211)); on_click() { model.tab = 1 } }
-                button("network_tab","Connection") { padding(px(13.0)); background(model.tab == 2 ? rgb(229,190,191) : rgb(225,216,211)); on_click() { model.tab = 2 } }
+                // The selected tab is a class, so its look lives in the style sheet.
+                button("profile_tab","Workspace") { padding(px(13.0)); margin_bottom(px(8.0)); class_if("active",model.tab == 0); on_click() { model.tab = 0 } }
+                button("appearance_tab","Appearance") { padding(px(13.0)); margin_bottom(px(8.0)); class_if("active",model.tab == 1); on_click() { model.tab = 1 } }
+                button("network_tab","Connection") { padding(px(13.0)); class_if("active",model.tab == 2); on_click() { model.tab = 2 } }
                 margin_top(px(4.0))
                 box("divider") {}
                 text("muted","Changes remain local to this demo until you close it.")
             }
             column("card") {
-                width(px(520.0)); property("margin-right","20px")
+                width(px(520.0)); margin_right(px(20))
                 when(model.tab == 0) {
                     text("section","Workspace details")
                     text("caption","WORKSPACE NAME")
