@@ -99,6 +99,9 @@ add_test(NAME navigation_id_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File 
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_navigation.das -Expected "Navigation ID must be non-empty, without # or whitespace")
 add_test(NAME binding_arity_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_binding_arity.das -Expected "no matching functions or generics: bind_int")
+add_test(NAME smoke_warning_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_smoke_warning.das -Expected "smoke run: RmlUi reported")
+set_tests_properties(smoke_warning_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 add_test(NAME ninepatch_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_ninepatch.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/ninepatch_render.das)
 set_tests_properties(ninepatch_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

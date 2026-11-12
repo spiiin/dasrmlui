@@ -33,6 +33,11 @@ def run_demo(title, screenshot:string; smoke:bool; render:block; check:block<(fr
             if (smoke && frame == 8) { break }
             SDL_Delay(16u)
         }
+        // A smoke run must be clean. RmlUi reports a mistyped property, a bad
+        // selector or a missing font only as a warning, so nothing else fails on it.
+        if (smoke && rui_warning_count() != 0ul) {
+            panic("smoke run: RmlUi reported {int(rui_warning_count())} warning(s) or error(s); see the 'rmlui' lines above")
+        }
         ui_reset()
         rui_shutdown()
         return sdl_ok()
