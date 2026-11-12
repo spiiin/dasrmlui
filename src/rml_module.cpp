@@ -14,7 +14,6 @@
 #include <RmlUi/Core/Geometry.h>
 #include <RmlUi/Core/RenderManager.h>
 #include <RmlUi/Core/ElementUtilities.h>
-#include <RmlUi/Core/MeshUtilities.h>
 #include <algorithm>
 #include "RmlUi_Platform_SDL.h"
 #include "RmlUi_Renderer_GL3.h"
@@ -1301,7 +1300,9 @@ public:
         B(rui_active_tab); B(rui_set_tab); B(rui_visible); B(rui_get_attr); B(rui_has_attr);
         B(rui_native_register); B(rui_native_registration); B(rui_native_unregister); B(rui_native_live); B(rui_is_native);
         B(rui_native_size); B(rui_native_time); B(rui_native_intrinsic); B(rui_native_invalidate);
-        B(rui_native_rect); B(rui_native_triangle); B(rui_native_error); B(rui_native_check);
+        B(rui_native_mesh); B(rui_native_texture_load); B(rui_native_texture_rgba);
+        B(rui_native_texture_size); B(rui_native_texture_release); B(rui_native_texture_resources);
+        B(rui_native_error); B(rui_native_check);
         B(rui_test_drag); B(rui_test_drag_offset); B(rui_bounds);
         B(rui_inner_markup); B(rui_local_property);
         B(rui_animation_start); B(rui_animation_cancel); B(rui_animation_status); B(rui_animation_generation); B(rui_test_advance_time);

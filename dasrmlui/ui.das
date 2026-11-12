@@ -595,6 +595,21 @@ def native_element(site,name,tag:string; body:block) {
     container(site,tag,name,"",body)
 }
 def native_element(site,name,tag:string) { native_element(site,name,tag) {} }
+// Names that end up inside a tag, a class or a selector.
+def private plain_name(text:string):bool {
+    if (empty(text)) { return false }
+    for (ch in text) {
+        if (!is_alpha(ch) && !is_number(ch) && ch != '-' && ch != '_') { return false }
+    }
+    return true
+}
+// Any RmlUi tag: img, label, form, p. RmlUi has no built-in sheet, so the
+// element is inline until a rule says otherwise. A site keeps its tag for life.
+def element(site,name,tag:string; body:block) {
+    verify(plain_name(tag),"element: a tag is letters, digits, '-' or '_'")
+    container(site,tag,name,"",body)
+}
+def element(site,name,tag:string) { element(site,name,tag) {} }
 // The document/template owns the target; reconciliation owns only our children.
 // Attach listeners to the document itself, including native show/hide and custom events.
 def document_events(site:string; document:uint64; body:block) {
@@ -1274,14 +1289,66 @@ struct UiColor { r,g,b : int }
 def private native_rgba(ink:UiColor; alpha:float):uint4 {
     return uint4(uint(clamp(ink.r,0,255)),uint(clamp(ink.g,0,255)),uint(clamp(ink.b,0,255)),uint(clamp(alpha,0.,1.)*255.))
 }
-def native_rect(element:uint64; bounds:float4; ink:UiColor; alpha:float=1.) { rui_native_rect(element,bounds,native_rgba(ink,alpha)) }
-def native_triangle(element:uint64; a,b,c:float2; ink:UiColor; alpha:float=1.) { rui_native_triangle(element,a,b,c,native_rgba(ink,alpha)) }
+// XY is local content-box position in pixels; ZW is normalized texture UV.
+// All arrays are copied by native_mesh, including when the mesh is temporary.
+struct UiNativeMesh {
+    vertices:array<float4>
+    colors:array<uint4>
+    indices:array<int>
+}
+def mesh_vertex(var mesh:UiNativeMesh; position:float2; ink:UiColor; uv:float2=float2(0.); alpha:float=1.):int {
+    let index=length(mesh.vertices)
+    mesh.vertices |> push(float4(position.x,position.y,uv.x,uv.y))
+    mesh.colors |> push(native_rgba(ink,alpha))
+    return index
+}
+def mesh_triangle(var mesh:UiNativeMesh; a,b,c:int) {
+    mesh.indices |> push(a); mesh.indices |> push(b); mesh.indices |> push(c)
+}
+def mesh_quad(var mesh:UiNativeMesh; bounds:float4; ink:UiColor; uv:float4=float4(0.,0.,1.,1.); alpha:float=1.) {
+    if (bounds.z<=0. || bounds.w<=0.) { return }
+    let a=mesh_vertex(mesh,float2(bounds.x,bounds.y),ink,float2(uv.x,uv.y),alpha)
+    let b=mesh_vertex(mesh,float2(bounds.x+bounds.z,bounds.y),ink,float2(uv.z,uv.y),alpha)
+    let c=mesh_vertex(mesh,float2(bounds.x+bounds.z,bounds.y+bounds.w),ink,float2(uv.z,uv.w),alpha)
+    let d=mesh_vertex(mesh,float2(bounds.x,bounds.y+bounds.w),ink,float2(uv.x,uv.w),alpha)
+    mesh_triangle(mesh,a,b,c); mesh_triangle(mesh,a,c,d)
+}
+def native_mesh(element:uint64; mesh:UiNativeMesh; texture:uint64=0ul) {
+    rui_native_mesh(element,mesh.vertices,mesh.colors,mesh.indices,texture)
+}
+def native_texture_load(element:uint64; source:string):uint64 { return rui_native_texture_load(element,source) }
+def native_texture_rgba(element:uint64; size:int2; pixels:array<uint4>):uint64 { return rui_native_texture_rgba(element,size,pixels) }
+def native_texture_size(element,texture:uint64):int2 { return rui_native_texture_size(element,texture) }
+def native_texture_release(element,texture:uint64):bool { return rui_native_texture_release(element,texture) }
+// Diagnostic count includes textures retained by already-submitted geometry.
+def native_texture_resources():int { return rui_native_texture_resources() }
+def native_rect(element:uint64; bounds:float4; ink:UiColor; alpha:float=1.) {
+    var inscope mesh:UiNativeMesh
+    mesh_quad(mesh,bounds,ink,float4(0.,0.,1.,1.),alpha)
+    native_mesh(element,mesh)
+}
+def native_triangle(element:uint64; a,b,c:float2; ink:UiColor; alpha:float=1.) {
+    var inscope mesh:UiNativeMesh
+    let ia=mesh_vertex(mesh,a,ink,float2(0.),alpha)
+    let ib=mesh_vertex(mesh,b,ink,float2(0.),alpha)
+    let ic=mesh_vertex(mesh,c,ink,float2(0.),alpha)
+    mesh_triangle(mesh,ia,ib,ic); native_mesh(element,mesh)
+}
+def native_image(element,texture:uint64; bounds:float4; uv:float4=float4(0.,0.,1.,1.); alpha:float=1.) {
+    verify(texture!=0ul,"native_image requires a texture")
+    var inscope mesh:UiNativeMesh
+    mesh_quad(mesh,bounds,UiColor(r=255,g=255,b=255),uv,alpha)
+    native_mesh(element,mesh,texture)
+}
 def native_line(element:uint64; a,b:float2; thickness:float; ink:UiColor; alpha:float=1.) {
     let delta=b-a; let distance=length(delta)
     if (distance<=0. || thickness<=0.) { return }
     let n=float2(-delta.y,delta.x)*(thickness*0.5/distance)
-    native_triangle(element,a+n,b+n,b-n,ink,alpha)
-    native_triangle(element,a+n,b-n,a-n,ink,alpha)
+    var inscope mesh:UiNativeMesh
+    mesh_vertex(mesh,a+n,ink,float2(0.),alpha); mesh_vertex(mesh,b+n,ink,float2(0.),alpha)
+    mesh_vertex(mesh,b-n,ink,float2(0.),alpha); mesh_vertex(mesh,a-n,ink,float2(0.),alpha)
+    mesh_triangle(mesh,0,1,2); mesh_triangle(mesh,0,2,3)
+    native_mesh(element,mesh)
 }
 struct UiMediaQuery { condition:string }
 def px(value : float) : UiLength { return UiLength(value=value,unit="px") }
@@ -1310,6 +1377,11 @@ def root() : string { return ".{style}__root" }
 def part(name:string) : string { return ".{style}__{name}" }
 def hover(selector:string) : string { return "{selector}:hover" }
 def disabled_state(selector:string) : string { return "{selector}:disabled" }
+// Selectors for class_if and pseudo_if. with_pseudo also reaches the states RmlUi
+// maintains itself: focus, active, checked.
+def private state_class(name:string) : string { return "{style}__is_{name}" }
+def with_class(selector,name:string) : string { return "{selector}.{state_class(name)}" }
+def with_pseudo(selector,name:string) : string { return "{selector}:{name}" }
 def sprite_name(name:string):string { return "{style}__sprite_{name}" }
 var private in_spritesheet=false
 var private in_media=false
@@ -1448,6 +1520,22 @@ def svg_decorator(source:string; crop:bool=false; paint_area:string="padding-box
 }
 def opacity(value:float) { property("opacity","{value}") }
 def disabled(getter:block<():bool>) { if (!dispatching) { rui_attr_if(current,"disabled",invoke(getter)) } }
+// A class or pseudo-class that follows a condition. Unlike an inline property,
+// a change of either makes RmlUi run the element's transitions. The class is
+// scoped to the current style; select it with with_class(part(...), name).
+def class_if(name:string; enabled:bool) {
+    verify(plain_name(name),"class_if: a name is letters, digits, '-' or '_'")
+    if (template_building) {
+        verify(!empty(template_stack),"class_if needs a template node")
+        if (enabled) { template_stack[length(template_stack)-1].classes += " {state_class(name)}" }
+    } elif (!dispatching) { rui_class(current,state_class(name),enabled) }
+}
+// Use a name of your own: RmlUi sets hover, active, focus, checked and disabled itself.
+def pseudo_if(name:string; enabled:bool) {
+    verify(plain_name(name),"pseudo_if: a name is letters, digits, '-' or '_'")
+    verify(!template_building,"[ui_template] is static; put pseudo_if in [ui_component] content")
+    if (!dispatching) { rui_pseudo(current,name,enabled) }
+}
 
 def animation_name(name:string):string { return "{style}__animation_{name}" }
 def motion(name:string; seconds:float; easing:string="cubic-out"; iterations:int=1; alternate:bool=false):UiAnimation {
@@ -1569,6 +1657,12 @@ def rt_template_native_element(name,tag:string; body:block) {
     template_node(tag,name,"",body)
 }
 def rt_template_native_element(name,tag:string) { rt_template_native_element(name,tag) {} }
+def rt_template_element(name,tag:string; body:block) {
+    verify(plain_name(tag) && tag != "body" && tag != "head" && tag != "template",
+        "element: this tag cannot be a node of a template frame")
+    template_node(tag,name,"",body)
+}
+def rt_template_element(name,tag:string) { rt_template_element(name,tag) {} }
 def rt_template_text(name,value:string) {
     template_node("span",name,"") { template_stack[length(template_stack)-1].children=template_escape(value) }
 }

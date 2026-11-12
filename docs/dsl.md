@@ -463,6 +463,55 @@ set_base_text("Inter", px(15), rgb(30,34,40))
 подробнее — в README, раздел «Где exe ищет скрипты и шрифт». Если файл не найден,
 функция возвращает `false`.
 
+## Классы по состоянию и произвольные теги
+
+```das
+[ui_style]
+def card_style() {
+    rule(part("card")) { background(rgb(30,40,56)); property("transition","background-color 0.2s") }
+    part("card") |> with_class("selected") |> rule() { background(rgb(65,117,183)) }
+    part("card") |> with_pseudo("flagged") |> rule() { property("border","2px #d9a441") }
+    part("field") |> with_pseudo("focus") |> rule() { property("border-color","#6aa7ff") }
+}
+
+// Внутри [ui_component], после use_style(@@card_style):
+box("card") {
+    class_if("selected", model.selected == item.id)
+    pseudo_if("flagged", item.flagged)
+}
+```
+
+`class_if(name, condition)` включает и выключает класс текущего контейнера,
+`pseudo_if(name, condition)` — псевдокласс. Условие — обычная зависимость привязки:
+пока прочитанные значения не изменились, оно не вычисляется заново. Класс получает
+префикс текущей таблицы стилей, поэтому выбирается через `with_class(selector, name)`,
+а не строкой `.selected`. `with_pseudo(selector, name)` добавляет `:name` и годится также
+для состояний самого RmlUi: `focus`, `active`, `checked`.
+
+Отличие от свойства существенное. Inline-свойство (`background(...)` с выражением)
+меняется мгновенно: RmlUi запускает `transition` только при смене класса или
+псевдокласса. Поэтому состояние, которое должно меняться плавно, задавайте классом, а
+оба вида оформления описывайте в `[ui_style]`.
+
+Для `pseudo_if` выбирайте собственные имена: `hover`, `active`, `focus`, `checked` и
+`disabled` RmlUi выставляет сам и перезапишет ваше значение. В `[ui_template]` доступен
+`class_if` с постоянным условием; `pseudo_if` там отклоняется, шаблон статичен.
+
+```das
+box("avatar") { element("photo","img") { attribute("src","assets/avatar.png") } }
+element("name_label","label") { attribute("for","name_field"); text("caption","Имя") }
+text_input("name") { attribute("id","name_field") }
+```
+
+`element(name, tag)` создаёт элемент с любым тегом RmlUi; порядок аргументов тот же,
+что у остальных примитивов — сначала имя части. Тело необязательно. Так доступны
+`img` с `src`, `label`, `form`, `p` и другие теги, у которых нет собственного helper'а.
+Нативное поведение сохраняется: `img` берёт размер файла, клик по `label` передаёт
+фокус полю из атрибута `for`. У RmlUi нет встроенной таблицы стилей, поэтому такой
+элемент строчный, пока правило не задаст `display`; внутри `row` и `column` он, как и
+любой flex-элемент, ведёт себя как блок. Тег места вызова не должен меняться между
+проходами. Обе конструкции работают и в `[ui_template]`.
+
 ## Границы текущей реализации
 
 DSL покрывает перечисленные структурные конструкции, формы, стили и композицию,
@@ -1001,7 +1050,90 @@ Handler — обычная функция `@@name` или owning lambda `@(event
 при рисовании; возможности transforms/filters зависят от renderer (GL3).
 RCSS opacity применяется к цветам вершин каждого примитива: перекрывающиеся
 полупрозрачные примитивы смешиваются последовательно, это не отдельная opacity-layer.
-Texture/shader commands, custom hit testing и baseline overrides пока не экспортированы.
+Примитивы полностью реализованы в daScript поверх `native_mesh`; отдельных C++
+привязок rect/triangle/line нет. Custom shader commands, hit testing и baseline
+overrides пока не экспортированы.
+
+### Mesh, UV и текстуры
+
+`UiNativeMesh` — обычная структура daScript с тремя массивами:
+
+- `vertices:array<float4>`: `(x,y,u,v)`, координаты относительно content box в пикселях,
+  UV нормализованы относительно всей текстуры;
+- `colors:array<uint4>`: один **не premultiplied** RGBA 0..255 на вершину;
+- `indices:array<int>`: индексы с нуля, каждая тройка задаёт треугольник.
+
+```das
+var mesh:UiNativeMesh
+let a=mesh_vertex(mesh,float2(0.,0.),rgb(255,120,80),float2(0.,0.))
+let b=mesh_vertex(mesh,float2(200.,0.),rgb(80,230,210),float2(1.,0.))
+let c=mesh_vertex(mesh,float2(100.,120.),rgb(180,120,255),float2(0.5,1.))
+mesh_triangle(mesh,a,b,c)
+native_mesh(event.element,mesh) // Без текстуры, цвета интерполируются.
+// native_mesh(event.element,mesh,texture) — те же вершины с текстурой.
+```
+
+`mesh_vertex(mesh,position,ink,uv=float2(0.),alpha=1.)` возвращает индекс добавленной
+вершины. `mesh_triangle(mesh,a,b,c)` добавляет индексы; вершины можно переиспользовать.
+`mesh_quad(mesh,bounds,ink,uv=float4(0.,0.,1.,1.),alpha=1.)` добавляет quad.
+В `bounds` лежат `(x,y,width,height)`, в `uv` — **`(u0,v0,u1,v1)`**, не ширина/высота.
+Массивы можно заполнять напрямую. Их данные синхронно копируются в C++ при
+`native_mesh(element,mesh,texture=0ul)`; после вызова исходные массивы можно менять,
+освобождать и собирать GC. Нулевой texture означает solid geometry.
+
+В одном Paint можно отправить несколько mesh с разными текстурами. Порядок вызовов
+сохраняется; соседние submissions одной текстуры объединяются, включая solid geometry.
+RCSS opacity модулирует vertex alpha; vertex RGBA и generated texture RGBA
+premultiply выполняется в C++. На кадрах без invalidation геометрия не пересоздаётся.
+Все позиции/UV должны быть конечными, длины vertices/colors совпадать, indices
+быть кратны трём и ссылаться на существующие вершины. Лимит на один Paint —
+1 000 000 отправленных вершин и 3 000 000 индексов. Неверный mesh отклоняется
+целиком до изменения batches. Пустой mesh допустим; вызов всё равно требует Paint.
+
+Текстуры принадлежат **конкретному экземпляру элемента**:
+
+```das
+// Инициализировать один раз в Paint, затем сохранить handles в состоянии по element.
+let atlas=native_texture_load(event.element,"examples/assets/native_mesh_atlas.png")
+verify(atlas!=0ul)
+var pixels=array<uint4>(uint4(255u,100u,40u,255u),uint4(40u,200u,255u,128u))
+let generated=native_texture_rgba(event.element,int2(2,1),pixels)
+verify(generated!=0ul)
+// Левая половина атласа. native_image — также daScript-обёртка над mesh.
+native_image(event.element,atlas,float4(0.,0.,64.,64.),float4(0.,0.,0.5,1.))
+```
+
+- `native_texture_load(element,source):uint64` загружает PNG через RenderManager;
+  relative path разрешается относительно native документа. Ошибка загрузки даёт 0,
+  RmlUi может записать warning. Не вызывайте load заново на каждом Paint.
+- `native_texture_rgba(element,size:int2,pixels:array<uint4>):uint64` создаёт текстуру
+  из row-major RGBA, строка 0 сверху. Каналы 0..255, alpha не premultiplied.
+  Размер каждой стороны 1..4096, длина массива строго width*height. Неверные аргументы
+  вызывают ошибку; ошибка создания renderer даёт 0. Пиксели копируются, callback RmlUi
+  владеет C++-копией и не хранит указателей в daScript heap.
+- `native_texture_size(element,texture):int2` возвращает размер или `(0,0)` для
+  устаревшего/чужого handle.
+- `native_texture_release(element,texture):bool` удаляет handle; повторный вызов
+  возвращает false. Уже закешированная геометрия сохраняет ресурс до следующего Paint
+  или уничтожения элемента. Release сам по себе не инвалидирует геометрию.
+- `native_texture_resources():int` — число живых обёрток ресурсов для диагностики,
+  включая удержанные batches. Это не число GPU allocations: file textures дополнительно
+  кеширует RmlUi до освобождения его texture cache/shutdown. Generated textures
+  освобождаются вместе с последней ссылкой элемента/batch.
+
+Создание текстур требует элемента, уже присоединённого к context; Create вызывается
+слишком рано. Используйте ленивую инициализацию в Paint или обычный код после mount.
+При Destroy все оставшиеся ресурсы освобождаются автоматически; handle элемента
+в этом callback уже невалиден. Handles монотонны и не переиспользуются при remount
+или shutdown/restart. Передача чужого или released texture в mesh вызывает ошибку.
+Для замены картинки создайте новый handle, освободите старый и вызовите invalidate.
+
+Sampler пока задаёт backend: GL3 использует repeat/linear, SDL — своё штатное
+семплирование. Для атласов оставляйте padding/inset, если края соседних клеток не должны
+смешиваться. Индивидуальные sampler/filter/wrap настройки пока не экспортированы.
+Пример `examples/mesh_lab.das` показывает UV-ленту, кольцевой прогресс, градиент
+вершин, PNG-спрайты, tint/alpha, кеширование и remount/GC. Тест `native_mesh_pixels`
+проверяет те же API на SDL и GL3, включая lifecycle после ошибки Paint.
 
 Обычно Paint не вызывается каждый кадр. Атрибуты, native style changes, размеры
 и DPI помечают геометрию устаревшей; `native_invalidate(element)` делает это явно.

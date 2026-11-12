@@ -95,6 +95,7 @@ renderer dummy-драйвера не поддерживает используе
 ./build/bin/dasrmlui.exe examples/navigation_lab.das
 ./build/bin/dasrmlui.exe examples/vector_lab.das
 ./build/bin/dasrmlui.exe examples/native_lab.das
+./build/bin/dasrmlui.exe examples/mesh_lab.das
 ```
 
 | Пример | Что демонстрирует |
@@ -111,9 +112,10 @@ renderer dummy-драйвера не поддерживает используе
 | Navigation Lab / Vector deck | Native nav Auto/TreeOrder, явные ID-переходы, disabled, scroll и popup; штатный Debugger по F8, Element Info, Event Log, Outlines и Data Models |
 | Vector Lab / Vector atelier | SVG из файла и inline, crop, SVG-декоратор, Lottie JSON; смена источника/цвета/размера, remount и анимация без обновлений компонента |
 | Native Lab / Signal foundry | Три осциллограммы как настоящие custom elements: регистрация из daScript, собственная геометрия, native update/paint, события, keyed reorder, remount, resize, Hold и GC |
+| Mesh Lab / Bend the surface | Произвольные indexed mesh, UV-лента, кольцевой прогресс, vertex colors, PNG-атлас и RGBA-текстура из daScript, tint/alpha, кеширование и освобождение ресурсов |
 
-Все двенадцать входят в CTest. Для самостоятельного smoke добавьте `--smoke-test`:
-шесть SDL-примеров выполняют 8 кадров, шесть GL-примеров — 12; снимки идут в
+Все тринадцать входят в CTest. Для самостоятельного smoke добавьте `--smoke-test`:
+шесть SDL-примеров выполняют 8 кадров, семь GL-примеров — 12; снимки идут в
 `logs/`. GL-примерам нужен OpenGL 3.3 и Windows video driver, SDL dummy не подходит.
 Localization использует установленный `C:/Windows/Fonts/segoeui.ttf` для кириллицы;
 шрифт не копируется и не распространяется вместе с проектом.
@@ -121,8 +123,8 @@ Localization использует установленный `C:/Windows/Fonts/s
 ```powershell
 # Все тесты, включая OpenGL и SDL pixel checks:
 ctest --test-dir build --output-on-failure
-# Только двенадцать примеров native возможностей:
-ctest --test-dir build -R 'demo_(expedition|effects|drag_drop|templates|localization|progress_lab|animations|style_lab|event_studio|navigation_lab|vector_lab|native_lab)$' --output-on-failure
+# Только тринадцать примеров native возможностей:
+ctest --test-dir build -R 'demo_(expedition|effects|drag_drop|templates|localization|progress_lab|animations|style_lab|event_studio|navigation_lab|vector_lab|native_lab|mesh_lab)$' --output-on-failure
 # Без графического контекста:
 ctest --test-dir build -LE graphics --output-on-failure
 ```
@@ -161,6 +163,9 @@ def inventory_panel(var model : InventoryUi) {
 ```
 
 - `column`, `row`, `box`, `text`, `text_input`, `button` создают стандартные элементы.
+  `element("name", "img")` создаёт элемент с любым другим тегом RmlUi.
+- `class_if("selected", condition)` и `pseudo_if(...)` включают класс или псевдокласс по
+  условию. В отличие от inline-свойства, смена класса запускает `transition`.
 - Вложенные `[ui_component]` — обычные вызовы функций. Параметры проверяет daScript.
 - `when` создаёт и удаляет поддерево. При повторном появлении это новый экземпляр.
 - `each_keyed` принимает массив и **уникальные `int`-ключи внутри одного списка**.
@@ -203,7 +208,9 @@ def inventory_style() {
 
 `UiLength` и `UiColor` — разные типы: `width(rgb(...))` не компилируется.
 `property("border-width", "1px")` открывает доступ к остальным RCSS-свойствам.
-`root`, `part`, `hover`, `disabled_state` генерируют селекторы с префиксом таблицы стилей.
+`root`, `part`, `hover`, `disabled_state` генерируют селекторы с префиксом таблицы стилей;
+`with_class(selector, name)` и `with_pseudo(selector, name)` добавляют к ним класс из
+`class_if` или псевдокласс, например `focus`.
 Вложенный компонент получает собственную область стилей. Для явного переиспользования
 можно вызвать тот же `use_style(@@style_function)`.
 
@@ -473,7 +480,7 @@ GC и повторный reset. `composition.das` проверяет computed, �
 зависимостей в trace. `viewport.das` проверяет 10 000 строк при ограниченном DOM,
 scroll/shrink/resize и клавиатурный фокус. `forms.das` проверяет черновики, диапазоны,
 переполнение, валидацию, Enter/blur/Escape, checkbox мышью и select клавиатурой.
-В CTest входят семнадцать интерактивных примеров; полный список — `ctest --test-dir build -N`.
+В CTest входят восемнадцать интерактивных примеров; полный список — `ctest --test-dir build -N`.
 Новые проверки также покрывают отказ drop при заполненном контейнере, сохранение
 ключей при перестановке, native move/resize, teardown документов, перевод native
 RML и смену языка без изменения модели, заполнение разных участков кривой и размер
@@ -530,6 +537,11 @@ Update/Paint/Destroy написаны на daScript; owning lambdas остают
 Тесты покрывают ключи, захваченные значения, GC внутри callback, шаблоны, ошибки/reentry,
 unregister, shutdown/restart и завершение script Context; отдельный pixel test —
 геометрию, clipping, opacity, DPI и resize.
+`UiNativeMesh`/`native_mesh` добавляют UV, vertex RGBA и индексы треугольников;
+`native_texture_load`/`native_texture_rgba` — PNG и пиксели daScript. Rect/triangle/line
+теперь целиком написаны на daScript поверх этого API. `native_mesh_pixels` проверяет
+SDL/GL3 pixels, порядок смешивания, atlas UV, tint/alpha, GC, stale handles и cleanup
+после ошибки Paint. [Контракт API](docs/dsl.md#mesh-uv-и-текстуры).
 
 ## Файлы
 

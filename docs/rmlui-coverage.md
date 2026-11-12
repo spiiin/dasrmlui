@@ -33,7 +33,7 @@ daScript. Наличие примера не означает, что он вк�
 | Диагностика DSL | `ui_stats`, `ui_trace`, AST dump, отрицательные тесты | Это не визуальный RmlUi Debugger |
 | Spatial navigation | Typed `nav`, `nav_up/right/down/left`, `UiNav`, `nav_to`, `nav_id`, `tab_stop`, `document_nav`; native geometry/tree-order/ID и focus-visible | Native auto ограничен scroll container; focus_scope ограничивает Tab; геймпадная обвязка SDL отдельно |
 | RmlUi Debugger | Официальный плагин: lazy init, F8, toolbar, Element Info, Event Log, Outlines, Data Models, hide/shutdown и reactive status; Vector deck | Один context; Data Models не показывает состояние DSL. Hide дополнительно закрывает инструменты и выключает picking/outlines |
-| Пользовательские native-элементы | `register_native_element`, `native_element` в компонентах/шаблонах; native ElementInstancer, Create/Attribute/Property/Resize/Update/Paint/Destroy, intrinsic, solid geometry и GC-safe registry; Signal foundry | Имена с дефисом; без переопределения built-ins, texture/shader commands, baseline/custom hit testing. Мутации DOM внутри native-хуков запрещены; обычные DSL events доступны |
+| Пользовательские native-элементы | `register_native_element`, `native_element` в компонентах/шаблонах; native ElementInstancer, Create/Attribute/Property/Resize/Update/Paint/Destroy, intrinsic, indexed mesh/UV/vertex colors, PNG/RGBA textures и GC-safe registry; Signal foundry и Mesh Lab | Имена с дефисом; без переопределения built-ins, shader/sampler commands, baseline/custom hit testing. Мутации DOM внутри native-хуков запрещены; обычные DSL events доступны |
 
 Файлы реализации: [ui.das](../dasrmlui/ui.das),
 [macros.das](../dasrmlui/macros.das),
@@ -51,7 +51,7 @@ daScript. Наличие примера не означает, что он вк�
 | DPI на реальном оборудовании | Начальный display scale и pixel dimensions, события смены display scale с сохранением user scale, dp и atlas resolution реализованы | Физические переходы между мониторами разных DPI; тесты сейчас программно меняют display ratio |
 | Другие tiled/text decorators | Ninepatch helper и пример готовы; tiled-box, tiled-horizontal/vertical и text decorator доступны через `property` | Отдельные helpers/примеры для этих decorators и font icons |
 | Radial/conic gradients, mask-image, 3D perspective | Доступны через RCSS с подходящим renderer; GL3 реализует необходимые расширения | Примеры/проверки масок, градиентов, вложенного clipping и 3D. Нельзя переносить этот статус на SDL_Renderer |
-| Полная семантика форм | Нет DSL `<form>`/`<label>` и native submit dictionary; password возможен через input type attribute | Helpers и тесты label→focus, name/value отправки формы. Нынешний `on_submit` — Enter handler, а не native form submit |
+| Полная семантика форм | `<label>` и `<form>` создаются через `element(name, tag)`, переход label→focus проверен в `tests/elements.das`; native submit dictionary не привязан; password возможен через input type attribute | Name/value отправки формы. Нынешний `on_submit` — Enter handler, а не native form submit |
 | Touch и IME | SDL adapter передаёт touch, подключён IME handler; есть защита композиции при обновлении input | Реальные сценарии на устройствах/IME, прикладные touch callbacks и жесты. Базовая передача событий уже есть |
 | Шрифтовый fallback и shaping | Есть `rui_font` и `rui_fallback_font`; кириллица показана с Segoe UI. Используется FreeType | Проверки цепочек fallback/CJK; отдельная интеграция HarfBuzz для сложного shaping и проверка RTL. Загрузка шрифта сама этого не решает |
 | Табличная раскладка и rich text | `display: table*` доступен через `property`; `text()` создаёт plain text | Helpers/пример таблицы с row/col spans, inline fragments и управляемым форматированием текста |
@@ -119,7 +119,8 @@ daScript. Наличие примера не означает, что он вк�
 6. **Готово:** SVG/Lottie — официальные плагины с закреплёнными зависимостями, DSL
    компонентов/шаблонов/стилей, Vector atelier, runtime/negative/pixel tests.
 7. **Готово:** пользовательские native-элементы — регистрация ElementInstancer из
-   daScript, DSL, Signal foundry, lifecycle/GC/error и pixel tests.
+   daScript, DSL, Signal foundry, lifecycle/GC/error и pixel tests. Универсальная
+   геометрия и PNG/RGBA-текстуры, примитивы на daScript, Mesh Lab и SDL/GL3 pixel tests.
 8. Остались custom decorators/filters/shaders и совместимость с native data models —
    по конкретному сценарию, а не ради дублирования всех C++ методов.
 
@@ -148,11 +149,9 @@ shader hooks. `rui_init_gl` использует upstream GL3 renderer с эти
 SDL3 по-прежнему создаёт окно/context и доставляет ввод.
 
 На момент аудита `ctest --test-dir build --output-on-failure`:
-**60 проверок подтверждены:** полный прогон дал 59/60, отдельный повтор
-`runtime_package` — 1/1 passed. В первом запуске упаковки временно не открывался
-уже найденный font file; повторная установка и запуск пакета завершились успешно.
-Логи: `logs/ctest-native-full.log`, `logs/ctest-native-package.log`.
-Включены двенадцать примеров native возможностей, шесть OpenGL тестов и три SDL pixel tests,
+**63/63 passed** в полном прогоне, включая `runtime_package`.
+Лог: `logs/ctest-mesh-full.log`.
+Включены тринадцать примеров native возможностей, семь OpenGL-примеров и четыре pixel tests,
 генерация/слоты шаблонов, анимации, media/theme/DPI, события/режимы документов,
 Debugger/spatial navigation, SVG/Lottie, native custom elements, регрессии и отрицательные проверки DSL.
 Пять новых native-element тестов прошли в полном прогоне: `native_elements`,
@@ -160,6 +159,10 @@ Debugger/spatial navigation, SVG/Lottie, native custom elements, регресс�
 Они покрывают captured values/GC, native callbacks, keyed identity, templates,
 ошибки и reentry, unregister, shutdown/restart, поздний cleanup после main,
 геометрию, clipping, opacity, resize и DPI. Signal foundry также проверен визуально в GL3.
+`demo_mesh_lab` и `native_mesh_pixels` проверяют indexed geometry, UV, PNG/RGBA,
+vertex colors, premultiplied alpha, tint, порядок batches, кеш после release handle,
+копирование массивов/GC, stale/foreign handles, remount/shutdown и cleanup после
+ошибки Paint. Пиксели проверяются на SDL и GL3; Mesh Lab проверен визуально в GL3.
 Signal desk и Vector deck также проверены на Windows renderer по снимкам редактора,
 modal, popup и штатного инспектора RmlUi.
 Vector atelier визуально проверен в OpenGL. SVG/Lottie pixel test на SDL проверяет

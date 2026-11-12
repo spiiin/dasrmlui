@@ -21,3 +21,7 @@ renderer, автор оригинального эффекта — Danilo Guanab
 48 × 48 начинаются с отступа 24 px. Угловые вставки используются также для пиксельной
 проверки ninepatch. Файл создан детерминированно через System.Drawing скриптом
 `tools/make_style_atlas.ps1`; сторонних изображений и ImageGen здесь нет.
+
+`native_mesh_atlas.png` — собственный детерминированный атлас 64 × 32 RGBA:
+два значка по 32 × 32 для Mesh Lab и пиксельных тестов UV. Создаётся через
+`tools/make_native_mesh_atlas.ps1` (System.Drawing); внешних изображений нет.

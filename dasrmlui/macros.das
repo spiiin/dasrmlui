@@ -37,7 +37,7 @@ class private UiSites : UiStatements {
             name == "range_input" || name == "radio_input" || name == "text_area" ||
             name == "tabset" || name == "tab_headers" || name == "tab_panels" || name == "tab_panel" ||
             name == "tab_label" || name == "progress_bar" || name == "sprite_image" || name == "document_content" || name == "animated_when" ||
-            name == "native_element" || name == "on_event" || name == "document_events" || name == "svg_image" || name == "svg_inline" || name == "lottie") {
+            name == "native_element" || name == "element" || name == "on_event" || name == "document_events" || name == "svg_image" || name == "svg_inline" || name == "lottie") {
             serial += 1
             var args : array<ExpressionPtr>
             args |> push <| qmacro($v("{prefix}:{serial}"))
@@ -115,7 +115,7 @@ class private UiPhase : UiStatements {
             name == "padding" || name == "padding_x" || name == "padding_y" ||
             name == "margin_top" || name == "margin_bottom" || name == "font_size" ||
             name == "background" || name == "color" || name == "opacity" || name == "disabled" ||
-            name == "nav" || name == "nav_up" || name == "nav_right" || name == "nav_down" || name == "nav_left" || name == "nav_id" || name == "tab_stop" || name == "image_color" || name == "svg_decorator" || name == "attribute") {
+            name == "nav" || name == "nav_up" || name == "nav_right" || name == "nav_down" || name == "nav_left" || name == "nav_id" || name == "tab_stop" || name == "image_color" || name == "svg_decorator" || name == "attribute" || name == "class_if" || name == "pseudo_if") {
             // Updates need no extra guard: the binding around the call already
             // runs a constant once. A guard on the container being new would drop
             // a constant whose if/when branch is first reached after mount.
@@ -238,7 +238,7 @@ class private UiBindings : UiStatements {
             name == "padding" || name == "padding_x" || name == "padding_y" ||
             name == "margin_top" || name == "margin_bottom" || name == "font_size" ||
             name == "background" || name == "color" || name == "opacity" || name == "disabled" ||
-            name == "nav" || name == "nav_up" || name == "nav_right" || name == "nav_down" || name == "nav_left" || name == "nav_id" || name == "tab_stop" || name == "image_color" || name == "svg_decorator" || name == "attribute")
+            name == "nav" || name == "nav_up" || name == "nav_right" || name == "nav_down" || name == "nav_left" || name == "nav_id" || name == "tab_stop" || name == "image_color" || name == "svg_decorator" || name == "attribute" || name == "class_if" || name == "pseudo_if")
         if (!text_binding && !input_binding && !condition_binding && !property_binding && !caption_binding) { return call }
         serial += 1
         let site = "{prefix}:binding:{serial}"
@@ -483,11 +483,11 @@ class private UiTemplateBody : UiStatements {
     def override visitExprCall(var call:ExprCall?) : ExpressionPtr {
         if (!is_statement(call)) { return call }
         let name=string(call.name)
-        if (name=="native_element" || name=="column" || name=="row" || name=="box" || name=="text" || name=="svg_image" || name=="svg_inline" || name=="lottie") {
+        if (name=="native_element" || name=="element" || name=="column" || name=="row" || name=="box" || name=="text" || name=="svg_image" || name=="svg_inline" || name=="lottie") {
             call.name := "rt_template_{name}"
         } elif (name=="state" || name=="computed" || name=="when" || name=="animated_when" || name=="animate" || name=="each_keyed" ||
                 name=="virtual_each" || name=="document_content" || name=="on_mount" ||
-                name=="on_unmount" || find(name,"bind_")==0 || find(name,"on_")==0) {
+                name=="on_unmount" || name=="pseudo_if" || find(name,"bind_")==0 || find(name,"on_")==0) {
             invalid="[ui_template] is static; put {name} in [ui_component] content"
         }
         return call

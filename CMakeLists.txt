@@ -58,7 +58,7 @@ foreach(demo dashboard settings kanban catalog component_lab expedition drag_dro
   add_test(NAME demo_${demo} COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/examples/${demo}.das --smoke-test)
   set_tests_properties(demo_${demo} PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 endforeach()
-foreach(demo effects progress_lab animations style_lab vector_lab native_lab)
+foreach(demo effects progress_lab animations style_lab vector_lab native_lab mesh_lab)
   add_test(NAME demo_${demo} COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/examples/${demo}.das --smoke-test)
   # SDL dummy has no OpenGL context. These tests need the Windows desktop driver
   # and a real GL3 renderer, even though their windows are hidden.
@@ -105,6 +105,9 @@ set_tests_properties(smoke_warning_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SO
 add_test(NAME runtime_package COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_package.ps1
   -Build ${CMAKE_BINARY_DIR} -Config $<CONFIG>)
 set_tests_properties(runtime_package PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
+# State classes, pseudo-classes and arbitrary tags.
+add_test(NAME elements COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/elements.das --smoke-test)
+set_tests_properties(elements PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 add_test(NAME ninepatch_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_ninepatch.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/ninepatch_render.das)
 set_tests_properties(ninepatch_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -124,3 +127,7 @@ add_test(NAME native_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAK
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/native_render.das)
 set_tests_properties(native_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;sdl" RUN_SERIAL TRUE TIMEOUT 60)
+add_test(NAME native_mesh_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_native_mesh.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/native_mesh.das)
+set_tests_properties(native_mesh_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;sdl;opengl" RUN_SERIAL TRUE TIMEOUT 60)
