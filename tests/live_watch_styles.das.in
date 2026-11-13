@@ -1,0 +1,9 @@
+options gen2
+require dasrmlui/ui
+[ui_style(name="test")]
+def theme() {
+    rule(part("probe")) { width(px(#WIDTH#)); height(px(25)); background(rgb(20,140,180)) }
+    rule(part("input")) { width(px(250)); height(px(30)) }
+}
+[export]
+def live_styles():string { return ui_style_sheet() { theme() } }

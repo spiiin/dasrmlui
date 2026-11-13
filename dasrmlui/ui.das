@@ -3,6 +3,7 @@ module ui public
 require rml_native public
 require dasrmlui/macros public
 require dasrmlui/state_types public
+require dasrmlui/live_state public
 require dasrmlui/data_models public
 require strings
 require daslib/apply
@@ -156,6 +157,7 @@ var private unmounting = false
 struct private UiTeardown {
     owner, key : string
     cleanup : function<(key:string):void>
+    save : function<(key:string):void>
 }
 var private state_leases : array<UiTeardown>
 var private teardown_hooks : array<UiTeardown>
@@ -209,16 +211,18 @@ def emit(event:block) { invoke(event) }
 def rt_volatile_dependency() { dependency_parts |> push <| "callback:{epoch};" }
 
 def rt_local_key(owner,site:string) : string { return "{owner}/state:{site}" }
-def rt_local_state(var storage:table<string;array<auto(T)>>; site:string;
-                   initialize:block<():T>; cleanup:function<(key:string):void>; body:block<(var local:T&):void>) {
+def rt_local_state(var storage:table<string;array<auto(T)>>; site:string; version:int;
+                   initialize:block<():T>; cleanup:function<(key:string):void>; save:function<(key:string):void>; body:block<(var local:T&):void>) {
     verify(!empty(active_component) && path == active_component, "state must be declared at component scope, before DOM containers")
     let key = rt_local_key(active_component,site)
     if (!key_exists(storage,key)) {
         verify(first_mount, "state declarations must be unconditional; use a child component inside when/each_keyed")
         var initial = invoke(initialize)
+        verify(version>0,"state requires a positive schema version")
+        rt_live_restore("local/{key}",version,initial)
         storage[key] |> push_clone(initial)
         static_if (typeinfo can_delete(initial)) { delete initial }
-        state_leases |> push <| UiTeardown(owner=active_component,key=key,cleanup=cleanup)
+        state_leases |> push <| UiTeardown(owner=active_component,key=key,cleanup=cleanup,save=save)
     }
     if (hybrid_active && !dispatching) { rt_hybrid_sources(storage[key][0]) }
     invoke(body,storage[key][0])
@@ -282,6 +286,7 @@ def private retire_component(owner:string) {
             let lease = state_leases[i]
             state_leases |> erase(i)
             invoke(lease.cleanup,lease.key)
+            if (!live_retiring && lease.save!=null) { rt_live_forget("local/{lease.key}") }
             computed_snapshots |> erase(lease.key)
         }
     }
@@ -331,6 +336,21 @@ def rt_watch(signal : UiSignal) {
     }
 }
 
+// Collects the script heap when it has grown by `megabytes` since the last
+// collection, or when `force` is set. A full pass leaves its temporary strings
+// behind, and on a persistent heap they stay until someone collects: a counter
+// of frames is too late for a burst of passes over a long list and too early
+// for an idle screen. Call it between frames, from the loop that owns them, in
+// a script with `options gc`. Returns whether it collected.
+var private collected_heap : uint64
+def ui_collect_garbage(megabytes:int=8; force:bool=false) : bool {
+    let used = heap_bytes_allocated() + string_heap_bytes_allocated()
+    if (used < collected_heap) { collected_heap = used } // collected by someone else
+    if (!force && used-collected_heap < uint64(max(megabytes,0))*1048576ul) { return false }
+    unsafe { heap_collect(true,false) }
+    collected_heap = heap_bytes_allocated() + string_heap_bytes_allocated()
+    return true
+}
 def ui_stats() : UiStats { return stats }
 def ui_clear_stats() { stats = UiStats() }
 
@@ -346,7 +366,9 @@ def private dependency_snapshot(dependencies:block) : string {
 // A binding owns only its leaf nodes, never borrowed closures. Structural
 // traversal still runs, but unchanged expressions are not evaluated.
 def rt_binding(site:string; dependencies:block; volatile_read, input:bool; body:block) {
-    if (hybrid_active && volatile_read) { rui_hybrid_invalidate() }
+    // An opaque getter (it reads nothing the component owns) is evaluated on
+    // every pass, as it always was when its component updated. It does not ask
+    // for a pass by itself: what it reads is reported with ui_changed or ui_touch.
     if (dispatching) { invoke(body); return }
     let key = "{path}/binding:{site}"
     let snapshot = dependency_snapshot(dependencies)
@@ -1178,6 +1200,9 @@ def each_keyed(site : string; items : array<auto(T)>;
         var inscope unique:table<int;bool>
         let old=path
         for (item in items) {
+            // An item passed by value reaches the blocks as a copy: the element
+            // itself is watched, so a write to it runs the pass that renews the copy.
+            static_if (!typeinfo is_ref_type(type<T>)) { rt_hybrid_watch(item) }
             let key=invoke(key_of,item)
             verify(!key_exists(unique,key),"each_keyed: duplicate key")
             unique[key]=true
@@ -1306,7 +1331,7 @@ def private begin_pass() {
     clear(calls)
 }
 def private reconcile(body : block) {
-    if (hybrid_active) { rui_hybrid_begin() }
+    if (hybrid_active) { rui_hybrid_begin(); clear(hybrid_globals) }
     if (debugger_revision!=rui_debugger_revision()) {
         debugger_revision=rui_debugger_revision()
         ui_touch(debugger_signal)
@@ -1417,6 +1442,7 @@ def ui_legacy_frame(body : block) {
         for (i in range(rui_event_parameter_count())) { event.parameters[rui_event_parameter_name(i)]=rui_event_parameter_value(i) }
         pending |> push_clone(event)
     }
+    var delivered = false
     for (event in pending) {
         if (!rui_event_allowed(event.handle,event.kind)) { continue }
         if (event.listener!=0ul && (!rui_listener_alive(event.listener) || !rui_event_allowed(event.target,event.kind))) { continue }
@@ -1428,9 +1454,16 @@ def ui_legacy_frame(body : block) {
         invoke(body)
         // Retire removed incarnations before delivering the next event.
         reconcile(body)
+        delivered = true
     }
     clear(events)
-    reconcile(body)
+    // The pass after the last event has already drawn its result. With native
+    // subscriptions the runtime knows whether anything asked for another one
+    // since; a second identical pass doubled the cost of every click and key.
+    if (!(delivered && hybrid_active && !rui_hybrid_pending())) { reconcile(body) }
+    // The native half of that pass is kept: the second Context::Update lets
+    // hover and scrolling follow the layout the first one has just produced.
+    else { rui_update() }
     // Complete exits before rendering: native CSS animations restore base values
     // when they finish, so deferring removal to the next frame would flash.
     if (wake_animation_exits()) { reconcile(body) }
@@ -1489,6 +1522,12 @@ def rt_hybrid_cover(dependencies:block; opaque:bool) {
     if (opaque) { rui_hybrid_invalidate() }
     hybrid_cover_next=true
 }
+// A component that takes a block (a slot, an event). The block is code of the
+// caller; an analysed call site has registered everything it reads. Only a
+// caller nobody analysed leaves it opaque.
+def rt_hybrid_block_argument() {
+    if (hybrid_active && !hybrid_covered) { rui_hybrid_invalidate() }
+}
 // The same for a primitive with computed arguments: a part name, a document.
 def rt_hybrid_arguments(dependencies:block) {
     if (hybrid_active && !dispatching) { invoke(dependencies) }
@@ -1500,6 +1539,19 @@ def rt_hybrid_control(dependencies:block; opaque:bool; predicate:block<():bool>)
         if (opaque) { rui_hybrid_invalidate() }
     }
     return invoke(predicate)
+}
+// A global variable read by a component: for this pass it is storage of the
+// same kind as the model. Writes rewritten by the annotations then report
+// themselves; any other write is followed by ui_changed. Once per pass.
+var private hybrid_globals : table<uint64;bool>
+def rt_hybrid_global(value:auto(T)&) {
+    if (!hybrid_active || dispatching) { return }
+    var key = 0ul
+    unsafe { key = intptr(addr(value)) }
+    if (!key_exists(hybrid_globals,key)) {
+        hybrid_globals[key] = true
+        rt_hybrid_sources(value)
+    }
 }
 def rt_hybrid_sources(value:auto(T)&) {
     unsafe { rui_hybrid_source(addr(value)) }
@@ -1522,6 +1574,11 @@ def rt_hybrid_value(target:string; value:auto(T)&; covered:bool=false) {
         verify(hybrid_active && hybrid_kind(value)!=0,"unsupported hybrid binding")
         unsafe { rui_hybrid_bind_as(current,target,addr(value),hybrid_kind(value),covered) }
     }
+}
+// class_if on a plain field: the same scoped class that class_if itself sets.
+def rt_hybrid_class(name:string; value:bool&; covered:bool=false) {
+    verify(plain_name(name),"class_if: a name is letters, digits, '-' or '_'")
+    rt_hybrid_value("class:{state_class(name)}",value,covered)
 }
 def rt_hybrid_input(value:string&; setter:block<(value:string):void>) {
     if (dispatching) { bind_value($()=>value,setter) }
@@ -1630,6 +1687,7 @@ def ui_reset() {
     clear(drafts); clear(option_snapshots)
     clear(presences); clear(animation_bindings)
     rui_hybrid_reset(); hybrid_active=false; mounted_state=0ul
+    clear(hybrid_globals)
     style_defining=false; keyframes_building=false; keyframe_building=false; in_media=false; in_spritesheet=false
     ui_clear_stats()
     epoch = 0; css_dirty = true; dispatching = false
@@ -2276,3 +2334,31 @@ def open_template(fn:function<():void>; title:string; position:float2; config:Ui
 }
 
 
+
+// Called by the LiveHost driver, never from a frame or event callback.
+var private live_retiring=false
+[export]
+def rt_ui_live_snapshot() {
+    rt_live_save_roots()
+    for (lease in state_leases) { if (lease.save!=null) { invoke(lease.save,lease.key) } }
+    live_retiring=true
+}
+[export]
+def rt_ui_live_resume() { live_retiring=false }
+[export]
+def rt_ui_live_release() {
+    // Also unwind a candidate whose first mount/migration raised an exception.
+    live_retiring=true
+    active_component=""; unmounting=false
+    ui_reset()
+}
+
+def use_live_style(name:string) { rt_style_use("live_{name}") }
+// Run in the isolated --styles script. No DOM operations are involved.
+def ui_style_sheet(build:block):string {
+    clear(styles); clear(style_order)
+    invoke(build)
+    var result=""
+    for (name in style_order) { result+=styles[name] }
+    return result
+}

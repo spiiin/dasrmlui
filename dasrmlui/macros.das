@@ -310,6 +310,51 @@ class private UiHybridDependencies : AstVisitor {
         return call
     }
 }
+// A global variable that a component reads is tracked like the model. The read
+// registers the variable as a source of the pass, so a write that the
+// annotations rewrite (a handler, [ui_action]) is reported by itself, and any
+// other write is one ui_changed away. Looked up afresh for every component: a
+// global declared further down the file is visible only to what follows it.
+var private global_lookup : table<string;bool>
+def private global_variable(name:string):bool {
+    if (empty(name)) { return false }
+    if (key_exists(global_lookup,name)) { return global_lookup[name] }
+    var found=false
+    program_for_each_module(compiling_program()) $(mod) {
+        for_each_global(mod) $(value) { if (string(value.name)==name) { found=true } }
+    }
+    global_lookup[name]=found
+    return found
+}
+class private UiGlobalNames : AstVisitor {
+    names, found:table<string;bool>
+    def override visitExprVar(var expr:ExprVar?):ExpressionPtr {
+        let name=string(expr.name)
+        if (!key_exists(names,name) && global_variable(name)) { found[name]=true }
+        return expr
+    }
+}
+// Reads of globals inside an expression: outermost field chains, as in UiReads.
+def private global_reads(expr:ExpressionPtr; names:table<string;bool>; var reads:array<ExpressionPtr>) {
+    var globals=new UiGlobalNames()
+    globals.names := names
+    make_visitor(*globals) $(adapter) { visit(expr,adapter) }
+    if (empty(globals.found)) { return }
+    var visitor=new UiReads()
+    visitor.names := globals.found
+    make_visitor(*visitor) $(adapter) { visit(expr,adapter) }
+    for (value in values(visitor.reads)) {
+        if (value is ExprVar || value is ExprField) { reads |> push(value) }
+    }
+}
+// What makes one read of a global tracked: its variable becomes a source of the
+// pass, the read itself a reason for the next one.
+def private global_checks(var reads:array<ExpressionPtr>; var checks:array<ExpressionPtr>) {
+    for (value in reads) {
+        checks |> push <| qmacro(rt_hybrid_global($i(read_root(value))))
+        checks |> push <| qmacro(rt_hybrid_watch($e(value)))
+    }
+}
 class private UiHybridControl : AstVisitor {
     names, roots, arguments:table<string;bool>
     def override preVisitExprBlockArgument(blk:ExprBlock?; arg:VariablePtr; lastArg:bool) { roots[string(arg.name)]=true }
@@ -318,7 +363,12 @@ class private UiHybridControl : AstVisitor {
         reads.names := names
         make_visitor(*reads) $(adapter) { visit(expr,adapter) }
         var checks:array<ExpressionPtr>
-        var opaque=empty(reads.reads) && !static_value(expr)
+        // A condition that reads nothing the component owns is an opaque getter:
+        // evaluated on every pass, refreshed by ui_changed or ui_touch.
+        var opaque=false
+        var globals:array<ExpressionPtr>
+        global_reads(expr,names,globals)
+        global_checks(globals,checks)
         for (value in values(reads.reads)) {
             if (value is ExprVar || value is ExprField || value is ExprAt) {
                 checks |> push <| qmacro(rt_hybrid_watch($e(value)))
@@ -378,52 +428,48 @@ def private constant_argument(expr:ExpressionPtr):bool {
     }
     return false
 }
-// What one argument of a call depends on: reads of the component's own names,
-// appended to `reads`. False when it cannot be followed, that is when it is not
-// a constant and reads none of them (a global, a call that takes no model data).
-def private argument_reads(expr:ExpressionPtr; names:table<string;bool>; var reads:array<ExpressionPtr>):bool {
-    if (constant_argument(expr)) { return true }
+// What one argument of a call depends on: reads of the component's own names
+// and of globals, appended to `reads`. An argument that reads neither and is
+// not a constant is an opaque getter: evaluated on every pass, and refreshed
+// when the application reports a change with ui_changed or ui_touch.
+def private argument_reads(expr:ExpressionPtr; names:table<string;bool>; var reads:array<ExpressionPtr>) {
+    if (constant_argument(expr)) { return }
     var visitor=new UiReads()
     visitor.names := names
     make_visitor(*visitor) $(adapter) { visit(expr,adapter) }
-    if (empty(visitor.reads)) { return false }
     for (value in values(visitor.reads)) {
         if (value is ExprVar || value is ExprField) { reads |> push(value) }
     }
-    return true
+    global_reads(expr,names,reads)
 }
 // A plain function called from a component is opaque unless its body shows
-// that what it does to the element is fixed by its arguments: it sets style and
-// properties from them, branches on them and calls functions of the same kind.
-// Anything else (a site, a global, a block, a call it cannot see into) is left
+// that what it does to the element is fixed by its arguments and by globals it
+// reads directly: it sets style and properties, branches and calls functions of
+// the same kind. Anything else (a site, a block, a call it cannot see into) is left
 // to the conservative pass.
 class private UiTransparent : UiStatements {
-    names:table<string;bool>
+    names, globals:table<string;bool>
     depth:int
     opaque:bool
-    def followed(expr:ExpressionPtr):bool {
-        var reads:array<ExpressionPtr>
-        return argument_reads(expr,names,reads)
-    }
     def override visitExprCall(var call:ExprCall?):ExpressionPtr {
         if (!is_statement(call)) { return call }
         let name=string(call.name)
-        let setters="|use_style|property|attribute|class_if|pseudo_if|width|height|padding|padding_x|padding_y|margin_top|margin_bottom|font_size|background|color|opacity|disabled|"
-        if (!typed_property(name) && find(setters,"|{name}|")<0 && !transparent_helper(name,depth+1)) { opaque=true; return call }
-        for (arg in call.arguments) { if (!followed(arg)) { opaque=true } }
+        let setters="|use_style|use_live_style|property|attribute|class_if|pseudo_if|width|height|padding|padding_x|padding_y|margin_top|margin_bottom|font_size|background|color|opacity|disabled|"
+        if (!typed_property(name) && find(setters,"|{name}|")<0 && !transparent_helper(name,depth+1,globals)) { opaque=true }
         return call
     }
-    def override visitExprIfThenElse(var expr:ExprIfThenElse?):ExpressionPtr { if (!followed(expr.cond)) { opaque=true }; return expr }
-    def override visitExprWhile(var expr:ExprWhile?):ExpressionPtr { if (!followed(expr.cond)) { opaque=true }; return expr }
+    // A global read in the body is handed to the call site, which tracks it.
+    // A name that is neither is something the annotation cannot place.
     def override visitExprVar(var expr:ExprVar?):ExpressionPtr {
         let name=string(expr.name)
-        if (!key_exists(names,name) && !enumeration_name(name)) { opaque=true }
+        if (key_exists(names,name) || enumeration_name(name)) { return expr }
+        if (global_variable(name)) { globals[name]=true } else { opaque=true }
         return expr
     }
     def override visitExprInvoke(var call:ExprInvoke?):ExpressionPtr { opaque=true; return call }
     def override visitExprCallMacro(var call:ExprCallMacro?):ExpressionPtr { opaque=true; return call }
 }
-def private transparent_body(var fn:FunctionPtr; depth:int):bool {
+def private transparent_body(var fn:FunctionPtr; depth:int; var globals:table<string;bool>):bool {
     if (fn.body==null || find_annotation(fn,"ui_component")!=null || find_annotation(fn,"ui_action")!=null) { return false }
     // The primitives themselves are listed by name, never analysed as helpers.
     if (fn._module!=null && (string(fn._module.name)=="ui" || string(fn._module.name)=="$")) { return false }
@@ -436,19 +482,25 @@ def private transparent_body(var fn:FunctionPtr; depth:int):bool {
     make_visitor(*declared) $(adapter) { visit(fn.body,adapter) }
     for (name in keys(declared.names)) { check.names[name]=true }
     make_visitor(*check) $(adapter) { visit(fn.body,adapter) }
-    return !check.opaque
+    if (check.opaque) { return false }
+    for (name in keys(check.globals)) { globals[name]=true }
+    return true
 }
-def private transparent_helper(name:string; depth:int):bool {
+// `globals` receives the globals that the function and those it calls read.
+def private transparent_helper(name:string; depth:int; var globals:table<string;bool>):bool {
     if (depth>4 || find(name,"rt_")==0) { return false }
     var found=0
     var transparent=false
+    var seen:table<string;bool>
     program_for_each_module(compiling_program()) $(mod) {
         for_each_function(mod,name) $(fn) {
             found += 1
-            if (found==1) { transparent=transparent_body(fn,depth) }
+            if (found==1) { transparent=transparent_body(fn,depth,seen) }
         }
     }
-    return found==1 && transparent
+    if (found!=1 || !transparent) { return false }
+    for (global in keys(seen)) { globals[global]=true }
+    return true
 }
 
 // Unsupported structural expressions still render correctly through the old
@@ -456,14 +508,7 @@ def private transparent_helper(name:string; depth:int):bool {
 class private UiHybridFallback : UiStatements {
     fallback:bool
     deferred:int
-    roots, names:table<string;bool>
-    def followed(call:ExprCall?):bool {
-        for (arg in call.arguments) {
-            var reads:array<ExpressionPtr>
-            if (!(arg is ExprMakeBlock) && !argument_reads(arg,names,reads)) { return false }
-        }
-        return true
-    }
+    roots, names, blocks:table<string;bool>
     def deferred_call(name:string):bool {
         return find(name,"on_")==0 || name=="rt_on_mount" || name=="rt_on_unmount" || name=="rt_ui_write"
     }
@@ -475,28 +520,31 @@ class private UiHybridFallback : UiStatements {
         if (deferred_call(name)) { deferred-=1; return call }
         if (deferred>0 || !is_statement(call)) { return call }
         if (name=="each_keyed") {
-            if (length(call.arguments)!=4 || !key_exists(roots,read_root(call.arguments[1]))) { fallback=true }
+            // The collection is an argument or a global: storage whose writes are
+            // reported. A local array or a call result is rebuilt by every pass.
+            let root=length(call.arguments)==4 ? read_root(call.arguments[1]) : ""
+            if (!key_exists(roots,root) && (key_exists(names,root) || !global_variable(root))) { fallback=true }
             return call
         }
+        // An indexed value is bound to the element selected in this pass;
+        // UiHybridArguments watches what the index reads.
         if (name=="rt_hybrid_text") {
-            if (!static_value(call.arguments[1]) || call.arguments[2] is ExprAt) { fallback=true }
+            if (!static_value(call.arguments[1])) { fallback=true }
             return call
         }
-        if (name=="rt_hybrid_value" || name=="rt_hybrid_input" || name=="rt_hybrid_checked") {
-            for (arg in call.arguments) { if (arg is ExprAt) { fallback=true } }
-            return call
-        }
+        if (name=="rt_hybrid_value" || name=="rt_hybrid_class" || name=="rt_hybrid_input" || name=="rt_hybrid_checked") { return call }
         // A computed argument (a part name, a document) is a dependency that
-        // UiHybridArguments watches. Only one that cannot be followed is opaque.
-        if (hybrid_container(name) || hybrid_argument_leaf(name)) {
-            if (!followed(call)) { fallback=true }
-            return call
-        }
+        // UiHybridArguments watches.
+        if (hybrid_container(name) || hybrid_argument_leaf(name)) { return call }
         let leaves="|text|when|property|attribute|class_if|width|height|padding|padding_x|padding_y|margin_top|margin_bottom|font_size|background|color|opacity|disabled|bind_value|bind_checked|bind_int|bind_float|bind_edit|bind_range|bind_radio|bind_tab|"
         if (typed_property(name) || hybrid_bound_leaf(name) || find(leaves,"|{name}|")>=0) { return call }
-        if (name=="rt_binding" || name=="rt_condition" || name=="rt_hybrid_watch" || name=="rt_hybrid_dependency" || name=="rt_named_dependency" || name=="rt_local_state" || name=="rt_computed") { return call }
-        if (name=="rt_button" || name=="use_style" || ui_tracked_function(name)) { return call }
-        if (transparent_helper(name,0) && followed(call)) { return call }
+        if (name=="rt_binding" || name=="rt_condition" || name=="rt_hybrid_watch" || name=="rt_hybrid_dependency" || name=="rt_named_dependency" || name=="rt_local_state" || name=="rt_computed" || name=="rt_hybrid_global" || name=="rt_volatile_dependency") { return call }
+        if (name=="rt_button" || name=="use_style" || name=="use_live_style" || ui_tracked_function(name)) { return call }
+        // A slot or a component event is one of this component's own block arguments.
+        if ((name=="slot" || name=="emit") && length(call.arguments)>=1 && call.arguments[0] is ExprVar &&
+            key_exists(blocks,string((call.arguments[0] as ExprVar).name))) { return call }
+        var helper_globals:table<string;bool>
+        if (transparent_helper(name,0,helper_globals)) { return call }
         fallback=true
         return call
     }
@@ -506,39 +554,124 @@ class private UiHybridFallback : UiStatements {
 // arguments as covered (rt_hybrid_cover), and what it binds to an argument
 // gets the caller's promise as a last parameter. A primitive with a computed
 // argument gets the same watches, without the promise.
+// The variable whose storage an lvalue lives in, through fields and indices.
+def private storage_root(expr:ExpressionPtr):string {
+    if (expr is ExprField) { return storage_root((expr as ExprField).value) }
+    if (expr is ExprAt) { return storage_root((expr as ExprAt).subexpr) }
+    return expr is ExprVar ? string((expr as ExprVar).name) : ""
+}
+// Block parameters that receive a copy the runtime keeps fresh: an item of
+// each_keyed whose type is passed by value (the list watches the element), and
+// the value of computed (it changes only inside a pass). A name counts only if
+// every declaration of it in the function is such a parameter.
+class private UiHybridCopies : AstVisitor {
+    declared, copied:table<string;int>
+    def note(expr:ExpressionPtr) {
+        if (!(expr is ExprMakeBlock)) { return }
+        let blk=(expr as ExprMakeBlock)._block as ExprBlock
+        for (arg in blk.arguments) { copied[string(arg.name)] += 1 }
+    }
+    def override preVisitExprBlockArgument(blk:ExprBlock?; arg:VariablePtr; lastArg:bool) { declared[string(arg.name)] += 1 }
+    def override preVisitExprLetVariable(expr:ExprLet?; arg:VariablePtr; lastArg:bool) { declared[string(arg.name)] += 1 }
+    def override preVisitExprCall(call:ExprCall?) {
+        let name=string(call.name)
+        if (name=="each_keyed" && length(call.arguments)==4) { note(call.arguments[2]); note(call.arguments[3]) }
+        elif (name=="rt_computed" && length(call.arguments)>=1) { note(call.arguments[length(call.arguments)-1]) }
+    }
+}
+// Reads inside the indices of an lvalue: which element it is depends on them.
+class private UiIndexReads : AstVisitor {
+    names:table<string;bool>
+    reads:array<ExpressionPtr>
+    def override visitExprAt(var expr:ExprAt?):ExpressionPtr {
+        argument_reads(expr.index,names,reads)
+        return expr
+    }
+}
 class private UiHybridArguments : AstVisitor {
-    names, arguments:table<string;bool>
+    names, arguments, blocks, copies:table<string;bool>
     covered:string
     def promise(expr:ExpressionPtr):ExpressionPtr {
-        if (key_exists(arguments,read_root(expr))) { return qmacro($i(covered)) }
-        return qmacro(false)
+        let root=read_root(expr)
+        if (key_exists(arguments,root)) { return qmacro($i(covered)) }
+        return key_exists(copies,root) ? qmacro(true) : qmacro(false)
     }
-    def before(call:ExprCall?; component:bool):ExpressionPtr {
+    // A read rooted in a global: the variable is registered before it is used.
+    def global_root(expr:ExpressionPtr):string {
+        let root=storage_root(expr)
+        return !key_exists(names,root) && global_variable(root) ? root : ""
+    }
+    def source(expr:ExpressionPtr; var checks:array<ExpressionPtr>) {
+        let root=global_root(expr)
+        if (!empty(root)) { checks |> push <| qmacro(rt_hybrid_global($i(root))) }
+    }
+    def before(call:ExprCall?; component:bool; helper_globals:table<string;bool>):ExpressionPtr {
         var checks:array<ExpressionPtr>
-        var opaque=false
+        for (global in keys(helper_globals)) {
+            checks |> push <| qmacro(rt_hybrid_global($i(global)))
+            checks |> push <| qmacro(rt_hybrid_watch($i(global)))
+        }
         for (arg in call.arguments) {
             if (arg is ExprMakeBlock || constant_argument(arg)) { continue }
-            if (component && (arg is ExprVar || arg is ExprField) && key_exists(names,read_root(arg))) {
+            // A block handed on is covered exactly when this component is: its own check says so.
+            if (arg is ExprVar && key_exists(blocks,string((arg as ExprVar).name))) { continue }
+            if (component && (arg is ExprVar || arg is ExprField) && (key_exists(names,read_root(arg)) || !empty(global_root(arg)))) {
                 // Handed over as it stands: by value or by reference, see rt_hybrid_argument.
+                source(arg,checks)
                 checks |> push <| qmacro(rt_hybrid_argument($e(clone_expression(arg)),$e(promise(arg))))
                 continue
             }
             var reads:array<ExpressionPtr>
-            if (!argument_reads(arg,names,reads)) { opaque=true }
-            for (value in reads) { checks |> push <| qmacro(rt_hybrid_watch($e(value),$e(promise(value)))) }
+            argument_reads(arg,names,reads)
+            for (value in reads) {
+                source(value,checks)
+                checks |> push <| qmacro(rt_hybrid_watch($e(value),$e(promise(value))))
+            }
         }
-        if (component) { return qmacro(rt_hybrid_cover($() { $b(checks) },$v(opaque))) }
+        if (component) { return qmacro(rt_hybrid_cover($() { $b(checks) },false)) }
         if (empty(checks)) { return null }
+        return qmacro(rt_hybrid_arguments($() { $b(checks) }))
+    }
+    // Storage a statement reads directly: the collection of a list, the value
+    // of a native binding. A global there becomes a source just before it.
+    def direct_value(call:ExprCall?):int {
+        let name=string(call.name)
+        if (name=="each_keyed" && length(call.arguments)==4) { return 1 }
+        if (name=="rt_hybrid_text" && length(call.arguments)>=3) { return 2 }
+        if ((name=="rt_hybrid_value" || name=="rt_hybrid_class") && length(call.arguments)>=2) { return 1 }
+        if ((name=="rt_hybrid_input" || name=="rt_hybrid_checked") && length(call.arguments)>=1) { return 0 }
+        return -1
+    }
+    def direct_source(call:ExprCall?):string {
+        let value=direct_value(call)
+        return value<0 ? "" : global_root(call.arguments[value])
+    }
+    // A native binding to an indexed element is bound to the element the index
+    // selects in this pass; what the index reads decides when to select again.
+    def index_checks(call:ExprCall?):ExpressionPtr {
+        let value=direct_value(call)
+        if (value<0 || string(call.name)=="each_keyed") { return null }
+        var indices=new UiIndexReads()
+        indices.names := names
+        make_visitor(*indices) $(adapter) { visit(call.arguments[value],adapter) }
+        if (empty(indices.reads)) { return null }
+        var checks:array<ExpressionPtr>
+        for (read in indices.reads) {
+            source(read,checks)
+            checks |> push <| qmacro(rt_hybrid_watch($e(read),$e(promise(read))))
+        }
         return qmacro(rt_hybrid_arguments($() { $b(checks) }))
     }
     def override visitExprCall(var call:ExprCall?):ExpressionPtr {
         let name=string(call.name)
         var value = -1
         if (name=="rt_hybrid_text" && length(call.arguments)==3) { value=2 }
-        elif ((name=="rt_hybrid_value" || name=="rt_hybrid_dependency") && length(call.arguments)==2) { value=1 }
+        elif ((name=="rt_hybrid_value" || name=="rt_hybrid_class" || name=="rt_hybrid_dependency") && length(call.arguments)==2) { value=1 }
         elif (name=="rt_hybrid_watch" && length(call.arguments)==1) { value=0 }
-        if (value>=0 && key_exists(arguments,read_root(call.arguments[value]))) {
-            call.arguments |> push <| qmacro($i(covered))
+        if (value>=0) {
+            let root=read_root(call.arguments[value])
+            if (key_exists(arguments,root)) { call.arguments |> push <| qmacro($i(covered)) }
+            elif (key_exists(copies,root)) { call.arguments |> push <| qmacro(true) }
         }
         return call
     }
@@ -549,11 +682,16 @@ class private UiHybridArguments : AstVisitor {
             if (expr is ExprCall) {
                 let call=expr as ExprCall
                 let name=string(call.name)
+                let direct=direct_source(call)
+                if (!empty(direct)) { statements |> push <| qmacro(rt_hybrid_global($i(direct))); inserted=true }
+                var selected=index_checks(call)
+                if (selected!=null) { statements |> push(selected); inserted=true }
                 let builtin=hybrid_container(name) || hybrid_argument_leaf(name)
                 let component=!builtin && find(name,"rt_")!=0 && ui_component_function(name)
-                let primitive=builtin || (!component && transparent_helper(name,0))
+                var helper_globals:table<string;bool>
+                let primitive=builtin || (!component && transparent_helper(name,0,helper_globals))
                 if (primitive || component) {
-                    var check=before(call,component)
+                    var check=before(call,component,helper_globals)
                     if (check!=null) { statements |> push(check); inserted=true }
                 }
             }
@@ -580,7 +718,9 @@ class private UiBindings : UiStatements {
             }
             if ((name=="attribute" || name=="property" || name=="class_if") && length(call.arguments)==2 &&
                 call.arguments[0] is ExprConstString && (call.arguments[1] is ExprField || call.arguments[1] is ExprVar || call.arguments[1] is ExprAt)) {
-                let target_prefix=name=="attribute" ? "attr:" : name=="property" ? "style:" : "class:"
+                // A state class is scoped to the component's style; only the run time knows it.
+                if (name=="class_if") { call.name := "rt_hybrid_class"; return call }
+                let target_prefix=name=="attribute" ? "attr:" : "style:"
                 return qmacro(rt_hybrid_value($v(target_prefix+string((call.arguments[0] as ExprConstString).value)),$e(call.arguments[1])))
             }
             if ((name=="bind_value" || name=="bind_checked") && length(call.arguments)==2 &&
@@ -639,6 +779,16 @@ class private UiBindings : UiStatements {
         sort(read_names)
         for (key in read_names) { checks |> push <| qmacro(rt_named_dependency($v(key),$e(reads.reads[key]))) }
         let volatile_read = empty(checks) && !constant
+        if (hybrid) {
+            // A global in the expression is tracked, but its value is not part of
+            // the snapshot (its type may not be one): evaluate on every pass.
+            var globals:array<ExpressionPtr>
+            for (expr in expressions) { global_reads(expr,names,globals) }
+            if (!empty(globals)) {
+                global_checks(globals,checks)
+                checks |> push <| qmacro(rt_volatile_dependency())
+            }
+        }
         if (input_binding && !(call.arguments[0] is ExprMakeBlock)) {
             let value = clone_expression(call.arguments[0])
             call.arguments[0] = qmacro <| $() { return $e(value) }
@@ -667,21 +817,33 @@ struct private UiLocalSpec {
     storage, site : string
     arg : VariablePtr
     computed : bool
+    initial_index : int
+    version : ExpressionPtr
 }
 class private UiLifetime : UiStatements {
     prefix : string
     serial : int
     locals : array<UiLocalSpec>
+    state_names : table<string;bool>
     names : table<string;bool>
     def override preVisitExprCall(call:ExprCall?) {
         let computed = string(call.name) == "computed"
         if ((string(call.name) != "state" && !computed) || !is_statement(call)) { return }
-        verify(length(call.arguments) == 2 && call.arguments[1] is ExprMakeBlock,
-            "state(initial) requires a block with one explicitly typed mutable argument")
-        let block_expr = (call.arguments[1] as ExprMakeBlock)._block as ExprBlock
+        let count=length(call.arguments)
+        verify((count==2 || (!computed && (count==3 || count==4))) && call.arguments[count-1] is ExprMakeBlock,
+            "state(initial) or state(name, [version,] initial) requires a block with one explicitly typed mutable argument")
+        let block_expr = (call.arguments[count-1] as ExprMakeBlock)._block as ExprBlock
         verify(length(block_expr.arguments) == 1, "state requires one explicitly typed mutable block argument")
         serial += 1
-        let site = "{prefix}:state:{serial}"
+        var site = "{prefix}:state:{serial}"
+        if (count>2) {
+            verify(call.arguments[0] is ExprConstString,"state name must be a constant string")
+            let name=string((call.arguments[0] as ExprConstString).value)
+            verify(!empty(name) && !key_exists(state_names,name),"state name must be non-empty and unique in the component")
+            state_names[name]=true
+            site="{prefix}:named:{name}"
+        }
+        var version=count==4 ? clone_expression(call.arguments[1]) : qmacro(1)
         let storage = "__ui_state_{hash(site)}"
         var value_type = clone_type(block_expr.arguments[0]._type)
         value_type.flags.constant = false
@@ -692,7 +854,16 @@ class private UiLifetime : UiStatements {
         var release_fn = qmacro_function(release_name) $(key:string) { $i(storage) |> erase(key) }
         release_fn.flags |= FunctionFlags.generated | FunctionFlags.privateFunction
         verify(compiling_module() |> add_function(release_fn))
-        locals |> push <| UiLocalSpec(storage=storage,site=site,arg=clone_variable(block_expr.arguments[0]),computed=computed)
+        let save_name="{storage}__save"
+        if (!computed) {
+            var save_fn=qmacro_function(save_name) $(key:string) {
+                if (key_exists($i(storage),key)) { rt_live_save("local/{key}",$e(version),$i(storage)[key][0]) }
+            }
+            save_fn.flags |= FunctionFlags.generated | FunctionFlags.privateFunction
+            verify(compiling_module() |> add_function(save_fn))
+        }
+        locals |> push <| UiLocalSpec(storage=storage,site=site,arg=clone_variable(block_expr.arguments[0]),computed=computed,
+            initial_index=count-2,version=version)
     }
     def override visitExprCall(var call:ExprCall?) : ExpressionPtr {
         if (!is_statement(call)) { return call }
@@ -715,9 +886,10 @@ class private UiLifetime : UiStatements {
                 return qmacro(rt_computed($i(spec.storage),$v(spec.site),$() { $b(checks) },
                     $v(empty(checks) && !static_value(value)),$e(getter),@@$i(release_name),$e(call.arguments[1])))
             }
-            return qmacro(rt_local_state($i(spec.storage),$v(spec.site),
-                $() { var initial := $e(call.arguments[0]); return <- initial },
-                @@$i(release_name),$e(call.arguments[1])))
+            let save_name="{spec.storage}__save"
+            return qmacro(rt_local_state($i(spec.storage),$v(spec.site),$e(spec.version),
+                $() { var initial := $e(call.arguments[spec.initial_index]); return <- initial },
+                @@$i(release_name),@@$i(save_name),$e(call.arguments[spec.initial_index+1])))
         }
         if (name == "on_mount" && !empty(call.arguments)) {
             serial += 1
@@ -858,18 +1030,29 @@ class private UiOpaqueWrites : UiStatements {
 [call_macro(name="ui_state")]
 class private UiStateMacro : AstCallMacro {
     def override visit(prog:ProgramPtr; mod:Module?; var call:ExprCallMacro?):ExpressionPtr {
-        if (length(call.arguments)!=1) { macro_error(prog,call.at,"ui_state requires one initial model"); return null }
+        let count=length(call.arguments)
+        if (count<1 || count>3) { macro_error(prog,call.at,"ui_state requires initial or (name, [version,] initial)"); return null }
         let factory=make_unique_private_name("ui_state_create",call.at)
-        var fn=qmacro_function(factory) $(initial:auto(T)) {
+        let key=count==1 ? qmacro($v("{call.at.fileInfo.name}:{call.at.line}:{call.at.column}")) : clone_expression(call.arguments[0])
+        let version=count==3 ? clone_expression(call.arguments[1]) : qmacro(1)
+        var fn=qmacro_function(factory) $(key:string; version:int; initial:auto(T)) {
             static_assert(typeinfo is_struct(initial),"ui_state requires a model struct")
             rt_state_validate(initial)
+            verify(!empty(key) && version>0,"ui_state needs a non-empty name and positive schema version")
+            var restored := initial
+            rt_live_restore("root/{key}",version,restored)
             typedef Store=$UiState<T -const -&>
-            return new Store(initial,rt_state_id())
+            var state=new Store(restored,rt_state_id())
+            delete restored
+            rt_live_attach(key,version,state)
+            return state
         }
         fn.flags |= FunctionFlags.generated | FunctionFlags.privateFunction
         verify(compiling_module() |> add_generic(fn))
         var result=new ExprCall(at=call.at,name:=factory)
-        result.arguments |> push(call.arguments[0])
+        result.arguments |> push(key)
+        result.arguments |> push(version)
+        result.arguments |> push(call.arguments[count-1])
         return result
     }
 }
@@ -998,6 +1181,7 @@ class private UiComponent : AstFunctionAnnotation {
         var signature = ""
         for (arg in func.arguments) { signature += "{describe(arg._type)};" }
         let identity = "{hash(string(func.at.fileInfo.name))}_{func.name}_{hash(signature)}"
+        clear(global_lookup)
         let legacy_arg=find_arg(args,"legacy")
         let hybrid=!(legacy_arg is tBool && legacy_arg as tBool)
         var native_scopes=new UiNativeScopes(prefix=identity)
@@ -1025,6 +1209,11 @@ class private UiComponent : AstFunctionAnnotation {
             make_visitor(*controls) $(adapter) { visit(func.body,adapter) }
             var writes=new UiWrites()
             for (arg in func.arguments) { writes.arguments[string(arg.name)]=true }
+            // A global that a handler assigns is reported like a field of the model.
+            var touched=new UiGlobalNames()
+            touched.names := original_names.names
+            make_visitor(*touched) $(adapter) { visit(func.body,adapter) }
+            for (name in keys(touched.found)) { writes.arguments[name]=true }
             make_visitor(*writes) $(adapter) { visit(func.body,adapter) }
         }
         var lifetime = new UiLifetime(prefix=identity)
@@ -1049,8 +1238,13 @@ class private UiComponent : AstFunctionAnnotation {
         if (hybrid) {
             var tracked_reads=new UiHybridDependencies()
             make_visitor(*tracked_reads) $(adapter) { visit(func.body,adapter) }
+            var block_names : table<string;bool>
+            for (arg in func.arguments) {
+                if (arg._type.baseType == Type.tBlock && key_exists(argument_names,string(arg.name))) { block_names[string(arg.name)] = true }
+            }
             var conservative=new UiHybridFallback()
             conservative.names := names.names
+            conservative.blocks := block_names
             for (arg in func.arguments) { conservative.roots[string(arg.name)]=true }
             make_visitor(*conservative) $(adapter) { visit(func.body,adapter) }
             hybrid_fallback=conservative.fallback
@@ -1059,6 +1253,12 @@ class private UiComponent : AstFunctionAnnotation {
             var inputs=new UiHybridArguments(covered=covered)
             inputs.names := names.names
             inputs.arguments := argument_names
+            inputs.blocks := block_names
+            var copies=new UiHybridCopies()
+            make_visitor(*copies) $(adapter) { visit(func.body,adapter) }
+            for (name,count in keys(copies.copied),values(copies.copied)) {
+                if (!key_exists(argument_names,name) && (copies.declared?[name] ?? 0)==count) { inputs.copies[name]=true }
+            }
             make_visitor(*inputs) $(adapter) { visit(func.body,adapter) }
             var body=func.body as ExprBlock
             var statements:array<ExpressionPtr>
@@ -1074,7 +1274,10 @@ class private UiComponent : AstFunctionAnnotation {
             if (arg._type.baseType == Type.tBlock || arg._type.baseType == Type.tFunction || arg._type.baseType == Type.tLambda) {
                 // A borrowed slot/callback can capture changing values. Traverse
                 // when visited instead of retaining or comparing its stack frame.
-                if (hybrid) { checks |> push <| qmacro(rt_hybrid_fallback()) }
+                // A block is code of the caller: when an analysed call site passes
+                // it, everything it reads is already registered there.
+                if (hybrid && arg._type.baseType == Type.tBlock) { checks |> push <| qmacro(rt_hybrid_block_argument()) }
+                elif (hybrid) { checks |> push <| qmacro(rt_hybrid_fallback()) }
                 else { checks |> push <| qmacro(rt_volatile_dependency()) }
             } elif (!hybrid) {
                 checks |> push <| qmacro(rt_named_dependency($v(string(arg.name)),$i(arg.name)))
@@ -1123,7 +1326,8 @@ class private UiStyle : AstFunctionAnnotation {
         }
         let original = clone_expression(func.body)
         let identity = "{hash(string(func.at.fileInfo.name))}_{func.name}"
-        let name = "s_{hash(identity)}"
+        let named=find_arg(args,"name")
+        let name = named is tString ? "live_{named as tString}" : "s_{hash(identity)}"
         func.body = qmacro_block() {
             if (!rt_style_cached($v(name))) {
                 rt_style_begin($v(name))

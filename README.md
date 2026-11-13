@@ -419,7 +419,8 @@ def external_heading() {
 - Восемь примеров native возможностей включены в CTest. Media/theme правила,
   `dp`, DPI и ninepatch описаны в `docs/dsl.md`; физические переходы между
   мониторами с разным DPI отдельно не проверялись.
-- Нет hot reload, AOT-профиля, полного event API и сложного text shaping.
+- Hot reload на LiveHost: сохранение root/local state, миграции, отдельный styles entry без remount — [запуск и API](docs/hot-reload.md).
+- Нет AOT-профиля и сложного text shaping.
   Native documents/templates, translation bridge и drag-and-drop демонстрируются
   отдельными примерами; ограничения перечислены в матрице покрытия.
   Это не заявление о полном покрытии RmlUi.
@@ -648,3 +649,13 @@ reflow. [DSL, шрифты, привязки и тесты](docs/rich-text.md).
 - `examples/inventory_ui.das` — прикладная модель, компоненты и стили.
 - `examples/inventory.das` — окно и цикл приложения на dasSDL3.
 - `tests/` — интеграционные и отрицательные проверки.
+
+### Live workbench / hot reload
+
+```powershell
+./build/bin/dasrmlui.exe examples/live_lab.das --watch --styles examples/live_lab_styles.das
+```
+
+Редактируйте оба `.das`-файла при работающем приложении. F5 перезагружает код с
+сохранением состояния, Shift+F5 сбрасывает его. Изменение отдельного styles entry
+сохраняет DOM и фокус. [Lifecycle, ключи состояния и миграции](docs/hot-reload.md).

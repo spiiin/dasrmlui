@@ -600,7 +600,7 @@ rule(part("badge")) { position("absolute"); top(px(-6)); right(px(-6)); z_index(
 DSL покрывает перечисленные структурные конструкции, формы, стили и композицию,
 но не каждую возможность RmlUi. Нет автоматического вывода зависимостей через тела
 произвольных вызываемых функций, переменной высоты виртуальных строк,
-универсального менеджера shortcuts или hot reload с миграцией state. Для drag-and-drop
+универсального менеджера shortcuts (hot reload с миграциями описан в [отдельном разделе](hot-reload.md)). Для drag-and-drop
 есть `draggable`/`on_drop` и проверенный пример `examples/drag_drop.das`. Backend
 SDL_Renderer не реализует полный набор renderer extensions RmlUi; отдельный GL3
 путь используется в `examples/effects.das`.
@@ -1634,3 +1634,7 @@ Aurora, Prism и Glass целиком написаны на daScript. Тест `
 `gpu_effect_pixels` прогоняет исходный GLSL и dasGlsl с одинаковыми pixel oracles,
 включая alpha, chain/backdrop, DPI, время, GC, remount и shutdown/restart.
 `runtime_package` запускает Shader Lab из установленной автономной папки.
+
+## Hot reload
+
+LiveHost, именованные root/local state, `ui_migrate` и `[ui_style(name="...")]` для styles entry: [hot-reload.md](hot-reload.md).

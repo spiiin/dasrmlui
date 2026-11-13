@@ -13,6 +13,8 @@ struct HybridRuntime {
     std::vector<std::unique_ptr<HybridSlot>> slots;
     std::vector<HybridSlot*> free;
     std::unordered_map<std::string,HybridSlot*> by_target;
+    // The live slots of one element, so that removing it does not scan them all.
+    std::unordered_map<uint64_t,std::vector<HybridSlot*>> by_element;
     std::unordered_multimap<uintptr_t,HybridSlot*> sources;
     std::unordered_set<uintptr_t> watched;
     std::unordered_set<uintptr_t> owned_sources;
@@ -120,16 +122,19 @@ static void rui_hybrid_tracked(void* p,int kind) {
 static void hybrid_forget(Rml::Element* e) {
     if(!hybrid || !e) return;
     for(int i=0;i<e->GetNumChildren();++i) hybrid_forget(e->GetChild(i));
-    hybrid->model->OnElementRemove(e);
+    // Views exist only on elements that hold a slot. RmlUi walks every view of
+    // the model in OnElementRemove, so it is not called for the others.
     auto id=state->ids.find(e); if(id==state->ids.end()) return;
-    for(auto it=hybrid->by_target.begin();it!=hybrid->by_target.end();) {
-        auto slot=it->second;
-        if(slot->element!=id->second) { ++it; continue; }
+    auto bound=hybrid->by_element.find(id->second); if(bound==hybrid->by_element.end()) return;
+    hybrid->model->OnElementRemove(e);
+    for(auto slot : bound->second) {
         auto range=hybrid->sources.equal_range(slot->source);
         for(auto s=range.first;s!=range.second;) { if(s->second==slot) s=hybrid->sources.erase(s); else ++s; }
+        hybrid->by_target.erase(std::to_string(slot->element)+":"+slot->target);
         slot->live=false; slot->value=Rml::Variant(); slot->source=0;
-        hybrid->free.push_back(slot); it=hybrid->by_target.erase(it);
+        hybrid->free.push_back(slot);
     }
+    hybrid->by_element.erase(bound);
 }
 static void hybrid_add_view(HybridSlot* slot) {
     Rml::DataViewPtr view;
@@ -151,6 +156,12 @@ static void rui_hybrid_end() { native_guard();
         auto slot=it->second;
         if(slot->seen==hybrid->epoch) { ++it; continue; }
         if(changed.insert(slot->element).second) hybrid->model->OnElementRemove(node(slot->element));
+        auto bound=hybrid->by_element.find(slot->element);
+        if(bound!=hybrid->by_element.end()) {
+            auto& list=bound->second;
+            list.erase(std::remove(list.begin(),list.end(),slot),list.end());
+            if(list.empty()) hybrid->by_element.erase(bound);
+        }
         slot->live=false; slot->value=Rml::Variant(); slot->source=0;
         hybrid->free.push_back(slot); it=hybrid->by_target.erase(it);
     }
@@ -176,6 +187,7 @@ static void hybrid_bind(uint64_t element,const char* target,void* source,int kin
         }
         slot->live=true; slot->element=element; slot->target=target;
         hybrid->by_target.emplace(key,slot);
+        hybrid->by_element[element].push_back(slot);
         hybrid_add_view(slot);
     }
     auto old=hybrid->sources.equal_range(slot->source);

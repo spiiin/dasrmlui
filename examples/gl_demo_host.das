@@ -37,6 +37,10 @@ def run_gl_demo(title,screenshot:string; smoke:bool; tick:block<(delta:float):vo
             swap_gl_window(window) |> sdl_try
             if (smoke) { invoke(check,frame) }
             frame += 1
+            // The script heap is persistent: without a collection the strings
+            // of every full pass stay allocated for the life of the window.
+            // Every two seconds, and sooner after more than 8 MB of them.
+            ui_collect_garbage(8,frame % 120 == 0)
             if (smoke && frame == 12) { break }
             SDL_Delay(16u)
         }

@@ -14,10 +14,10 @@ set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
 set(RMLUI_THIRDPARTY_CONTAINERS OFF CACHE BOOL "" FORCE)
 include(cmake/vector_plugins.cmake)
 add_subdirectory(${RMLUI_DIR} ${CMAKE_BINARY_DIR}/rmlui EXCLUDE_FROM_ALL)
-add_executable(dasrmlui src/host.cpp src/rml_module.cpp ${RMLUI_DIR}/Backends/RmlUi_Platform_SDL.cpp
+add_executable(dasrmlui src/host.cpp src/live_host.cpp ${DAS}/modules/dasLiveHost/src/dasLiveHost.cpp src/rml_module.cpp ${RMLUI_DIR}/Backends/RmlUi_Platform_SDL.cpp
   src/gl3/RmlUi_Renderer_GL3.cpp)
 target_include_directories(dasrmlui PRIVATE
-  ${RMLUI_DIR}/Source/Core
+  ${RMLUI_DIR}/Source/Core ${DAS}/modules/dasLiveHost/src
   ${DASSDL3_DIR}/src ${DAS}/include ${DAS}/3rdparty/fmt/include
   ${DAS}/3rdparty/uriparser/include ${DASSDL3_BUILD}/third_party/daScript/include
   ${DS_FETCHCONTENT_SOURCE_DIR_SDL3}/include ${DASSDL3_BUILD}/_deps/sdl3-build/include-revision
@@ -48,7 +48,7 @@ include(cmake/package.cmake)
 # and no benchmark-only APIs. The hybrid adapter uses pinned RmlUi internals.
 option(DASRMLUI_BUILD_BENCHMARKS "Build DSL/native data binding benchmark" OFF)
 if(DASRMLUI_BUILD_BENCHMARKS)
-  add_executable(dasrmlui_bench src/host.cpp src/rml_module.cpp src/benchmark_alloc.cpp
+  add_executable(dasrmlui_bench src/host.cpp src/live_host.cpp ${DAS}/modules/dasLiveHost/src/dasLiveHost.cpp src/rml_module.cpp src/benchmark_alloc.cpp
     ${RMLUI_DIR}/Backends/RmlUi_Platform_SDL.cpp src/gl3/RmlUi_Renderer_GL3.cpp)
   foreach(prop INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS LINK_LIBRARIES)
     get_target_property(value dasrmlui ${prop})
@@ -165,6 +165,12 @@ add_test(NAME style_keyword_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File 
 # Fast-path coverage: by-value component arguments and computed primitive arguments.
 add_test(NAME hybrid_arguments COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/hybrid_arguments.das --smoke-test)
 set_tests_properties(hybrid_arguments PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+# Removal of bound rows forgets exactly what goes away; an event costs one pass.
+add_test(NAME hybrid_removal COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/hybrid_removal.das --smoke-test)
+set_tests_properties(hybrid_removal PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+# Globals read by a component are tracked sources; opaque getters wait for a reported change.
+add_test(NAME hybrid_globals COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/hybrid_globals.das --smoke-test)
+set_tests_properties(hybrid_globals PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 add_test(NAME ninepatch_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_ninepatch.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/ninepatch_render.das)
 set_tests_properties(ninepatch_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -214,3 +220,22 @@ shader_dsl_failure(sampling "sample_source is only available in [ui_filter]")
 shader_dsl_failure(cpu "dasGlsl:")
 shader_dsl_failure(mutable "must be read-only, without defaults")
 shader_dsl_failure(default "must be read-only, without defaults")
+
+# LiveHost lifecycle and real edits to isolated fixture scripts.
+add_test(NAME live_reload COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/live_reload.das --watch --smoke-test --frames 80)
+set_tests_properties(live_reload PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy" TIMEOUT 60 PASS_REGULAR_EXPRESSION "PASS: LiveHost")
+add_test(NAME live_watch COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/test_live_reload.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Root ${CMAKE_SOURCE_DIR})
+set_tests_properties(live_watch PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 150)
+add_test(NAME demo_live_lab COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/examples/live_lab.das --watch
+  --styles ${CMAKE_SOURCE_DIR}/examples/live_lab_styles.das --smoke-test --frames 8)
+set_tests_properties(demo_live_lab PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy" TIMEOUT 60)
+
+add_test(NAME live_state_codec COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/live_state_codec.das --watch --smoke-test --frames 2)
+set_tests_properties(live_state_codec PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy" TIMEOUT 60 PASS_REGULAR_EXPRESSION "PASS: live JSON")
+add_test(NAME live_gl COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/live_gl.das --watch --smoke-test --frames 80)
+set_tests_properties(live_gl PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;opengl" RUN_SERIAL TRUE TIMEOUT 60 PASS_REGULAR_EXPRESSION "PASS: GL3 LiveHost")
+
+add_test(NAME live_errors COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/test_live_errors.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Root ${CMAKE_SOURCE_DIR})
+set_tests_properties(live_errors PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)

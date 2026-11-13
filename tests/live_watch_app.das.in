@@ -1,0 +1,78 @@
+options gen2
+options gc
+options persistent_heap
+options stack=65536
+require dasrmlui/live
+struct Model { #FIELD#:int; text:string="default" }
+struct Draft { #LOCAL_FIELD#:string="default local"; count:int }
+var model_state:$UiState<Model>?
+var @live mounts=0
+var frames=0
+var input_id:uint64
+var probe_id:uint64
+var styled=false
+var read_count:int
+var read_note:string
+
+def ui_migrate(saved:JsonValue const?; old_version:int; var value:Model):bool {
+    if (old_version!=1) { return false }
+    value.#FIELD#=saved?["number"] ?? 0
+    value.text=saved?["text"] ?? value.text
+    return true
+}
+def ui_migrate(saved:JsonValue const?; old_version:int; var value:Draft):bool {
+    if (#REJECT# || old_version!=1) { return false }
+    value.#LOCAL_FIELD#=saved?["note"] ?? value.#LOCAL_FIELD#
+    value.count=saved?["count"] ?? 0
+    return true
+}
+[ui_component]
+def editor() {
+    #EXTRA_STATE#
+    state("editor",#SCHEMA#,Draft()) $(var draft:Draft) {
+        on_mount() { mounts+=1 }
+        column() {
+            text_input("input") { bind_value(draft.#LOCAL_FIELD#) $(text:string) { draft.#LOCAL_FIELD#=text; draft.count+=1 } }
+        }
+        read_count=draft.count; read_note=draft.#LOCAL_FIELD#
+    }
+}
+[ui_component]
+def screen(model:Model) {
+    use_live_style("test")
+    column() {
+        editor()
+        box("probe") {}
+        text("revision","#VERSION#")
+        text("count") { return "{model.#FIELD#}" }
+    }
+}
+[export]
+def init() {
+    ui_live_window("Watcher integration",400,300)
+    model_state=ui_state("watcher",#SCHEMA#,Model())
+}
+[export]
+def update() {
+    ui_frame(model_state) $(model:Model) { screen(model) }
+    if (frames==0) {
+        input_id=ui_find("input"); probe_id=ui_find("probe")
+        rui_focus(input_id)
+        if (!is_reload()) {
+            ui_edit(model_state) $(var model:Model) { model.#FIELD#=42; model.text="kept root" }
+            rui_test_event(input_id,"change","kept local")
+        }
+    } else {
+        ui_read(model_state) $(model:Model) { verify(model.#FIELD#==42 && model.text=="kept root") }
+        verify(read_count==1 && read_note=="kept local","named local state, including migration")
+        if (frames==2) { print("CHECK version=#VERSION# mounts={mounts} window={rui_live_window_id()}\n") }
+        if (frames%30==0) { unsafe { heap_collect(true,false) }; print("HEALTHY #VERSION#\n") }
+    }
+    if (!styled && rui_bounds(probe_id).z==200.) {
+        verify(ui_find("input")==input_id && ui_find("probe")==probe_id && rui_focused(input_id),"style reload kept DOM and focus")
+        verify(rui_get_value(input_id)=="kept local")
+        styled=true
+        print("STYLE CHECK version=#VERSION# mounts={mounts}\n")
+    }
+    frames+=1
+}

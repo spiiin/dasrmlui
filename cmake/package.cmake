@@ -22,3 +22,5 @@ install(FILES "${RMLUI_DIR}/Samples/assets/LICENSE.txt" DESTINATION assets
   RENAME LatoLatin-LICENSE.txt COMPONENT runtime)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/gl3/LICENSE.txt" DESTINATION licenses
   RENAME RmlUi-GL3-LICENSE.txt COMPONENT runtime)
+
+install(DIRECTORY "${DAS}/modules/dasLiveHost/live" DESTINATION daScript/modules/dasLiveHost COMPONENT runtime)

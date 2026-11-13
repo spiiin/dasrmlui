@@ -1,5 +1,6 @@
 // SDL_Renderer bridge adapted from the local dascript_sdl_gui prototype.
 #include "daScript/daScript.h"
+#include "dasLiveHost.h"
 #include "daScript/ast/ast_interop.h"
 #include <RmlUi/Core.h>
 #include <RmlUi/Debugger.h>
@@ -275,6 +276,7 @@ struct State {
     std::deque<UiEvent> events;
     UiEvent current{};
     bool applying = false;
+    bool stale = false; // rui_remove ran: sweep entries of elements RmlUi released by itself
     std::unordered_map<uint64_t, std::unordered_map<std::string,std::string>> properties;
 };
 std::unique_ptr<State> state;
@@ -713,10 +715,12 @@ static char* rui_locale(das::Context* ctx,das::LineInfoArg* at) { return str(sta
 static char* rui_translate(const char* text,das::Context* ctx,das::LineInfoArg* at) {
     Rml::String output=text; if(state) state->system->TranslateString(output,text); return str(output,ctx,at);
 }
+static std::string live_extra_css, live_base_css;
 static void rui_css(const char* css) { native_guard();
     if (state) {
-        state->css=css;
-        state->document->SetStyleSheetContainer(Rml::Factory::InstanceStyleSheetString(css));
+        live_base_css=css;
+        state->css=live_base_css+live_extra_css;
+        state->document->SetStyleSheetContainer(Rml::Factory::InstanceStyleSheetString(state->css));
         for(const auto& entry : state->document_styles) document_css(entry.first);
     }
 }
@@ -746,16 +750,36 @@ static uint64_t rui_create(uint64_t parent, const char* tag, const char* classes
 }
 static bool rui_alive(uint64_t id) { return node(id) != nullptr; }
 static bool rui_enabled(uint64_t id) { return element_enabled(node(id)); }
-static void rui_remove(uint64_t id) { native_guard();
-    auto e = node(id); if (!e || e == state->document) return;
-    hybrid_forget(e);
-    if (auto p = e->GetParentNode()) p->RemoveChild(e).reset();
+static void collect_ids(Rml::Element* e, std::vector<std::pair<Rml::Element*,uint64_t>>& out) {
+    auto it = state->ids.find(e);
+    if (it != state->ids.end()) out.emplace_back(e,it->second);
+    for (int i=0;i<e->GetNumChildren(true);++i) collect_ids(e->GetChild(i),out);
+}
+// Entries of elements that RmlUi released without rui_remove: options of a
+// select, the inside of a replaced document. One pass per update, not per node.
+static void sweep_released() {
     for (auto it = state->nodes.begin(); it != state->nodes.end();) {
         if (!it->second) { state->properties.erase(it->first); it = state->nodes.erase(it); } else ++it;
     }
     for (auto it = state->ids.begin(); it != state->ids.end();) {
         if (!node(it->second)) it = state->ids.erase(it); else ++it;
     }
+    state->stale = false;
+}
+static void rui_remove(uint64_t id) { native_guard();
+    auto e = node(id); if (!e || e == state->document) return;
+    hybrid_forget(e);
+    // Forget exactly the subtree that goes away. Sweeping every table on each
+    // call made clearing a list quadratic: a second for four thousand rows.
+    std::vector<std::pair<Rml::Element*,uint64_t>> gone;
+    collect_ids(e,gone);
+    if (auto p = e->GetParentNode()) p->RemoveChild(e).reset();
+    for (const auto& entry : gone) {
+        auto it = state->nodes.find(entry.second);
+        if (it == state->nodes.end() || it->second) continue; // still referenced elsewhere
+        state->properties.erase(entry.second); state->nodes.erase(it); state->ids.erase(entry.first);
+    }
+    state->stale = true;
 }
 static void rui_before(uint64_t id, uint64_t before) { native_guard();
     auto e = node(id); if (!e) return;
@@ -1096,6 +1120,7 @@ static void rui_update() { native_guard();
     if(bench_defer_update) return;
 #endif
     if(!state) return;
+    if(state->stale) sweep_released();
     for(auto it=state->listeners.begin();it!=state->listeners.end();) {
         if(!it->second->element) it=state->listeners.erase(it); else ++it;
     }
@@ -1356,6 +1381,7 @@ static bool rui_default_font_styles() {
         if(!rui_font((directory+file).c_str())) return false;
     return true;
 }
+#include "live_adapter.inc"
 namespace das {
 // RmlUi virtual callbacks can re-enter daScript and collect its heap. Preserve the
 // source position of the suspended caller, also across nested calls and longjmp.
@@ -1368,6 +1394,7 @@ struct RuiCallNode<R(*)(Args...)> : SimNode_ExtFuncCallRet<typename ext_ret_carr
     Function fn;
     RuiCallNode(const LineInfo& at,const char* name,Function fn):Base(at,name),fn(fn) {}
     DAS_EVAL_ABI vec4f eval(Context& context) override {
+        if(live_isolated) context.throw_error_at(&this->debugInfo,"Live candidate globals and styles must not call RmlUi; move UI work to init/update");
         auto previous=native_entry_line; native_entry_line=&this->debugInfo;
         vec4f result=v_zero();
         bool ok=false;
@@ -1415,7 +1442,7 @@ public:
         B(bench_native_setup); B(bench_native_set); B(bench_native_rotate); B(bench_native_bind); B(bench_native_close);
         B(bench_update); B(bench_finish); B(bench_css); B(bench_verify); B(bench_identity);
 #endif
-        B(rui_init); B(rui_init_gl); B(rui_root); B(rui_font); B(rui_css);
+        B(rui_live_open); B(rui_live_window_id); B(rui_init); B(rui_init_gl); B(rui_root); B(rui_font); B(rui_css);
         addExtern<DAS_BIND_FUN(rui_shutdown_checked),RuiCallNode>(*this,lib,"rui_shutdown",SideEffects::worstDefault,"rui_shutdown_checked")->needCallerStackFrame=true;
         B(rui_debugger_init); B(rui_debugger_ready); B(rui_debugger_visible); B(rui_debugger_revision);
         B(rui_debugger_show); B(rui_debugger_shutdown); B(rui_debugger_hotkey);

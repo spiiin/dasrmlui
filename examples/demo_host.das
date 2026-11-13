@@ -29,7 +29,9 @@ def run_demo(title, screenshot:string; smoke:bool; render:block; check:block<(fr
             renderer |> present() |> sdl_try
             if (smoke) { invoke(check,frame) }
             frame += 1
-            if (frame % 120 == 0) { unsafe { heap_collect(true,false) } }
+            // Every two seconds, and sooner when full passes over a long list
+            // have left more than 8 MB of temporary strings behind.
+            ui_collect_garbage(8,frame % 120 == 0)
             if (smoke && frame == 8) { break }
             SDL_Delay(16u)
         }

@@ -1,4 +1,5 @@
 #include "daScript/daScript.h"
+#include "live_host.h"
 #include <SDL3/SDL.h>
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL_main.h>
@@ -10,6 +11,7 @@
 #include <vector>
 DECLARE_MODULE(Module_dasSDL3);
 DECLARE_MODULE(Module_dasRmlUi);
+DECLARE_MODULE(Module_LiveHost);
 void rui_shutdown();
 const char* rui_last_native_error();
 void rui_set_default_font(const char* path);
@@ -76,6 +78,7 @@ static int run(const char* path, bool smoke, const Roots& roots) {
     auto access = make_smart<FsFileAccess>();
     access->addFsRoot("dassdl3", roots.sdl.path);
     access->addFsRoot("dasrmlui", roots.ui.path);
+    access->addFsRoot("live", roots.das.path + "/modules/dasLiveHost/live");
     access->addFsRoot("glsl", roots.das.path + "/modules/dasGlsl/glsl");
     if (!roots.examples.path.empty()) access->addFsRoot("examples", roots.examples.path);
     auto program = compileDaScript(path, access, out, modules);
@@ -99,7 +102,7 @@ static int run(const char* path, bool smoke, const Roots& roots) {
 }
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::printf("usage: dasrmlui <script.das> [--smoke-test]\n       dasrmlui --roots   show where the runtime folders were found\n");
+        std::printf("usage: dasrmlui <script.das> [--smoke-test] [--watch [--styles styles.das] [--frames N]]\n       dasrmlui --roots   show where the runtime folders were found\n");
         return 2;
     }
     SDL_SetMainReady();
@@ -112,8 +115,17 @@ int main(int argc, char** argv) {
     }
     das::setDasRoot(roots.das.path);
     rui_set_default_font(roots.font.path.c_str());
-    NEED_ALL_DEFAULT_MODULES; NEED_MODULE(Module_dasSDL3); NEED_MODULE(Module_dasRmlUi);
+    NEED_ALL_DEFAULT_MODULES; NEED_MODULE(Module_dasSDL3); NEED_MODULE(Module_dasRmlUi); NEED_MODULE(Module_LiveHost);
     das::Module::Initialize();
-    int code = run(argv[1], argc > 2 && !strcmp(argv[2], "--smoke-test"), roots);
+    bool watch=false, smoke=false; const char* styles=nullptr; int frames=0;
+    for (int i=2;i<argc;++i) {
+        if (!strcmp(argv[i],"--watch")) watch=true;
+        else if (!strcmp(argv[i],"--smoke-test")) smoke=true;
+        else if (!strcmp(argv[i],"--styles") && i+1<argc) styles=argv[++i];
+        else if (!strcmp(argv[i],"--frames") && i+1<argc) frames=std::atoi(argv[++i]);
+        else { std::fprintf(stderr,"Unknown/incomplete option: %s\n",argv[i]); return 2; }
+    }
+    int code = watch ? run_ui_live(argv[1],styles,roots.das.path,roots.sdl.path,roots.ui.path,roots.examples.path,smoke,frames)
+                     : run(argv[1],smoke,roots);
     rui_shutdown(); SDL_Quit(); das::Module::Shutdown(); return code;
 }
