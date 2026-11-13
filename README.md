@@ -36,6 +36,9 @@ pixel tests for ninepatch, SVG/Lottie and native elements use a real SDL rendere
 
 ## Web gallery
 
+**[Open the live gallery](https://spiiin.github.io/dasrmlui/)** — all 24 examples
+run directly in the browser (WebGL 2 and WebAssembly JSPI required).
+
 All 24 examples also have a browser gallery with screenshot links, search and
 category filters. Build and serve `build/web/site`; see [Web build and tests](docs/web.md)
 for dependencies and commands. The runtime uses WebGL 2 and WebAssembly JSPI.

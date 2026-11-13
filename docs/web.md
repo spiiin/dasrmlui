@@ -82,14 +82,33 @@ are written to `logs/web`.
 It builds on Ubuntu 24.04 with Emscripten 5.0.3, then tests all 24 examples in
 Chromium using software WebGL. The downloadable **dasrmlui-web** artifact contains
 the complete `site/` contents. **web-test-results** includes screenshots and logs,
-also on a failed test run. The workflow builds and tests; it does not publish Pages.
+also on a failed test run.
+
+## GitHub Pages
+
+The public gallery is at **https://spiiin.github.io/dasrmlui/**.
+`.github/workflows/pages.yml` automatically publishes the latest successful
+`Web gallery` artifact from this repository's `master` branch after tests pass.
+Failed builds, pull requests and fork builds cannot publish. Publication reuses
+the tested static artifact; it does not rebuild or execute artifact contents.
+Manual **Run workflow** on **Publish GitHub Pages** republishes the latest
+successful build, which is useful for retrying a failed deployment.
+
+Repository **Settings → Pages → Build and deployment → Source** is set to
+**GitHub Actions**. The deploy job uses the `github-pages` environment and grants
+`pages: write` and `id-token: write` only to that job; artifact download gets
+`actions: read`. Deployments are serialized and do not interrupt one another.
+The gallery uses relative links, so images, scripts, Wasm and data files work
+under the `/dasrmlui/` project prefix. No custom domain or external CDN is needed.
+
+### Reproducible build
 
 Source revisions are pinned in `web/dependencies.json`. `tools/fetch_web_deps.py`
 fetches them into an isolated directory and refuses modified dependency checkouts.
 SVG/Lottie revisions remain pinned in `cmake/vector_plugins.cmake`.
 CI uses `-DSDL3_SOURCE=...` to build SDL3 in the same tree, so no prebuilt SDK,
-Windows paths, tokens or private dependencies are required. Workflow permissions
-are limited to reading repository contents.
+Windows paths, tokens or private dependencies are required. The build workflow only reads repository contents; publishing permissions are
+scoped to the separate Pages workflow.
 
 The same source-only configure is available locally:
 
