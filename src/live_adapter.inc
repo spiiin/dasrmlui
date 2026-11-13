@@ -79,6 +79,11 @@ void rui_live_present(das::Context* context) {
         rui_render(context,nullptr);
         if(live_gl) SDL_GL_SwapWindow(live_window);
         else if(live_renderer) SDL_RenderPresent(live_renderer);
+#ifdef __EMSCRIPTEN__
+        // Canvas input must wait until SDL has processed the focus event. This
+        // also lets browser tests synchronize with a completed native frame.
+        EM_ASM({ Module.uiFrame = (Module.uiFrame || 0) + 1; });
+#endif
     });
 }
 bool rui_live_set_css(const std::string& css) {

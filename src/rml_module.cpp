@@ -25,6 +25,7 @@
 #include "gl3/RmlUi_Renderer_GL3.h"
 #ifdef __EMSCRIPTEN__
 #include <GLES3/gl3.h>
+#include <emscripten.h>
 #else
 #include "RmlUi_Include_GL3.h"
 #endif

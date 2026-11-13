@@ -13,6 +13,10 @@ p.add_argument('--software-gl',action='store_true')
 p.add_argument('--output',type=Path,default=Path('logs/web'))
 a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
 manifest=json.loads((Path(__file__).resolve().parents[2]/'web/examples.json').read_text(encoding='utf-8'))
+def frames(page,count=2):
+    before=page.evaluate('uiRuntime.uiFrame || 0')
+    page.wait_for_function('(n)=>(uiRuntime.uiFrame || 0)>=n',arg=before+count,timeout=15000)
+
 with sync_playwright() as pw:
     browser=pw.chromium.launch(channel='msedge' if a.browser=='msedge' else None,headless=True,
         args=['--use-angle=swiftshader','--enable-unsafe-swiftshader'] if a.software_gl else [])
@@ -57,13 +61,14 @@ with sync_playwright() as pw:
             canvas=page.locator('canvas')
             before=im.crop((410,185,500,240))
             canvas.click(position={'x':333,'y':525})
-            page.wait_for_timeout(150)
+            frames(page)
             changed=Image.open(BytesIO(canvas.screenshot())).convert('RGB')
             assert ImageChops.difference(before,changed.crop((410,185,500,240))).getbbox(),'Complete click did not update metric'
             before=changed.crop((48,470,665,760))
             canvas.click(position={'x':150,'y':365})
+            frames(page)
             page.keyboard.type('November')
-            page.wait_for_timeout(150)
+            frames(page)
             changed=Image.open(BytesIO(canvas.screenshot())).convert('RGB')
             assert ImageChops.difference(before,changed.crop((48,470,665,760))).getbbox(),'Text input did not filter tasks'
             page.set_viewport_size({'width':720,'height':950})
@@ -72,14 +77,19 @@ with sync_playwright() as pw:
         if demo['id']=='live_lab':
             canvas=page.locator('canvas')
             canvas.click(position={'x':220,'y':280})
+            frames(page)
             page.keyboard.press('Control+A');page.keyboard.type('Browser reload test')
-            page.wait_for_timeout(150)
+            frames(page)
             canvas.click(position={'x':230,'y':80})
+            frames(page)
             before=Image.open(BytesIO(canvas.screenshot())).convert('RGB').crop((40,260,650,310))
+            before.save(a.output/'live_lab-edited.png')
             assert ImageChops.difference(im.crop((40,260,650,310)),before).getbbox(),'LiveHost input did not change'
             canvas.click(position={'x':85,'y':180})
             page.wait_for_function('document.querySelector("#log").textContent.includes("[live] reloaded")',timeout=60000)
+            frames(page)
             after=Image.open(BytesIO(canvas.screenshot())).convert('RGB').crop((40,260,650,310))
+            after.save(a.output/'live_lab-reloaded.png')
             assert not ImageChops.difference(before,after).getbbox(),'LiveHost lost edited state'
         assert not errors,errors
         assert 'Script exception:'  not in output and 'Failed to compile' not in output,output
