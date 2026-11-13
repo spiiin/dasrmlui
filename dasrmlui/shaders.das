@@ -44,3 +44,12 @@ def register_filter(name:string; program:UiShaderProgram; params:array<UiEffectP
 def register_filter(name:string; program:UiShaderProgram; overflow:float=0.):uint64 {
     var inscope params:array<UiEffectParam>; return register_filter(name,program,params,overflow)
 }
+
+def register_shader(name:string; program:UiShaderProgram; parameters:auto):uint64 {
+    var inscope params <- rt_effect_tuple_params(parameters)
+    return register_shader(name,program,params)
+}
+def register_filter(name:string; program:UiShaderProgram; parameters:auto; overflow:float=0.):uint64 {
+    var inscope params <- rt_effect_tuple_params(parameters)
+    return register_filter(name,program,params,overflow)
+}

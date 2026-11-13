@@ -30,11 +30,11 @@ def shift(uv,texel:float2):float4 { return sample_source(uv-float2(4.,0.)*texel)
 def named_param(edge_width:float):float4 { return float4(edge_width) }
 
 def install_shader_fixture() {
-    register_shader("test-solid",solid_shader(),array<UiEffectParam>(effect_color_param("tint",rgb(40,200,100)),effect_number_param("amount",1.)))
-    register_shader("test-edge",edge_shader(),array<UiEffectParam>(effect_length_param("edge",dp(4))))
+    register_shader("test-solid",solid_shader(),(tint = rgb(40,200,100), amount = 1.))
+    register_shader("test-edge",edge_shader(),(edge = dp(4)))
     register_shader("test-clock",clock_shader())
     register_filter("test-swap",swap_filter())
-    register_filter("test-red",red_filter(),array<UiEffectParam>(effect_number_param("amount",0.5)))
+    register_filter("test-red",red_filter(),(amount = 0.5))
     register_filter("test-shift",shift_filter(),8.)
     // Schema checks happen before creating native registrations or GL programs.
     let counts=gpu_effect_counts()
@@ -42,10 +42,10 @@ def install_shader_fixture() {
     try { register_shader("test-invalid-dsl",solid_shader()) } recover { caught=true }
     verify(caught && gpu_effect_counts()==counts)
     caught=false
-    try { register_shader("test-invalid-dsl",clock_shader(),array<UiEffectParam>(effect_number_param("extra",1.))) } recover { caught=true }
+    try { register_shader("test-invalid-dsl",clock_shader(),(extra = 1.)) } recover { caught=true }
     verify(caught && gpu_effect_counts()==counts)
     caught=false
-    try { register_shader("test-invalid-dsl",solid_shader(),array<UiEffectParam>(effect_number_param("tint",1.),effect_number_param("amount",1.))) } recover { caught=true }
+    try { register_shader("test-invalid-dsl",solid_shader(),(tint = 1., amount = 1.)) } recover { caught=true }
     verify(caught && gpu_effect_counts()==counts)
     caught=false
     try { register_filter("test-invalid-dsl",clock_shader()) } recover { caught=true }

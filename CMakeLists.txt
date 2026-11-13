@@ -207,6 +207,19 @@ set_tests_properties(gpu_effect_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOUR
   ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;opengl" RUN_SERIAL TRUE TIMEOUT 60)
 add_test(NAME shader_dsl_compiler COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/shader_dsl_probe.das --smoke-test)
 set_tests_properties(shader_dsl_compiler PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME effect_tuples COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/effect_tuples.das --smoke-test)
+set_tests_properties(effect_tuples PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;opengl" RUN_SERIAL TRUE TIMEOUT 60)
+foreach(case shape registration_shape value registration)
+  if(case MATCHES "shape")
+    set(expected "Effect parameters require a named tuple")
+  else()
+    set(expected "Effect tuple values must be")
+  endif()
+  add_test(NAME effect_tuple_${case}_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+    -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_effect_tuple_${case}.das -Expected "${expected}")
+  set_tests_properties(effect_tuple_${case}_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endforeach()
 function(shader_dsl_failure name expected)
   add_test(NAME shader_dsl_${name}_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
     -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_shader_${name}.das -Expected "${expected}")

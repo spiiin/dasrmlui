@@ -13,8 +13,7 @@ var memories:table<uint64;Memory>
 var creates,destroys,paints:int
 var last_canvas:uint64
 def install(seed:string) {
-    let params=array<UiDecoratorParam>(decorator_color_param("fill",rgb(40,200,100)),decorator_length_param("edge",dp(4)),
-        decorator_number_param("amount",0.5),decorator_string_param("asset","examples/assets/native_mesh_atlas.png"))
+    let params=(fill = rgb(40,200,100), edge = dp(4), amount = 0.5, asset = "examples/assets/native_mesh_atlas.png")
     register_decorator("test-frame",params,@(event:UiDecoratorEvent) {
         let canvas=event.canvas
         if (event.kind==UiDecoratorKind.Create) {
@@ -55,7 +54,7 @@ def sheet() {
         custom_decorator("test-frame","content-box")
     }
     rule(part("second")+":hover") {
-        custom_decorator("test-frame",array<UiDecoratorArg>(decorator_arg("fill",rgb(80,120,240)),decorator_arg("edge",pct(10))),"content-box")
+        custom_decorator("test-frame",(fill = rgb(80,120,240), edge = pct(10)),"content-box")
     }
 }
 [ui_component(legacy=true)]
@@ -65,8 +64,7 @@ def view(var model:Model) {
         when($()=>model.shown) {
             box("first") {
                 width(px(model.width)); opacity(model.opacity)
-                custom_decorator("test-frame",array<UiDecoratorArg>(decorator_arg("amount",model.amount),
-                    decorator_arg("fill",model.changed ? rgb(240,80,60) : rgb(40,200,100))))
+                custom_decorator("test-frame",(amount = model.amount, fill = model.changed ? rgb(240,80,60) : rgb(40,200,100)))
             }
         }
     }
@@ -105,7 +103,7 @@ def exercise(renderer:SDL_Renderer?; prefix:string) {
     verify(caught && decorator_handler_count()==1)
     register_decorator("test-unused",array<UiDecoratorParam>(),@(event:UiDecoratorEvent) {})
     verify(unregister_decorator("test-unused") && !unregister_decorator("test-unused"))
-    register_decorator("test-unused",array<UiDecoratorParam>(decorator_number_param("value",1.)),@(event:UiDecoratorEvent) {})
+    register_decorator("test-unused",(value = 1.),@(event:UiDecoratorEvent) {})
     verify(unregister_decorator("test-unused"),"re-registration keeps retired RCSS pointers safe")
     var model=Model()
     ui_legacy_frame() { view(model) }; snapshot(renderer,prefix,"initial")
@@ -121,9 +119,9 @@ def exercise(renderer:SDL_Renderer?; prefix:string) {
     caught=false
     try { decorator_number(old_canvas,"fill") } recover { caught=true }; verify(caught)
     caught=false
-    try { custom_decorator("test-frame",array<UiDecoratorArg>(decorator_arg("unknown",1))) } recover { caught=true }; verify(caught)
+    try { custom_decorator("test-frame",(unknown = 1)) } recover { caught=true }; verify(caught)
     caught=false
-    try { custom_decorator("test-frame",array<UiDecoratorArg>(decorator_arg("edge","nonsense"))) } recover { caught=true }; verify(caught)
+    try { custom_decorator("test-frame",(edge = "nonsense")) } recover { caught=true }; verify(caught)
     caught=false
     try { custom_decorator("test-frame",array<UiDecoratorArg>(decorator_arg("amount",1.),decorator_arg("amount",0.))) } recover { caught=true }; verify(caught)
     model.changed=true; model.amount=0.8; ui_legacy_frame() { view(model) }; snapshot(renderer,prefix,"changed")

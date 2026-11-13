@@ -39,8 +39,7 @@ def glass(uv:float2; texel:float2; radius:float):float4 {
 }
 
 def install_effects() {
-    register_shader("lab-aurora",aurora_shader(),array<UiEffectParam>(
-        effect_number_param("speed",1.),effect_color_param("tint",rgb(46,232,210))))
-    register_filter("lab-prism",prism_filter(),array<UiEffectParam>(effect_length_param("split",dp(6))),20.)
-    register_filter("lab-glass",glass_filter(),array<UiEffectParam>(effect_length_param("radius",dp(5))))
+    register_shader("lab-aurora",aurora_shader(),(speed = 1., tint = rgb(46,232,210)))
+    register_filter("lab-prism",prism_filter(),(split = dp(6)),20.)
+    register_filter("lab-glass",glass_filter(),(radius = dp(5)))
 }

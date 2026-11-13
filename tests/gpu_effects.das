@@ -10,10 +10,10 @@ var fixture_prefix="gpu"
 def install() {
     register_shader("test-solid",%_esc~
 vec4 effect(vec2 uv) { return vec4(p_tint.rgb * p_amount, p_tint.a); }
-%_esc,array<UiEffectParam>(effect_color_param("tint",rgb(40,200,100)),effect_number_param("amount",1.)))
+%_esc,(tint = rgb(40,200,100), amount = 1.))
     register_shader("test-edge",%_esc~
 vec4 effect(vec2 uv) { return uv.x*u_size.x < p_edge ? vec4(1,0,0,1) : vec4(0,1,0,1); }
-%_esc,array<UiEffectParam>(effect_length_param("edge",dp(4))))
+%_esc,(edge = dp(4)))
     register_shader("test-clock",%_esc~
 vec4 effect(vec2 uv) { return vec4(fract(u_time*0.25),0,0,1); }
 %_esc)
@@ -22,7 +22,7 @@ vec4 effect(vec2 uv) { vec4 c=sample_source(uv); return vec4(c.b,c.g,c.r,c.a); }
 %_esc)
     register_filter("test-red",%_esc~
 vec4 effect(vec2 uv) { vec4 c=sample_source(uv); c.r *= p_amount; return c; }
-%_esc,array<UiEffectParam>(effect_number_param("amount",0.5)))
+%_esc,(amount = 0.5))
     register_filter("test-shift",%_esc~
 vec4 effect(vec2 uv) { return sample_source(uv-vec2(4,0)*u_texel); }
 %_esc,8.)
@@ -38,14 +38,14 @@ def sheet() {
     rule(part("behind")) { property("left","420px"); property("top","20px"); background(rgb(40,200,100)) }
     rule(part("glass")) { property("position","absolute"); property("left","10px"); property("top","10px"); width(px(60)); height(px(40)); custom_backdrop_filter("test-swap") }
     rule(part("edge")) { property("left","20px"); property("top","110px"); custom_shader("test-edge") }
-    rule(part("percent")) { property("left","120px"); property("top","110px"); custom_shader("test-edge",array<UiEffectArg>(effect_arg("edge",pct(25)))) }
+    rule(part("percent")) { property("left","120px"); property("top","110px"); custom_shader("test-edge",(edge = pct(25))) }
     rule(part("clock")) { property("left","220px"); property("top","110px"); custom_shader("test-clock") }
     rule(part("builtin")) { property("left","320px"); property("top","110px"); background(rgb(40,200,100)); property("filter","test-swap() opacity(0.5)") }
     rule(part("shift")) { property("left","420px"); property("top","110px"); background(rgb(40,200,100)); custom_filter("test-shift") }
     rule(part("plain")) { property("left","520px"); property("top","20px"); background(rgb(40,200,100)) }
     rule(part("transparent")) {
         property("left","520px"); property("top","110px")
-        custom_shader("test-solid",array<UiEffectArg>(effect_arg("tint",rgb(40,200,100),0.5)))
+        custom_shader("test-solid",(tint = effect_color(rgb(40,200,100),0.5)))
         custom_filter("test-swap")
     }
     rule(part("clip")) { property("position","absolute"); property("left","20px"); property("top","220px"); width(px(50)); height(px(50)); property("overflow","hidden") }
@@ -55,9 +55,9 @@ def sheet() {
 def view(var model:Model) {
     use_style(@@sheet)
     when($()=>model.shown) {
-        box("solid") { class_if("sample",true); width(px(model.width)); opacity(model.alpha); custom_shader("test-solid",array<UiEffectArg>(effect_arg("amount",model.amount))) }
+        box("solid") { class_if("sample",true); width(px(model.width)); opacity(model.alpha); custom_shader("test-solid",(amount = model.amount)) }
         box("filtered") { class_if("sample",true) }
-        box("chain") { class_if("sample",true); custom_filters(array<UiFilterEffect>(filter_effect("test-swap"),filter_effect("test-red",array<UiEffectArg>(effect_arg("amount",model.amount*0.5))))) }
+        box("chain") { class_if("sample",true); custom_filters(array<UiFilterEffect>(filter_effect("test-swap"),filter_effect("test-red",(amount = model.amount*0.5)))) }
         box("reverse") { class_if("sample",true) }
         box("behind") { class_if("sample",true); box("glass") {} }
         box("edge") { class_if("sample",true) }
@@ -104,7 +104,7 @@ def check_errors() {
     try { filter_effect("test-solid") } recover { caught=true }
     verify(caught)
     caught=false
-    try { filter_effect("test-red",array<UiEffectArg>(effect_arg("typo",1.))) } recover { caught=true }
+    try { filter_effect("test-red",(typo = 1.)) } recover { caught=true }
     verify(caught)
     caught=false
     try { filter_effect("test-red",array<UiEffectArg>(effect_arg("amount",1.),effect_arg("amount",2.))) } recover { caught=true }
@@ -117,7 +117,7 @@ def check_errors() {
     try { register_shader("test-invalid","unused",array<UiEffectParam>(UiEffectParam(name="edge",parser="length_percent",default_value="oops"))) } recover { caught=true }
     verify(caught && gpu_effect_counts()==counts)
     caught=false
-    try { register_shader("test-invalid","unused",array<UiEffectParam>(decorator_string_param("asset","path"))) } recover { caught=true }
+    try { register_shader("test-invalid","unused",(asset = "path")) } recover { caught=true }
     verify(caught && gpu_effect_counts()==counts)
 }
 def exercise(dsl:bool):int {

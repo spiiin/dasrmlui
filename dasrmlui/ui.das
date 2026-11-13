@@ -1837,7 +1837,8 @@ def decorator_arg(name:string; value:UiLength):UiDecoratorArg { return UiDecorat
 def decorator_arg(name:string; value:UiColor; alpha:float=1.):UiDecoratorArg {
     return UiDecoratorArg(name=name,value="rgba({value.r},{value.g},{value.b},{int(clamp(alpha,0.,1.)*255.)})")
 }
-def decorator_arg(name,value:string):UiDecoratorArg { return UiDecoratorArg(name=name,value="\"{value}\"") }
+// The native schema parser accepts the raw string and quotes it when emitting RCSS.
+def decorator_arg(name,value:string):UiDecoratorArg { return UiDecoratorArg(name=name,value=value) }
 def custom_decorator(name:string; args:array<UiDecoratorArg>; paint_area:string="padding-box") {
     if (paint_area!="padding-box" && paint_area!="border-box" && paint_area!="content-box") { panic("Invalid custom decorator paint area") }
     var inscope names,values:array<string>
@@ -1904,6 +1905,73 @@ def private filter_chain(effects:array<UiFilterEffect>):string {
 }
 def custom_filters(effects:array<UiFilterEffect>) { property("filter",filter_chain(effects)) }
 def custom_backdrop_filters(effects:array<UiFilterEffect>) { property("backdrop-filter",filter_chain(effects)) }
+
+// Named tuples keep parameter names in the type and reflect fields at compile time.
+// Explicit arrays remain available for dynamically assembled names/schemas.
+def effect_color(ink:UiColor; alpha:float):UiDecoratorColor { return UiDecoratorColor(ink=ink,alpha=alpha) }
+def decorator_arg(name:string; value:UiDecoratorColor):UiDecoratorArg { return decorator_arg(name,value.ink,value.alpha) }
+def effect_arg(name:string; value:UiDecoratorColor):UiEffectArg { return decorator_arg(name,value) }
+
+def private tuple_effect_param(name:string; value:float | int):UiDecoratorParam { return decorator_number_param(name,float(value)) }
+def private tuple_effect_param(name:string; value:UiLength):UiDecoratorParam { return decorator_length_param(name,value) }
+def private tuple_effect_param(name:string; value:UiColor):UiDecoratorParam { return decorator_color_param(name,value) }
+def private tuple_effect_param(name:string; value:UiDecoratorColor):UiDecoratorParam { return decorator_color_param(name,value.ink,value.alpha) }
+def private tuple_effect_param(name,value:string):UiDecoratorParam { return decorator_string_param(name,value) }
+def private tuple_effect_param(name:string; value:auto):UiDecoratorParam {
+    static_assert(false,"Effect tuple values must be int, float, UiLength, UiColor, effect_color or decorator string")
+    return UiDecoratorParam()
+}
+def private tuple_effect_arg(name:string; value:int | float | UiLength | UiColor | UiDecoratorColor | string):string {
+    return decorator_arg(name,value).value
+}
+def private tuple_effect_arg(name:string; value:auto):string {
+    static_assert(false,"Effect tuple values must be int, float, UiLength, UiColor, effect_color or decorator string")
+    return ""
+}
+def rt_effect_tuple_params(parameters:auto):array<UiDecoratorParam> {
+    static_assert(typeinfo ui_named_tuple(parameters),"Effect parameters require a named tuple")
+    var result:array<UiDecoratorParam>
+    apply(parameters) $(name:string; value) { result |> push(tuple_effect_param(replace(name,"_","-"),value)) }
+    return <- result
+}
+def private tuple_effect_value(name:string; args:auto; decorator,filter:bool):string {
+    static_assert(typeinfo ui_named_tuple(args),"Effect parameters require a named tuple")
+    var inscope names,values:array<string>
+    apply(args) $(field:string; value) {
+        let parameter=replace(field,"_","-")
+        names |> push(parameter); values |> push(tuple_effect_arg(parameter,value))
+    }
+    let result=decorator ? rui_decorator_value(name,names,values) : rui_gpu_value(name,filter,names,values)
+    if (empty(result)) { panic("Invalid argument value for effect '{name}'") }
+    return result
+}
+def register_decorator(name:string; parameters:auto; handler:UiDecoratorHandler):uint64 {
+    var inscope params <- rt_effect_tuple_params(parameters)
+    return register_decorator(name,params,handler)
+}
+def register_decorator(name:string; parameters:auto; handler:function<(event:UiDecoratorEvent):void>):uint64 {
+    var inscope params <- rt_effect_tuple_params(parameters)
+    return register_decorator(name,params,handler)
+}
+def register_shader(name,source:string; parameters:auto):uint64 {
+    var inscope params <- rt_effect_tuple_params(parameters)
+    return register_shader(name,source,params)
+}
+def register_filter(name,source:string; parameters:auto; overflow:float=0.):uint64 {
+    var inscope params <- rt_effect_tuple_params(parameters)
+    return register_filter(name,source,params,overflow)
+}
+def custom_decorator(name:string; args:auto; paint_area:string="padding-box") {
+    if (paint_area!="padding-box" && paint_area!="border-box" && paint_area!="content-box") { panic("Invalid custom decorator paint area") }
+    property("decorator","{tuple_effect_value(name,args,true,false)} {paint_area}")
+}
+def custom_shader(name:string; args:auto; paint_area:string="padding-box") {
+    if (paint_area!="padding-box" && paint_area!="border-box" && paint_area!="content-box") { panic("Invalid custom shader paint area") }
+    property("decorator","{tuple_effect_value(name,args,false,false)} {paint_area}")
+}
+def filter_effect(name:string; args:auto):UiFilterEffect { return UiFilterEffect(value=tuple_effect_value(name,args,false,true)) }
+def custom_filter(name:string; args:auto) { property("filter",tuple_effect_value(name,args,false,true)) }
+def custom_backdrop_filter(name:string; args:auto) { property("backdrop-filter",tuple_effect_value(name,args,false,true)) }
 
 def private native_rgba(ink:UiColor; alpha:float):uint4 {
     return uint4(uint(clamp(ink.r,0,255)),uint(clamp(ink.g,0,255)),uint(clamp(ink.b,0,255)),uint(clamp(alpha,0.,1.)*255.))

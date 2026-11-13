@@ -53,7 +53,10 @@ def studio(var model:Studio) {
                 class_if("card",true)
                 box("original") {
                     class_if("surface",true)
-                    custom_shader("lab-aurora",array<UiEffectArg>(effect_arg("speed",model.speed),effect_arg("tint",model.violet ? rgb(154,110,255) : rgb(46,232,210))))
+                    custom_shader("lab-aurora",(
+                        speed = model.speed,
+                        tint = model.violet ? rgb(154,110,255) : rgb(46,232,210)
+                    ))
                     text("overprint","01 / Aurora")
                 }
                 text("label","SHADER  /  GENERATED SURFACE"); text("name","Pure signal")
@@ -63,8 +66,11 @@ def studio(var model:Studio) {
                 class_if("card",true)
                 box("prism") {
                     class_if("surface",true)
-                    custom_shader("lab-aurora",array<UiEffectArg>(effect_arg("speed",model.speed),effect_arg("tint",model.violet ? rgb(154,110,255) : rgb(46,232,210))))
-                    custom_filter("lab-prism",array<UiEffectArg>(effect_arg("split",dp(model.split))))
+                    custom_shader("lab-aurora",(
+                        speed = model.speed,
+                        tint = model.violet ? rgb(154,110,255) : rgb(46,232,210)
+                    ))
+                    custom_filter("lab-prism",(split = dp(model.split)))
                     text("overprint","02 / Chromatic")
                 }
                 text("label","FILTER  /  ELEMENT + CHILDREN"); text("name","Split spectrum")
@@ -75,7 +81,10 @@ def studio(var model:Studio) {
                     class_if("card",true)
                     box("backdrop") {
                         class_if("surface",true)
-                        custom_shader("lab-aurora",array<UiEffectArg>(effect_arg("speed",model.speed),effect_arg("tint",model.violet ? rgb(154,110,255) : rgb(46,232,210))))
+                        custom_shader("lab-aurora",(
+                            speed = model.speed,
+                            tint = model.violet ? rgb(154,110,255) : rgb(46,232,210)
+                        ))
                         column("glass") { text("glassTitle","03 / Frosted light"); text("glassDetail","Background filtered. Text stays sharp.") }
                     }
                     text("label","BACKDROP  /  CONTENT BEHIND"); text("name","Through the glass")

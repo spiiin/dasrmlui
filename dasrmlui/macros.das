@@ -5,6 +5,17 @@ require daslib/ast_boost
 require daslib/templates_boost
 require strings
 
+[typeinfo_macro(name="ui_named_tuple")]
+class UiNamedTuple : AstTypeInfoMacro {
+    def override getAstChange(expr:ExprTypeInfo?; var errors:das_string):ExpressionPtr {
+        if (expr.typeexpr==null) { errors := "type is missing or not inferred"; return null }
+        let t=expr.typeexpr
+        var valid=t.baseType==Type.tTuple && length(t.argNames)==length(t.argTypes)
+        for (name in t.argNames) { valid=valid && !empty(name) }
+        return <- new ExprConstBool(at=expr.at,value=valid)
+    }
+}
+
 // Every DSL primitive is a statement. A call used as a value (an initializer,
 // argument or operand) is user code that merely shares a primitive's name, so
 // the rewriting visitors leave it alone. A user statement with such a name can
@@ -143,11 +154,15 @@ class private UiDependencies : UiStatements {
 
 def private static_value(expr : ExpressionPtr) : bool {
     if (expr is ExprConstString || expr is ExprConstInt || expr is ExprConstFloat || expr is ExprConstBool) { return true }
+    if (expr is ExprMakeTuple) {
+        for (value in (expr as ExprMakeTuple).values) { if (!static_value(value)) { return false } }
+        return true
+    }
     if (expr is ExprCall) {
         let call = expr as ExprCall
         let name = string(call.name)
         if (name != "px" && name != "dp" && name != "pct" && name != "rgb" &&
-            name != "em" && name != "rem" && name != "vw" && name != "vh") { return false }
+            name != "em" && name != "rem" && name != "vw" && name != "vh" && name != "effect_color") { return false }
         for (arg in call.arguments) { if (!static_value(arg)) { return false } }
         return true
     }

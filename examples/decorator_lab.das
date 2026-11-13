@@ -11,12 +11,11 @@ var data:table<uint64;DecoratorMemory>
 var created,destroyed,paints:int
 
 def install_ticket() {
-    register_decorator("lab-ticket",array<UiDecoratorParam>(
-        decorator_color_param("paper",rgb(239,220,173)),
-        decorator_color_param("ink",rgb(88,64,45)),
-        decorator_length_param("cut",dp(20)),
-        decorator_number_param("progress",0.64),
-        decorator_string_param("stamp","examples/assets/native_mesh_atlas.png")),@(event:UiDecoratorEvent) {
+    register_decorator("lab-ticket",(
+        paper = rgb(239,220,173), ink = rgb(88,64,45),
+        cut = dp(20), progress = 0.64,
+        stamp = "examples/assets/native_mesh_atlas.png"
+    ),@(event:UiDecoratorEvent) {
         let canvas=event.canvas
         if (event.kind==UiDecoratorKind.Create) { data[canvas]=DecoratorMemory(); created+=1 }
         elif (event.kind==UiDecoratorKind.Destroy) { data |> erase(canvas); destroyed+=1 }
@@ -62,27 +61,27 @@ def studio_style() {
     }
     rule(part("ticket2")) {
         width(px(300)); height(px(208)); padding(px(28)); property("margin-right","20px"); property("box-sizing","border-box")
-        custom_decorator("lab-ticket",array<UiDecoratorArg>(decorator_arg("paper",rgb(203,216,205)),decorator_arg("ink",rgb(57,93,81)),decorator_arg("cut",pct(13)),decorator_arg("progress",0.38)))
+        custom_decorator("lab-ticket",(paper = rgb(203,216,205), ink = rgb(57,93,81), cut = pct(13), progress = 0.38))
     }
     rule(part("ticket3")) {
         width(px(300)); height(px(208)); padding(px(28)); property("box-sizing","border-box")
-        custom_decorator("lab-ticket",array<UiDecoratorArg>(decorator_arg("paper",rgb(220,207,226)),decorator_arg("ink",rgb(97,67,112)),decorator_arg("cut",dp(7)),decorator_arg("progress",0.88)))
+        custom_decorator("lab-ticket",(paper = rgb(220,207,226), ink = rgb(97,67,112), cut = dp(7), progress = 0.88))
     }
     rule(part("serial")) { font_size(px(12)); margin_bottom(px(24)); color(rgb(115,100,85)) }
     rule(part("name")) { font_size(px(26)); margin_bottom(px(10)) }
     rule(part("detail")) { font_size(px(14)); color(rgb(111,100,88)); property("line-height","22px") }
     rule(part("caption")) { font_size(px(13)); color(rgb(135,113,95)); margin_bottom(px(12)) }
     rule(part("editor")) { width(px(620)); height(px(48)); padding_x(px(18)); padding_y(px(12)); property("box-sizing","border-box"); color(rgb(57,48,45)); font_size(px(18)); margin_bottom(px(24))
-        custom_decorator("lab-ticket",array<UiDecoratorArg>(decorator_arg("paper",rgb(253,248,234)),decorator_arg("cut",dp(8))))
+        custom_decorator("lab-ticket",(paper = rgb(253,248,234), cut = dp(8)))
     }
     rule(part("controls")) { property("align-items","center"); margin_bottom(px(22)) }
     rule(part("progress")) { width(px(230)); height(px(24)); property("margin-right","20px") }
     rule(part("progress")+" slidertrack") { height(px(4)); margin_top(px(8)); background(rgb(193,176,147)) }
     rule(part("progress")+" sliderbar") { width(px(15)); height(px(22)); background(rgb(143,87,63)) }
     rule(part("controls")+" button") { padding(px(13)); property("margin-right","12px"); color(rgb(77,60,48)); font_size(px(14))
-        custom_decorator("lab-ticket",array<UiDecoratorArg>(decorator_arg("paper",rgb(230,215,188)),decorator_arg("cut",dp(7))))
+        custom_decorator("lab-ticket",(paper = rgb(230,215,188), cut = dp(7)))
     }
-    rule(part("controls")+" button:hover") { custom_decorator("lab-ticket",array<UiDecoratorArg>(decorator_arg("paper",rgb(215,182,139)),decorator_arg("cut",dp(12)))) }
+    rule(part("controls")+" button:hover") { custom_decorator("lab-ticket",(paper = rgb(215,182,139), cut = dp(12))) }
     rule(part("footer")) { width(px(940)); color(rgb(135,120,105)); font_size(px(14)); property("line-height","23px") }
 }
 [ui_component]
@@ -96,7 +95,7 @@ def studio(var model:Studio) {
         row("cards") {
             column("ticket") {
                 width(px(model.expanded ? 340 : 268))
-                custom_decorator("lab-ticket",array<UiDecoratorArg>(decorator_arg("progress",model.amount),decorator_arg("paper",model.alternate ? rgb(245,197,173) : rgb(239,220,173))))
+                custom_decorator("lab-ticket",(progress = model.amount, paper = model.alternate ? rgb(245,197,173) : rgb(239,220,173)))
                 text("serial","01 / LIVE PARAMETERS"); text("name","{int(model.amount*100.)}% complete")
                 text("detail","Move the slider. Only this card gets new decorator data.")
             }
