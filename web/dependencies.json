@@ -3,5 +3,5 @@
   "dasSDL3/third_party/daScript": {"url": "https://github.com/GaijinEntertainment/daScript.git", "revision": "ebac0ffe46ab30de6c9536f4b0af7a33ede45902"},
   "RmlUi": {"url": "https://github.com/mikke89/RmlUi.git", "revision": "821cbd229d804cb1c905b729af86c21133abceee"},
   "SDL": {"url": "https://github.com/libsdl-org/SDL.git", "revision": "fa2c02bb6e21974a89ea9824bc53c9932abe5f9c"},
-  "freetype": {"url": "https://github.com/freetype/freetype.git", "revision": "c740f0fda4274d6ffd2e5b64a25b06ef69803a07"}
+  "freetype": {"url": "https://github.com/freetype/freetype.git", "revision": "0a0221a1347e2f1e07c395263540026e9a0aa7c7"}
 }
