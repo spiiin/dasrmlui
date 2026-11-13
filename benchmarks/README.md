@@ -1,122 +1,126 @@
-# DSL и native data binding RmlUi
+# DSL and native RmlUi data binding
 
-Runner теперь сравнивает **три пути**: legacy DSL (`mode=0`), native C++ data-for
-(`mode=1`) и hybrid (`mode=2`). Исторические двухсторонние CSV остаются читаемыми.
-Гибрид использует отдельную native-переменную на привязку; reference native data-for
-по-прежнему помечает весь корневой `rows`. Это разные гранулярности dirty, а не
-сравнение скорости daScript и C++ при одинаковом алгоритме.
+The runner compares **three paths**: legacy DSL (`mode=0`), native C++ data-for
+(`mode=1`) and hybrid (`mode=2`).
+Hybrid uses a separate native variable per binding; the reference native data-for
+still marks the whole root `rows` as dirty. These are different dirty granularities, not
+a comparison of daScript and C++ speed with the same algorithm.
 
-Запуск из корня репозитория (Windows, настроенная Release-сборка и Python 3):
+Run from the repository root (Windows, a configured Release build and Python 3):
 
 ```powershell
 ./tools/benchmark.ps1
-# Другой объём работы:
+# A different amount of work:
 ./tools/benchmark.ps1 -Rows 100,1000 -Samples 120 -Warmup 30 -Rounds 4
-# Проверка корректности, без требований к скорости:
+# Correctness check, with no speed requirements:
 ctest --test-dir build -R '^binding_benchmark_smoke$' --output-on-failure
 ```
 
-Скрипт включает `DASRMLUI_BUILD_BENCHMARKS`, собирает отдельный `dasrmlui_bench`,
-записывает сырые CSV, логи, metadata и сводки в `logs/binding-benchmark-*`.
-Обычный `dasrmlui` не содержит счётчиков аллокаций и benchmark API.
-Повторный анализ: `python benchmarks/analyze.py logs/binding-benchmark-1000.csv`.
-Столбцы времени — микросекунды, памяти — байты и число запросов на кадр.
+The script enables `DASRMLUI_BUILD_BENCHMARKS`, builds a separate `dasrmlui_bench`,
+and writes raw CSV files, logs, metadata and summaries to `logs/binding-benchmark-*`.
+The regular `dasrmlui` contains no allocation counters and no benchmark API.
+To repeat the analysis: `python benchmarks/analyze.py logs/binding-benchmark-1000.csv`.
+Time columns are in microseconds; memory columns are bytes and the number of requests
+per frame.
 
-## Что сравнивается
+## What is compared
 
-Одинаковый список из N строк: `div` и N видимых по стилю `span`, шрифт LatoLatin
-14 px, высота строки 20 px. Окно GL3 800×700, DPI 1. За пределами окна строки
-обрезаются; список **не виртуализирован**, layout обслуживает все N строк.
+The same list of N rows: a `div` and N `span` elements that are visible by style, the
+LatoLatin font at 14 px, row height 20 px. GL3 window 800×700, DPI 1. Rows outside the
+window are clipped; the list is **not virtualized**, and layout handles all N rows.
 
-| Сценарий | Изменения перед кадром |
+| Scenario | Changes before the frame |
 |---|---|
-| idle / простой | Модель не меняется, вызывается обычный цикл UI |
-| single | Меняется текст одной строки, индекс `(frame * 17) % N` |
-| bulk | Меняются тексты всех N строк |
-| rotate | Последняя строка переносится в начало |
+| idle | The model does not change, the regular UI loop is called |
+| single | The text of one row changes, index `(frame * 17) % N` |
+| bulk | The texts of all N rows change |
+| rotate | The last row is moved to the front |
 
-DSL — `[ui_component(legacy=true)]`, `each_keyed`, привязка `text(row.text)` и
-`ui_legacy_frame`, в текущем **интерпретаторе daScript**, со снимками зависимостей.
-Native — `DataModel`, типизированный C++ `vector<BenchRow>`, `data-for` и
-`{{row.text}}`; при изменениях помечается dirty корневая переменная `rows`.
-Hybrid — обычный `[ui_component]`, `ui_state`, `ui_edit`, `ui_frame` и `[ui_action]`, native
-DataViews для scalar-полей, компоненты и `each_keyed` нашего runtime. Сравнение
-включает расходы интерпретатора и моста в C++; AOT daScript здесь не измеряется.
-Один dirty `rows` не эквивалентен N независимым корневым scalar-переменным.
+DSL: `[ui_component(legacy=true)]`, `each_keyed`, the `text(row.text)` binding and
+`ui_legacy_frame`, in the current **daScript interpreter**, with dependency snapshots.
+Native: `DataModel`, a typed C++ `vector<BenchRow>`, `data-for` and
+`{{row.text}}`; on changes the root variable `rows` is marked dirty.
+Hybrid: a regular `[ui_component]`, `ui_state`, `ui_edit`, `ui_frame` and `[ui_action]`,
+native DataViews for scalar fields, components and `each_keyed` from our runtime. The
+comparison includes the cost of the interpreter and of the bridge to C++; AOT daScript
+is not measured here. One dirty `rows` is not equivalent to N independent root scalar
+variables.
 
-**Перестановки имеют разную семантику.** DSL перемещает существующий DOM по ключам
-и сохраняет состояние элементов. Native `data-for` привязан к позициям: обновляет
-содержимое прежних элементов. Smoke проверяет текст, порядок и сохранение identity:
-после первого rotate у DSL/hybrid сохраняются все N связей «запись → элемент», у native — 0.
-Поэтому время rotate нельзя считать сравнением двух реализаций keyed diff.
+**Reordering has different semantics.** The DSL moves the existing DOM by keys
+and keeps the state of the elements. Native `data-for` is bound to positions: it updates
+the content of the existing elements. The smoke test checks text, order and identity
+preservation: after the first rotate, DSL/hybrid keep all N "record → element" links,
+native keeps 0. So the rotate time cannot be treated as a comparison of two keyed diff
+implementations.
 
-## Границы измерения
+## Measurement boundaries
 
-1. `bindings`: DSL `ui_legacy_frame` или hybrid `ui_frame(state)` с отложенным `rui_update`,
-   либо native `DirtyVariable` + `DataModel::Update(true)`.
-2. `update`: `Context::Update()` — стили, layout и прочее обновление контекста.
-3. `render_cpu`: `rui_render()` — очистка, BeginFrame, Render, EndFrame и CPU-вызовы
-   GL-драйвера. Это не GPU timestamp и не время показа кадра.
-4. `gpu_wait`: `glFinish()` сразу после Render. Остаточное ожидание завершения GPU;
-   его нельзя интерпретировать как полное время GPU. Swap/present отсутствует.
-5. `gc`: явный `heap_collect(true, false)` после каждого кадра в обоих режимах.
-   Этот расход показан отдельно, не включён в Update и не скрыт в «бесплатной» фазе.
-6. `mutation` (`phase=6`, до bindings): изменения исходной модели и, для hybrid,
-   `ui_edit` и уведомления, сгенерированные `[ui_action]`. Начиная с гибридного сравнения эта
-   работа тоже измеряется. Анализатор вычисляет `prepare` как сумму mutation+bindings
-   **для каждого кадра**, затем её median/p95. Это исключает перенос стоимости
-   уведомлений за границы сравнения. Пустой `timer_baseline` сохраняет `phase=5`.
+1. `bindings`: DSL `ui_legacy_frame` or hybrid `ui_frame(state)` with a deferred
+   `rui_update`, or native `DirtyVariable` + `DataModel::Update(true)`.
+2. `update`: `Context::Update()` — styles, layout and the rest of the context update.
+3. `render_cpu`: `rui_render()` — clear, BeginFrame, Render, EndFrame and the CPU calls
+   of the GL driver. This is not a GPU timestamp and not the frame presentation time.
+4. `gpu_wait`: `glFinish()` right after Render. The residual wait for the GPU to finish;
+   it must not be read as the full GPU time. There is no swap/present.
+5. `gc`: an explicit `heap_collect(true, false)` after every frame on all three paths.
+   This cost is shown separately; it is not included in Update and not hidden in a
+   "free" phase.
+6. `mutation` (`phase=6`, before bindings): changes to the source model and, for hybrid,
+   `ui_edit` and the notifications generated by `[ui_action]`. The analyzer computes
+   `prepare` as the sum mutation+bindings **for each frame**, then its median/p95. This
+   keeps the cost of notifications inside the comparison. The empty `timer_baseline`
+   has `phase=5`.
 
-RmlUi обычно обновляет модели внутри Context::Update. Для разделения фаз runner
-использует **приватный заголовок закреплённой версии** `Source/Core/DataModel.h`.
-Последующий Context::Update видит уже чистую модель (остаётся небольшая проверка).
-Исходники RmlUi не изменяются. Если модели с цепочками зависимостей требуют нескольких
-проходов, такое разделение следует отдельно пересмотреть; здесь только прямые строки.
+RmlUi normally updates models inside Context::Update. To separate the phases the runner
+uses the **private header of the pinned version**, `Source/Core/DataModel.h`.
+The following Context::Update then sees an already clean model (a small check remains).
+The RmlUi sources are not modified. If models with dependency chains need several
+passes, this separation should be reviewed separately; here there are only direct strings.
 
-Подготовка модели, строки A/B, mount, проверка результата и сохранение
-CSV исключены из измерения. Мутации исключены из bindings и теперь измеряются
-отдельно (в исторических CSV mutation отсутствует). Все строки A/B созданы заранее. В native-ветке также
-ведётся контрольная daScript-модель вне измеряемых фаз. Это может влиять на кеши и GC;
-GC относится ко всему script Context, а не только к UI. Поэтому GC не является чистой
-оценкой стоимости одного native data model.
+Model preparation, the A/B strings, mount, result verification and saving the
+CSV are excluded from the measurement. Mutations are excluded from bindings and are
+measured separately. All A/B strings are created in advance. The native branch also keeps a control daScript model outside the measured
+phases. This can affect caches and GC; GC applies to the whole script Context, not only
+to the UI. So GC is not a clean estimate of the cost of a single native data model.
 
-В текущем hybrid-пути модель клонируется в `ui_state` до измерений, затем исходный
-массив очищается. Внутри фаз остаются только owned state, `ui_edit` и `ui_frame`;
-стоимость холодного клонирования не входит в steady-state результаты. В режимах
-DSL/native managed state не создаётся.
+In the hybrid path the model is cloned into `ui_state` before the measurements,
+then the source array is cleared. Only owned state, `ui_edit` and `ui_frame` remain
+inside the phases; the cost of the cold clone is not part of the steady-state results.
+In the DSL/native modes no managed state is created.
 
-Три пути запускаются в циклически меняющемся порядке. По умолчанию 4 временных раунда,
-30 прогревочных + 120 измеряемых кадров на сценарий/движок/раунд, затем отдельный
-раунд памяти. CSV хранит каждый кадр; сводка — median, p95 и диапазон медиан раундов.
-200 пустых интервалов `timer_baseline` измеряют нижнюю границу инструмента и переходов
-из daScript; она **не вычитается** из результатов. Очень маленькие значения native idle
-нужно оценивать с учётом этой границы. Холодный mount/компиляция сюда не входят.
+The three paths run in a cyclically rotating order. By default there are 4 timing
+rounds, 30 warm-up + 120 measured frames per scenario/engine/round, then a separate
+memory round. The CSV stores every frame; the summary has the median, p95 and the range
+of round medians. 200 empty `timer_baseline` intervals measure the lower bound of the
+instrument and of the calls from daScript; it is **not subtracted** from the results.
+Very small native idle values must be judged with this bound in mind. Cold
+mount/compilation is not included here.
 
-## Выделения памяти
+## Memory allocations
 
-- `cpp_allocs`, `cpp_bytes`: запросы `new`/`new[]` главного потока внутри фазы.
-  Сохраняется оригинальный reuse allocator daScript: benchmark компилирует его
-  `free_list.cpp` без глобальных operators и добавляет считающие обёртки.
-  Внешняя библиотека не редактируется. Self-test проверяет обычную и aligned аллокации.
-  Счётчики включены только в отдельном раунде памяти; его время не входит в статистику.
-- `das_allocs`, `das_bytes`: разница счётчиков heap + stringHeap daScript.
-  Включает логические выделения внутри пулов и realloc; байты realloc — положительный
-  прирост согласно реализации daScript, а не полный размер нового блока.
-- `das_live_delta`: изменение занятого объёма этих двух куч за фазу; отрицательно при GC.
+- `cpp_allocs`, `cpp_bytes`: `new`/`new[]` requests of the main thread inside the phase.
+  The original daScript reuse allocator is kept: the benchmark compiles its
+  `free_list.cpp` without the global operators and adds counting wrappers.
+  The external library is not edited. A self-test checks regular and aligned allocations.
+  The counters are enabled only in the separate memory round; its time is not part of
+  the statistics.
+- `das_allocs`, `das_bytes`: the difference of the daScript heap + stringHeap counters.
+  Includes logical allocations inside pools and realloc; realloc bytes are the positive
+  growth as implemented by daScript, not the full size of the new block.
+- `das_live_delta`: the change in the used size of these two heaps over the phase;
+  negative on GC.
 
-Это **не весь расход памяти процесса**: прямой malloc, внутренние аллокаторы SDL/
-FreeType/драйвера, фоновые потоки, GPU/VRAM и RSS не охвачены. C++ и daScript отражают
-разные уровни и могут пересекаться — их нельзя складывать в «общие байты».
-У временных строк `cpp_allocs/bytes = UINT64_MAX` означает «счётчик выключен», не
-гигантское выделение. Полная разбивка памяти по каждой фазе есть в summary CSV.
+This is **not the whole memory use of the process**: direct malloc, the internal
+allocators of SDL/FreeType/the driver, background threads, GPU/VRAM and RSS are not
+covered. The C++ and daScript counters reflect different levels and can overlap, so they
+must not be added up into "total bytes".
+In timing rows `cpp_allocs/bytes = UINT64_MAX` means "counter disabled", not
+a huge allocation. The full memory breakdown for each phase is in the summary CSV.
 
-## Проверки
+## Checks
 
-Smoke использует N=32, проверяет DOM после каждого кадра, отсутствие предупреждений,
-identity при rotate, число реально обновлённых DSL-привязок и hybrid native getter-ов
-(0/1/N/0), счётчики C++ и сохраняет снимки всех трёх путей. Проверки скорости не являются CI assertions:
-частоты CPU, другие приложения, драйвер и GPU меняют абсолютные времена.
-
-Исходный baseline: [results.md](results.md). Повторное сравнение с hybrid:
-[hybrid-results.md](hybrid-results.md).
-Текущий API с managed state: [state-results.md](state-results.md).
+The smoke test uses N=32 and checks the DOM after every frame, the absence of warnings,
+identity on rotate, the number of DSL bindings and hybrid native getters actually updated
+(0/1/N/0) and the C++ counters, and saves screenshots of all three paths. Speed checks
+are not CI assertions: CPU frequencies, other applications, the driver and the GPU
+change the absolute times.

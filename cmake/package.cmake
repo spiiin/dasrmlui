@@ -9,6 +9,7 @@
 # The layout is the one src/host.cpp expects:
 #   bin/dasrmlui(.exe)   daScript/daslib   dassdl3   dasrmlui   examples   assets
 install(TARGETS dasrmlui RUNTIME DESTINATION bin COMPONENT runtime)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" DESTINATION licenses RENAME dasrmlui-LICENSE.txt COMPONENT runtime)
 install(DIRECTORY "${DAS}/daslib" DESTINATION daScript COMPONENT runtime)
 install(DIRECTORY "${DAS}/modules/dasGlsl/glsl" DESTINATION daScript/modules/dasGlsl COMPONENT runtime)
 install(FILES "${DAS}/LICENSE" DESTINATION licenses RENAME daScript-LICENSE.txt COMPONENT runtime)

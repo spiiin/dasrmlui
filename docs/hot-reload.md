@@ -1,24 +1,25 @@
 # Hot reload / LiveHost
 
-В исполняемый файл встроен upstream `Module_LiveHost` daScript. `--watch` использует
-его persistent store, `@live`, lifecycle-аннотации, часы и запросы reload/reset.
-SDL3/RmlUi frame driver находится в `src/live_host.cpp` и `src/live_adapter.inc`.
+The upstream daScript `Module_LiveHost` is built into the executable. `--watch` uses
+its persistent store, `@live`, lifecycle annotations, clock and reload/reset requests.
+The SDL3/RmlUi frame driver is in `src/live_host.cpp` and `src/live_adapter.inc`.
 
-## Запуск
+## Running
 
 ```powershell
 ./build/bin/dasrmlui.exe examples/live_lab.das --watch --styles examples/live_lab_styles.das
 ```
 
-Оба файла — обычный daScript. Сначала измените заголовок, заметки и порядок карточек
-в UI. Правка `live_lab.das` пересоберёт компоненты, восстановив значения. Правка
-`live_lab_styles.das` заменит стили существующего DOM. F5 повторяет перезагрузку,
-Shift+F5 или `request_reload(true)` сбрасывает данные. `request_exit()` закрывает host.
+Both files are regular daScript. First change the title, the notes and the order of the
+cards in the UI. An edit to `live_lab.das` rebuilds the components and restores the
+values. An edit to `live_lab_styles.das` replaces the styles of the existing DOM. F5
+repeats the reload, Shift+F5 or `request_reload(true)` resets the data. `request_exit()`
+closes the host.
 
-Host следит за entry-файлами и загруженными зависимостями с интервалом 250 мс.
-Компиляция синхронная: во время неё кадры временно приостанавливаются. Проверяется
-содержимое файлов, поэтому запись с прежним размером или временем также обнаружится.
-`--frames N --smoke-test` ограничивает прогон и скрывает окно для автоматических тестов.
+The host watches the entry files and the loaded dependencies at a 250 ms interval.
+Compilation is synchronous: frames are paused while it runs. File contents are
+checked, so a write with the same size or time is also detected.
+`--frames N --smoke-test` limits the run and hides the window for automated tests.
 
 ## Lifecycle
 
@@ -34,45 +35,49 @@ def init() {
 }
 [export]
 def update() { ui_frame(app) $(var model:App) { workspace(model) } }
-// Необязательно: [export] def shutdown() { ... }
+// Optional: [export] def shutdown() { ... }
 ```
 
-Host владеет окном, SDL_Renderer или SDL_GLContext, обработкой событий и present.
-`update()` строит кадр; отдельный `main(smoke)` для live-приложения не нужен.
-Обычный режим `main(smoke)` продолжает работать без `--watch`.
-`ui_state` можно создавать и глобально: перед simulation кандидата host сохраняет
-актуальные значения предыдущего Context. Между кадрами используется стандартная
-политика LiveHost `collectHeapIfMostlyFree`.
-UI-операции и native-регистрации должны выполняться в `init/update`, не в глобальных
-инициализаторах: кандидаты симулируются в изоляции от работающего RmlUi.
+The host owns the window, the SDL_Renderer or SDL_GLContext, event processing and
+present. `update()` builds the frame; a live application does not need a separate
+`main(smoke)`. The regular `main(smoke)` mode continues to work without `--watch`.
+`ui_state` can also be created globally: before the simulation of a candidate the host
+saves the current values of the previous Context. Between frames the standard LiveHost
+policy `collectHeapIfMostlyFree` is used.
+UI operations and native registrations must run in `init/update`, not in global
+initializers: candidates are simulated in isolation from the running RmlUi.
 
-Последовательность замены:
+Replacement sequence:
 
-1. Компиляция кандидата, пока работает старый UI.
-2. `[before_reload]`, снимки root/local state; затем simulation и проверка entry functions
-   кандидата. Так глобальные `ui_state` получают самые свежие значения. Ошибка здесь
-   сохраняет работающий UI. После успешной подготовки: `shutdown`, `on_unmount`, удаление DOM.
-3. Завершение RmlUi, native elements/decorators/filters и их callback-ов **до** удаления
-   старого daScript Context. SDL-окно и SDL renderer/GL context сохраняются.
-4. `[after_reload]`, `init` и первый `update` кандидата, включая локальные миграции.
-5. При успехе старый Context удаляется, `get_reload_generation()` увеличивается.
-   При отказе migration/init/первого кадра кандидат удаляется, предыдущая программа
-   повторно симулируется и восстанавливает снимок. При ошибке компиляции даже remount нет.
+1. Compilation of the candidate while the old UI is running.
+2. `[before_reload]`, snapshots of root/local state; then simulation and a check of the
+   entry functions of the candidate. This way global `ui_state` variables get the most
+   recent values. An error here keeps the running UI. After successful preparation:
+   `shutdown`, `on_unmount`, DOM removal.
+3. Shutdown of RmlUi, native elements/decorators/filters and their callbacks **before**
+   the old daScript Context is deleted. The SDL window and the SDL renderer/GL context
+   are preserved.
+4. `[after_reload]`, `init` and the first `update` of the candidate, including local
+   migrations.
+5. On success the old Context is deleted and `get_reload_generation()` increases.
+   If migration/init/the first frame fails, the candidate is deleted, the previous
+   program is simulated again and restores the snapshot. On a compilation error there
+   is not even a remount.
 
-Первый пробный `update` ещё видит прежний generation. `[before_update]` вызывается
-перед обычными кадрами. Как в LiveHost, `is_reload()` остаётся true после reload;
-это не однокадровый флаг. На финальном `shutdown` он false. `get_last_error()`
-возвращает последнюю ошибку host. `request_reset()` соответствует полному reload.
-Произвольные внешние эффекты пользовательского `init/update/shutdown` не откатываются.
-Ошибка обычного `update` завершает live runner с ненулевым кодом.
+The first trial `update` still sees the previous generation. `[before_update]` is
+called before regular frames. As in LiveHost, `is_reload()` stays true after a reload;
+it is not a one-frame flag. On the final `shutdown` it is false. `get_last_error()`
+returns the last host error. `request_reset()` corresponds to a full reload.
+Arbitrary external effects of the user's `init/update/shutdown` are not rolled back.
+An error in a regular `update` terminates the live runner with a non-zero code.
 
-При code reload создаётся новый RmlUi Context: native registrations, публичные
-DataModel и дополнительные документы нужно заново создавать в `init` из сохранённых
-данных. Сырые native handles нельзя считать сохранённым состоянием. Режим renderer
-нельзя менять внутри одной сессии. DOM, фокус и анимации сохраняются при **style reload**;
-code reload выполняет remount.
+On a code reload a new RmlUi Context is created: native registrations, public
+DataModels and additional documents must be created again in `init` from the saved
+data. Raw native handles must not be treated as saved state. The renderer mode cannot
+be changed within one session. DOM, focus and animations are preserved on a
+**style reload**; a code reload performs a remount.
 
-## Root и local state
+## Root and local state
 
 ```das
 app=ui_state("workspace",1,App())
@@ -80,41 +85,45 @@ app=ui_state("workspace",1,App())
 [ui_component]
 def editor(id:int) {
     state("draft",2,Draft()) $(var draft:Draft) {
-        // bind_value(...), обработчики, on_mount/on_unmount
+        // bind_value(...), handlers, on_mount/on_unmount
     }
 }
 ```
 
-Краткие варианты: `ui_state("workspace",App())` и `state("draft",Draft())`, версия 1.
-Существующие `ui_state(App())` и `state(Draft())` тоже сохраняются в live-режиме:
-root получает ключ по исходному месту вызова, local — по месту объявления в компоненте.
-Для редактируемого кода рекомендуются явные имена: перемещение строк root или вставка
-безымянного state меняет автоматический ключ. Два одновременно живых root с одним
-ключом отклоняются. Явные имена local должны быть уникальны внутри компонента.
-У scalar local-значения блок принимает ссылку, например `$(var count:int&)`.
+Short forms: `ui_state("workspace",App())` and `state("draft",Draft())`, version 1.
+The existing `ui_state(App())` and `state(Draft())` are also preserved in live mode:
+the root gets a key from the source call site, the local state from the declaration
+site in the component. For code that is being edited, explicit names are recommended:
+moving the root lines or inserting an unnamed state changes the automatic key. Two
+roots alive at the same time with the same key are rejected. Explicit local names must
+be unique within a component. For a scalar local value the block takes a reference,
+for example `$(var count:int&)`.
 
-Полный local-ключ включает путь компонента и `each_keyed` key. Вставка другого
-именованного local-state не сдвигает существующий. Переименование компонента,
-изменение сигнатуры или identity его родителя меняет путь и создаёт новое состояние.
-Обычный unmount удаляет сохранённое local-значение; удалённый и вновь добавленный item
-не получает старый draft. `computed` не сохраняется — это производный кеш.
-`on_mount` снова выполняется после восстановления: он может перезаписать данные,
-поэтому начальные значения следует задавать в initializer, а не безусловно в hook.
-Снимок делается **до** `on_unmount`; изменения в teardown в него не входят.
+The full local key includes the identity of the component: its function and
+signature, the place it is nested in and the `each_keyed` key. Inserting another named
+local state does not shift an existing one. Renaming the component, changing its
+signature or changing the identity of its parent changes the key and creates a new
+state.
+A regular unmount deletes the saved local value; an item that was removed and added
+again does not get the old draft. `computed` is not saved: it is a derived cache.
+`on_mount` runs again after the restore: it can overwrite the data, so initial values
+should be set in the initializer, not unconditionally in the hook.
+The snapshot is taken **before** `on_unmount`; changes made in teardown are not
+included in it.
 
-Значения сериализуются только на reload. В простое и при обычном `ui_edit` снимков
-нет. Store содержит JSON, без ссылок на старый VM heap. Поддерживаются структуры,
-массивы, таблицы, tuples, scalar/vector/enum и fixed arrays. Таблицы кодируются
-массивом пар, сохраняя тип ключа; uint64 не проходит через float. Variants сохраняют
-тип и проверяемый tag; изменение их схемы требует версии и миграции. Указатели и
-callback-и не переносятся. Приложение может дополнительно использовать upstream
-`var @live value=...` для независимых глобальных данных.
+Values are serialized only on reload. In idle and on a regular `ui_edit` there are no
+snapshots. The store contains JSON, with no references to the old VM heap. Structures,
+arrays, tables, tuples, scalar/vector/enum and fixed arrays are supported. Tables are
+encoded as an array of pairs, which preserves the key type; uint64 does not go through
+float. Variants keep the type and a checked tag; changing their schema requires a
+version and a migration. Pointers and callbacks are not carried over. The application
+can additionally use the upstream `var @live value=...` for independent global data.
 
-## Эволюция и миграции
+## Evolution and migrations
 
-При той же версии поля сопоставляются по имени: перестановка/удаление безопасны,
-новые поля сохраняют initializer новой модели. Несовместимое изменение типа или
-смысла требует увеличения версии. Например, переименование `text` в `note`:
+With the same version, fields are matched by name: reordering/removal is safe, and
+new fields keep the initializer of the new model. An incompatible change of type or
+meaning requires a version increase. For example, renaming `text` to `note`:
 
 ```das
 struct Draft { note:string=""; clicks:int }
@@ -128,15 +137,16 @@ def ui_migrate(saved:JsonValue const?; old_version:int; var value:Draft):bool {
 // state("draft",2,Draft()) ...
 ```
 
-Тот же overload применяется к root и local соответствующего типа. `value` уже
-содержит новые defaults; `saved` — данные старой версии. `false` или исключение
-отклоняет candidate. При отсутствии подходящего overload несовпадение версий тоже
-отклоняется. Для намеренного сброса выполните full reload. Снимки существуют только
-в текущем процессе: это не сохранение на диск и не формат пользовательских файлов.
+The same overload applies to root and local state of the corresponding type. `value`
+already contains the new defaults; `saved` is the data of the old version. `false` or
+an exception rejects the candidate. If there is no suitable overload, a version
+mismatch is also rejected. For an intentional reset, perform a full reload. Snapshots
+exist only in the current process: this is not saving to disk and not a user file
+format.
 
-## Стили без remount
+## Styles without remount
 
-В компоненте используется `use_live_style("studio")`. Независимый файл стилей:
+The component uses `use_live_style("studio")`. An independent styles file:
 
 ```das
 require dasrmlui/ui
@@ -148,28 +158,29 @@ def theme() {
 def live_styles():string { return ui_style_sheet() { theme() } }
 ```
 
-`--styles` компилирует этот entry отдельно и получает RCSS через тот же DSL.
-Именованная область обеспечивает одинаковые selectors без импорта styles-файла
-в component script. Правила добавляются после обычных компонентных стилей и
-сохраняются при последующих ui_frame. Обновление используют и дополнительные DSL
-документы. Компиляционные ошибки, ошибки выполнения и RCSS warnings сохраняют
-предыдущий stylesheet. Сам styles entry не может обращаться к native RmlUi:
-регистрации custom decorators/shaders нужно выполнять в основном `init`.
+`--styles` compiles this entry separately and gets RCSS through the same DSL.
+The named scope provides identical selectors without importing the styles file
+into the component script. The rules are added after the regular component styles and
+are kept across subsequent ui_frame calls. The update also applies to additional DSL
+documents. Compilation errors, runtime errors and RCSS warnings keep the
+previous stylesheet. The styles entry itself cannot access native RmlUi:
+registrations of custom decorators/shaders must be done in the main `init`.
 
-Изменение общей зависимости обоих entry вызывает code reload. Автоматическое
-распознавание `[ui_style]` среди произвольных изменений общего component-файла не
-выполняется: для пути без remount нужен отдельный `--styles` entry. Текстуры, SVG,
-Lottie и внешние ресурсы не включены в этот watcher.
+A change to a dependency shared by both entries triggers a code reload. `[ui_style]`
+is not recognized automatically among arbitrary changes to a shared component file:
+the path without remount needs a separate `--styles` entry. Textures, SVG,
+Lottie and external resources are not included in this watcher.
 
-## Проверки
+## Checks
 
 ```powershell
 ctest --test-dir build -R 'live_|demo_live' --output-on-failure
 ```
 
-`live_reload`: root/local/keyed state, @live, full reset, GC, native teardown и SDL
-window identity. `live_state_codec`: контейнеры, типы и эволюция полей. `live_watch`:
-реальное изменение файлов, DOM/focus, отказ RCSS/компиляции, откат локальной миграции,
-затем успешные root/local миграции с вставкой нового state. `live_gl`: GL3 reload.
-`demo_live_lab`: smoke полного примера. `live_errors`: диагностика и ненулевой exit
-при ошибках shutdown/native paint. Изменяемые fixtures пишутся только под `build/`.
+`live_reload`: root/local/keyed state, @live, full reset, GC, native teardown and SDL
+window identity. `live_state_codec`: containers, types and field evolution.
+`live_watch`: real file changes, DOM/focus, RCSS/compilation rejection, rollback of a
+local migration, then successful root/local migrations with insertion of a new state.
+`live_gl`: GL3 reload. `demo_live_lab`: smoke of the full example. `live_errors`:
+diagnostics and non-zero exit on shutdown/native paint errors. Mutable fixtures are
+written only under `build/`.

@@ -1,12 +1,12 @@
-# Компоненты, состояние, формы и большие списки
+# Components, state, forms and large lists
 
-Все конструкции ниже используют синтаксис daScript и AST-аннотации из
-`dasrmlui/macros.das`. Отдельного парсера, `.rml` или `.rcss` не требуется.
-Работающие приложения: `examples/catalog.das` и `examples/component_lab.das`.
+All constructs below use daScript syntax and the AST annotations from
+`dasrmlui/macros.das`. No separate parser, `.rml` or `.rcss` file is needed.
+Working applications: `examples/catalog.das` and `examples/component_lab.das`.
 
-`[ui_component]` по умолчанию использует гибридный runtime с native DataModel для
-прямых scalar-привязок. Структура, сложные выражения и внешние зависимости сохраняют
-fallback. Корневая модель создаётся один раз через `ui_state(initial)`:
+By default `[ui_component]` uses the hybrid runtime with a native DataModel for direct
+scalar bindings. Structure, complex expressions and external dependencies keep the
+fallback. The root model is created once with `ui_state(initial)`:
 
 ```dascript
 var initial = Model()
@@ -16,27 +16,27 @@ ui_edit(state) $(var model:Model) { model.title = "New title" }
 ui_read(state) $(model:Model) { print("{model.title}\n") }
 ```
 
-Здесь Model — прикладная структура с полем title, screen — её компонент.
-`ui_state` — GC-owned глубокая копия initial; после создания изменения initial
-не влияют на UI. Не создавайте state каждый кадр и не используйте `inscope`.
-Root не должен содержать borrowed pointers/lambdas. Заимствование модели действует
-только внутри read/edit/frame блока; ссылки не должны покидать его scope.
-`ui_read` readonly; `ui_frame` через макрос разрешает mutable borrow для handlers.
+Here Model is an application struct with a title field, and screen is its component.
+`ui_state` is a GC-owned deep copy of initial; after it is created, changes to initial
+do not affect the UI. Do not create the state every frame and do not use `inscope`.
+The root must not contain borrowed pointers or lambdas. The model borrow is valid only
+inside a read/edit/frame block; references must not leave its scope.
+`ui_read` is read-only; `ui_frame` allows a mutable borrow for handlers through the macro.
 
-События компонентов отслеживают записи автоматически. Внешние прямые записи
-делаются через `ui_edit`; неизвестные изменяющие helpers инвалидируют консервативно,
-`[ui_action]` даёт точное отслеживание их записей. Catalog работает через события,
-Progress Lab использует edit в tick. Ошибка edit не откатывает частичные изменения;
-frame внутри edit запрещён. Передача другого state в frame сбрасывает старое дерево.
+Component events track writes automatically. Direct writes from outside go through
+`ui_edit`; unknown mutating helpers invalidate conservatively, and `[ui_action]` gives
+exact tracking of their writes. Catalog works through events; Progress Lab uses edit in
+its tick. An error in edit does not roll back partial changes; a frame inside edit is
+not allowed. Passing a different state to frame resets the old tree.
 
-Для старого сравнения зависимостей явно используйте `[ui_component(legacy=true)]`
-и `ui_legacy_frame()`. [Полный пример main, lifetime и ограничения](hybrid.md).
+For plain dependency comparison without a native DataModel, use
+`[ui_component(legacy=true)]` and `ui_legacy_frame()` explicitly. [Full main example, lifetime and limitations](hybrid.md).
 
-## Media queries, темы, DPI и ninepatch
+## Media queries, themes, DPI and ninepatch
 
-Пример `examples/style_lab.das` показывает две темы, масштаб 100/150%, native
-адаптивную раскладку и растягиваемые рамки одного atlas. Все переключения сохраняют
-handles и введённый текст.
+The `examples/style_lab.das` example shows two themes, 100/150% scale, native
+responsive layout and stretchable frames from one atlas. All switches keep handles and
+entered text.
 
 ```das
 [ui_style]
@@ -56,70 +56,74 @@ def app_style() {
     }
 }
 
-// После создания context, например в обработчике кнопки:
+// After the context is created, for example in a button handler:
 set_theme("night")
 set_ui_scale(1.5)
 ```
 
-`media(query) { ... }` записывает native `@media`. Типизированные query helpers:
-`media_min_width`, `media_max_width`, `media_min_height`, `media_max_height` принимают
-`UiLength` (`px` или `dp`); `media_min_resolution` принимает отношение пикселей;
-`media_orientation("portrait" | "landscape")` и `media_theme(name)` задают другие
-условия. `media_and(a,b)` объединяет положительные условия; `media_not(query)`
-отрицает весь запрос. Для остальных native условий есть строковый вариант,
-например `media("(min-aspect-ratio: 4/3) and (max-resolution: 2x)")`.
+`media(query) { ... }` writes a native `@media`. Typed query helpers:
+`media_min_width`, `media_max_width`, `media_min_height`, `media_max_height` take a
+`UiLength` (`px` or `dp`); `media_min_resolution` takes a pixel ratio;
+`media_orientation("portrait" | "landscape")` and `media_theme(name)` set the other
+conditions. `media_and(a,b)` combines positive conditions; `media_not(query)`
+negates the whole query. For the remaining native conditions there is a string form,
+for example `media("(min-aspect-ratio: 4/3) and (max-resolution: 2x)")`.
 
-Вложенные media/theme blocks запрещены: объединяйте условия через `media_and`.
-Отрицание отдельного аргумента `media_and` тоже отвергается, чтобы не менять смысл
-выражения при сериализации в native `not`. Синтаксис строкового запроса проверяет
-RmlUi; это не отдельный CSS-парсер. Доступны только поддерживаемые RmlUi условия
-и операции, без CSS `or` и сравнений вида `width <= ...`.
+Nested media/theme blocks are not allowed: combine conditions with `media_and`.
+Negating a single argument of `media_and` is also rejected, so that the meaning of the
+expression does not change when it is serialized into a native `not`. The syntax of a
+string query is checked by RmlUi; this is not a separate CSS parser. Only the conditions
+and operations that RmlUi supports are available, without CSS `or` and comparisons such
+as `width <= ...`.
 
-`theme(name) { ... }` — сокращение для media query по активной теме context.
-`set_theme(name)` переключает одну выбранную палитру: деактивирует предыдущую,
-активирует новую; `set_theme("")` снимает её. Независимые флаги вроде contrast
-включаются через `activate_theme("contrast", true)` и выключаются через `false`.
-Смена палитры не выключает другие независимые флаги. `ui_theme()` возвращает
-выбранную палитру, `theme_active(name)` — фактическую активность native темы.
-Темы общие для всех документов context, их имена не scoped.
+`theme(name) { ... }` is shorthand for a media query on the active theme of the context.
+`set_theme(name)` switches the one selected palette: it deactivates the previous one and
+activates the new one; `set_theme("")` clears it. Independent flags such as contrast
+are turned on with `activate_theme("contrast", true)` and off with `false`.
+Changing the palette does not turn off other independent flags. `ui_theme()` returns
+the selected palette; `theme_active(name)` returns whether the native theme is actually
+active. Themes are shared by all documents of the context; their names are not scoped.
 
-`dp(value)` создаёт типизированную длину. `set_ui_scale(value)` задаёт положительный
-конечный пользовательский множитель; `ui_scale()` возвращает его. Итоговый
-`ui_dp_ratio()` равен SDL display scale × user scale. При инициализации bridge читает
-display scale и реальные пиксельные размеры окна; при событии изменения display scale
-сохраняет пользовательский множитель. `px` остаётся физическим пикселем, а размеры и
-шрифты в `dp` масштабируются. Media queries с длинами в `dp` учитывают итоговый ratio;
-`resolution` в RmlUi означает этот же ratio, а не разрешение экрана в пикселях.
+`dp(value)` creates a typed length. `set_ui_scale(value)` sets a positive finite user
+multiplier; `ui_scale()` returns it. The resulting `ui_dp_ratio()` equals
+SDL display scale × user scale. On initialization the bridge reads the display scale and
+the real pixel size of the window; on a display scale change event it keeps the user
+multiplier. `px` stays a physical pixel, while sizes and fonts in `dp` are scaled.
+Media queries with lengths in `dp` take the resulting ratio into account; `resolution`
+in RmlUi means this same ratio, not the screen resolution in pixels.
 
-Media/theme стили меняются в native RmlUi без пересоздания дерева и пересчёта обычных
-компонентов. Прямые вызовы `ui_theme`, `theme_active`, `ui_dp_ratio`, `ui_scale` внутри
-аннотации автоматически подписывают компонент на изменения среды; runtime будит
-его и нужных предков. Для чтения, спрятанного в обычной helper-функции, добавьте
-`watch_style_environment()` в компонент. Изменение размеров viewport по-прежнему
-использует существующие зависимости `ui_width`/`ui_height`. `ui_reset` очищает DSL,
-но оставляет настройки живого context; `rui_shutdown` сбрасывает и темы, и масштаб.
+Media/theme styles change in native RmlUi without recreating the tree or recomputing
+ordinary components. Direct calls to `ui_theme`, `theme_active`, `ui_dp_ratio`,
+`ui_scale` inside the annotation subscribe the component to environment changes
+automatically; the runtime wakes it and the required ancestors. For a read hidden inside
+an ordinary helper function, add `watch_style_environment()` to the component. A
+viewport size change still uses the existing `ui_width`/`ui_height` dependencies.
+`ui_reset` clears the DSL but keeps the settings of the live context; `rui_shutdown`
+resets both the themes and the scale.
 
-`spritesheet(source, resolution) { ... }` задаёт native resolution, по умолчанию 1.
-Координаты `sprite` всегда в пикселях исходной картинки. Для atlas в 2x размеры
-спрайтов и ninepatch-рамки при ratio=1 будут вдвое меньше исходных. Несколько sheets
-в одном стиле получают разные имена; sheets можно объявлять внутри media blocks.
+`spritesheet(source, resolution) { ... }` sets the native resolution, 1 by default.
+`sprite` coordinates are always in pixels of the source image. For a 2x atlas, sprite
+sizes and the ninepatch frame at ratio=1 are half the source size. Several sheets
+in one style get different names; sheets can be declared inside media blocks.
 
-`ninepatch(outer, inner, paint_area="padding-box")` использует два scoped sprite
-имени из одного atlas: внешний прямоугольник и внутреннюю растягиваемую область.
-Углы сохраняют естественный размер, края растягиваются вдоль одной оси, центр — вдоль
-двух. Вариант `ninepatch(outer, inner, dp(12), "border-box")` задаёт одинаковую толщину
-всех краёв явно. Для разных толщин по сторонам остаётся native `property("decorator",...)`.
-Размеры рамки не добавляют padding автоматически: отступы содержимого задаются отдельно.
+`ninepatch(outer, inner, paint_area="padding-box")` uses two scoped sprite names from
+one atlas: the outer rectangle and the inner stretchable area. Corners keep their
+natural size, edges stretch along one axis, the center stretches along both. The form
+`ninepatch(outer, inner, dp(12), "border-box")` sets the same thickness for all edges
+explicitly. For different thicknesses per side, the native `property("decorator",...)`
+remains. The frame size does not add padding automatically: content padding is set
+separately.
 
-Проверки: `style_environment` — темы, media, dp, начальный/изменённый DPI, selective
-invalidation, focus/state и перезапуск context; `ninepatch_pixels` — реальные пиксели
-четырёх углов и центра на двух панелях при 1x/2x и смене темы. Физическое перетаскивание
-между мониторами с разным DPI отдельно не проверялось; смена ratio проверена программно.
+Tests: `style_environment` covers themes, media, dp, initial and changed DPI, selective
+invalidation, focus/state and context restart; `ninepatch_pixels` covers the real pixels
+of the four corners and the center on two panels at 1x/2x and on a theme change.
+Physically dragging the window between monitors with different DPI is not tested
+separately; the ratio change is tested programmatically.
 
-## Анимации и отложенное удаление
+## Animations and deferred removal
 
-`examples/animations.das` — меню Orbital с плавающим кораблём, выдвижной панелью,
-уведомлениями и однократной анимацией запуска. Transform требует GL3 renderer.
+`examples/animations.das` is the Orbital menu with a floating ship, a slide-out panel,
+notifications and a one-shot launch animation. Transform requires the GL3 renderer.
 
 ```das
 [ui_style]
@@ -135,67 +139,70 @@ def menu_style() {
     rule(part("inspector")) { opacity(1.); property("transform", "translateX(0px)") }
 }
 
-// Внутри [ui_component], после use_style(@@menu_style):
+// Inside [ui_component], after use_style(@@menu_style):
 animated_when("inspector", model.open,
     motion("enter", 0.3), motion("leave", 0.25)) {
     inspector_content(model)
 }
 ```
 
-`keyframes` объявляются вне `rule`, внутри `[ui_style]`. Проценты возрастают от
-`0.` до `100.`; оба крайних ключа обязательны. Типизированные style helpers и
-`property` записывают свойства ключа. Имена scoped: `motion("enter", ...)` использует
-текущий `use_style`; `animation_name("enter")` возвращает полное native имя.
+`keyframes` are declared outside `rule`, inside `[ui_style]`. Percentages increase from
+`0.` to `100.`; both end keys are required. The typed style helpers and `property`
+write the properties of a key. Names are scoped: `motion("enter", ...)` uses the
+current `use_style`; `animation_name("enter")` returns the full native name.
 
-`motion(name, seconds, easing="cubic-out", iterations=1, alternate=false)` — описание
-анимации. `iterations=-1` задаёт бесконечный цикл. Внутри элемента:
+`motion(name, seconds, easing="cubic-out", iterations=1, alternate=false)` describes an
+animation. `iterations=-1` sets an infinite loop. Inside an element:
 
 ```das
 animate(motion("pulse", 1.2, "sine-in-out", -1, true), 0, model.ambient)
 
-// Для конечной анимации: изменение revision запускает её заново.
+// For a finite animation: a change of revision starts it again.
 animate(motion("launch", 0.4), model.launch_revision, model.launching)
 on_animation_end() $(name:string) { model.launching=false; model.completed+=1 }
 ```
 
-Это альтернативные примеры для разных элементов: на одном элементе работает
-одна управляемая анимация. Не смешивайте `animate`, `animated_when` и прямое
-присваивание `animation` на одном узле. `enabled=false` останавливает анимацию и
-возвращает базовый стиль; повторное включение начинает её сначала. Это stop/replay,
-а не pause/resume. Начальный ключ применяется до первого render, завершение или
-отмена возвращают значения из stylesheet. Поэтому базовые значения анимируемых
-свойств задавайте в `rule`, а не через inline property/binding на том же элементе.
+These are alternative examples for different elements: one element runs one managed
+animation. Do not mix `animate`, `animated_when` and a direct assignment of `animation`
+on one node. `enabled=false` stops the animation and restores the base style; enabling
+it again starts it from the beginning. This is stop/replay, not pause/resume. The
+initial key is applied before the first render; completion or cancellation restores the
+values from the stylesheet. So set the base values of animated properties in a `rule`,
+not through an inline property/binding on the same element.
 
-RmlUi интерполирует свойства в `Update`; неизменившиеся компоненты и bindings не
-пересчитываются каждый кадр. Runtime собирает native `animationend` всех свойств
-в один `on_animation_end`, доставляемый через обычную очередь на следующем
-`ui_frame`. Аргумент — полное scoped имя. Каждому запуску назначается generation:
-завершение старого запуска не вызывается после replay/cancel. У бесконечной и
-отменённой анимации completion нет. `on_transition_end` отдельно получает имя
-свойства из native `transitionend`; `transition` задаётся обычным `property` в стиле.
+RmlUi interpolates properties in `Update`; unchanged components and bindings are not
+recomputed every frame. The runtime collects the native `animationend` of all properties
+into one `on_animation_end`, delivered through the ordinary queue on the next
+`ui_frame`. The argument is the full scoped name. Each run gets a generation: the
+completion of an old run is not called after replay/cancel. An infinite or canceled
+animation has no completion. `on_transition_end` separately receives the property name
+from the native `transitionend`; `transition` is set with an ordinary `property` in the
+style.
 
-`animated_when` создаёт дополнительный `div` с указанным именем. При `visible=false`
-он удерживает DOM и дочернее локальное состояние до фактического завершения exit,
-отключает ввод в поддереве и возвращает фокус внешнему элементу через `focus_scope`.
-Затем вызывает обычный unmount до render. Если `visible` снова стал true, exit
-отменяется, enter начинается с первого ключа, handles и состояние сохраняются.
-Это не плавный разворот от текущего интерполированного значения. Exit должен иметь
-ровно одну итерацию. Удаление родителя и `ui_reset` очищают поддерево сразу.
+`animated_when` creates an extra `div` with the given name. With `visible=false` it
+keeps the DOM and the child local state until the exit actually finishes, disables
+input in the subtree and returns focus to the outer element through `focus_scope`.
+Then it performs an ordinary unmount before render. If `visible` becomes true again,
+the exit is canceled, the enter starts from the first key, and handles and state are
+kept. This is not a smooth reversal from the current interpolated value. The exit must
+have exactly one iteration. Removing the parent and `ui_reset` clear the subtree
+immediately.
 
-В keyed-списке оставляйте запись в модели на время exit и меняйте её `visible`.
-Физическое удаление записи из массива сразу размонтирует компонент: автоматического
-удержания удалённых элементов списка пока нет. Managed keyframes принимают native
-числа/длины/углы, цвета, transform, keywords, decorator и filter. Box-shadow,
-font-effect и ещё не разрешённые `var(...)`/shorthand placeholders в ключах отвергаются,
-чтобы не ждать несуществующего completion. Прямые bindings `Element::Animate` и
-`AddAnimationKey`, несколько параллельных клипов на узле и timeline пока не добавлены.
+In a keyed list, keep the entry in the model for the duration of the exit and change its
+`visible`. Physically removing the entry from the array unmounts the component
+immediately: removed list items are not retained automatically yet. Managed keyframes
+accept native numbers/lengths/angles, colors, transform, keywords, decorator and filter.
+Box-shadow, font-effect and not yet resolved `var(...)`/shorthand placeholders in keys
+are rejected, so that the runtime does not wait for a completion that never comes.
+Direct bindings for `Element::Animate` and `AddAnimationKey`, several parallel clips on
+one node, and a timeline are not added yet.
 
-`tests/animations.das` использует управляемые часы и небольшие шаги native Update:
-RmlUi ограничивает шаг интерполяции 0.1 секунды. Проверяются интерполяция при спящих
-компонентах, группировка completion, устаревшее событие после replay, repeat/infinite,
-stop, exit/unmount, фокус, сохранение состояния, GC и удаление родителя.
+`tests/animations.das` uses a controlled clock and small native Update steps: RmlUi
+limits the interpolation step to 0.1 second. It checks interpolation while components
+sleep, completion grouping, a stale event after replay, repeat/infinite, stop,
+exit/unmount, focus, state preservation, GC and parent removal.
 
-## Локальное состояние и жизненный цикл
+## Local state and lifecycle
 
 ```das
 struct Counter { id:int; count:int }
@@ -213,38 +220,39 @@ def counter(id:int) {
 }
 ```
 
-`state(initial)` получает блок с **явно типизированным mutable-аргументом**.
-Инициализатор выполняется один раз. Макрос создаёт отдельное типизированное хранилище
-`table<string;array<T>>`; ключ включает путь экземпляра компонента и место декларации.
-Одноэлементный массив удерживает адрес значения при росте таблицы. В runtime не
-сохраняется указатель на стек вызвавшей функции.
+`state(initial)` takes a block with an **explicitly typed mutable argument**.
+The initializer runs once. The macro creates a separate typed storage
+`table<string;array<T>>`; the key includes the component instance path and the
+declaration site. The single-element array keeps the address of the value stable when
+the table grows. The runtime does not store a pointer to the stack of the calling
+function.
 
-В `each_keyed` перестановка сохраняет локальное состояние. Удаление вызывает очистку;
-последующее появление того же ключа создаёт новое состояние. Для долгоживущих данных
-после удаления храните их в модели. Декларации `state` и `computed` должны находиться
-на уровне компонента, до DOM-контейнеров, и быть безусловными. Это же правило действует
-для hooks `on_mount`/`on_unmount`. В условии или списке
-вызывайте дочерний компонент с собственной декларацией. Для нескольких одинаковых
-компонентов с изменяемым порядком используйте `each_keyed`.
+In `each_keyed`, reordering keeps the local state. Removal triggers cleanup; if the same
+key appears again later, a new state is created. For data that must outlive removal,
+store it in the model. `state` and `computed` declarations must be at the component
+level, before DOM containers, and unconditional. The same rule applies to the
+`on_mount`/`on_unmount` hooks. Inside a condition or a list, call a child component
+with its own declaration. For several identical components whose order can change, use
+`each_keyed`.
 
-`on_mount` выполняется один раз **в месте декларации во время первого прохода**, до
-завершения layout. Поэтому в нём можно инициализировать состояние; для фокуса служит
-отложенный `request_focus`. Это не callback «после отрисовки». Не измеряйте в нём ещё
-не созданные DOM-элементы.
+`on_mount` runs once **at the declaration site during the first pass**, before layout
+is finished. So you can initialize state in it; for focus, use the deferred
+`request_focus`. It is not an "after render" callback. Do not measure DOM elements in
+it that are not created yet.
 
-`on_unmount` вызывается до удаления DOM, с последним значением локального состояния.
-Дочерние компоненты очищаются раньше родителей, несколько hooks одного компонента —
-в обратном порядке. Затем освобождается состояние. `ui_reset()` выполняет такую же
-очистку; повторный reset ничего не вызывает. Нельзя создавать UI или вызывать reset
-из teardown.
+`on_unmount` is called before the DOM is removed, with the last value of the local
+state. Child components are cleaned up before their parents; several hooks of one
+component run in reverse order. Then the state is freed. `ui_reset()` performs the same
+cleanup; a repeated reset calls nothing. You must not create UI or call reset from
+teardown.
 
-Cleanup становится отдельной именованной функцией, которая заново получает owned
-state. В ней доступны глобальные значения и окружающие `state`/`computed`; borrowed
-параметры исходной функции и временные локальные переменные не захватываются. Сохраните
-нужный идентификатор в состоянии, как `local.id` выше. В состоянии храните значения,
-которые действительно принадлежат компоненту, а не указатели на временные массивы.
+The cleanup becomes a separate named function that obtains the owned state again.
+Global values and the enclosing `state`/`computed` are available in it; borrowed
+parameters of the original function and temporary local variables are not captured.
+Store the identifier you need in the state, like `local.id` above. Keep in the state
+values that really belong to the component, not pointers to temporary arrays.
 
-## Computed, слоты и события
+## Computed, slots and events
 
 ```das
 [ui_component]
@@ -266,20 +274,20 @@ def screen(var model:Model) {
 }
 ```
 
-`computed` кеширует результат по прочитанным полям, здесь `model.amount`. Изменение
-`model.caption` не вызывает `expensive`. Поддержаны владеющие результаты, включая
-массивы; они освобождаются вместе с компонентом. Тип результата задаётся аргументом
-блока. Getter должен быть чистым. Для скрытых внешних зависимостей передавайте
-revision/значение явно либо используйте `ui_watch` и `ui_touch`.
+`computed` caches the result by the fields that were read, here `model.amount`. A
+change of `model.caption` does not call `expensive`. Owning results are supported,
+including arrays; they are freed together with the component. The result type is given
+by the block argument. The getter must be pure. For hidden external dependencies, pass
+a revision/value explicitly or use `ui_watch` and `ui_touch`.
 
-`slot` синхронно вызывает блок содержимого, `emit` — типизированное событие компонента.
-Есть `emit(event)` без payload и `emit(event,value)` с payload. Ни один из этих блоков
-не сохраняется между кадрами. Компонент с callable-параметром консервативно обходится
-при посещении родителем: сравнивать адрес borrowed-замыкания небезопасно. Если родитель
-пропущен, дочерние слоты также не выполняются. Внутренние bindings и computed сохраняют
-свои отдельные проверки зависимостей.
+`slot` calls the content block synchronously; `emit` calls a typed component event.
+There is `emit(event)` without a payload and `emit(event,value)` with a payload. None of
+these blocks is stored between frames. A component with a callable parameter gets a
+conservative pass whenever its parent visits it: comparing the address of a borrowed
+closure is not safe. If the parent is skipped, the child slots do not run either.
+Inner bindings and computed values keep their own separate dependency checks.
 
-## Поля и валидация
+## Fields and validation
 
 ```das
 text_input("units") {
@@ -304,31 +312,33 @@ select_input("collection") {
 }
 ```
 
-`choices` имеет тип `array<UiOption>`, например
-`UiOption(value="audio",caption="Audio")`. Подписи экранируются как текст.
-Список опций перестраивается только при изменении содержимого. Значение модели
-должно соответствовать существующей опции. `checkbox` создаётся сразу с правильным
-типом input, а не меняет тип уже созданного текстового поля.
+`choices` has the type `array<UiOption>`, for example
+`UiOption(value="audio",caption="Audio")`. Captions are escaped as text.
+The option list is rebuilt only when its content changes. The model value must match
+an existing option. `checkbox` is created with the correct input type from the start;
+it does not change the type of an already created text field.
 
-У `bind_int`, `bind_float`, `bind_edit` есть черновик ввода. Строки `-`, `12xyz`,
-переполнение и выход за диапазон не меняют модель и не превращаются в ноль. Черновик
-остаётся в поле для исправления, `field_error` возвращает сообщение, элемент получает
-псевдокласс `:invalid`. `bind_float` отвергает NaN и бесконечность при конечных границах.
-У `bind_edit` validator возвращает пустую строку для допустимого значения.
+`bind_int`, `bind_float` and `bind_edit` have an input draft. The strings `-`, `12xyz`,
+overflow and out-of-range values do not change the model and do not turn into zero. The
+draft stays in the field for correction, `field_error` returns the message, and the
+element gets the `:invalid` pseudo-class. `bind_float` rejects NaN and infinity when the
+bounds are finite. For `bind_edit`, the validator returns an empty string for a valid
+value.
 
-Режим `change` применяет допустимые изменения сразу; `Enter` ждёт Enter; `blur` —
-ухода фокуса. Escape сбрасывает черновик к модели. Внешнее изменение значения модели
-заменяет черновик. `field_pending(name[,key])` сообщает о неприменённом вводе; например,
-в Catalog Save недоступен, пока количество не подтверждено Enter. `field_error` и
-`field_pending` ищут поле внутри текущего компонента; вне рендера — во всём дереве.
-Для повторяющихся полей передавайте ключ. Имена полей внутри области должны различаться.
+The `change` mode applies valid changes immediately; `Enter` waits for Enter; `blur`
+waits for focus loss. Escape resets the draft to the model. An external change of the
+model value replaces the draft. `field_pending(name[,key])` reports input that is not
+applied yet; for example, in Catalog, Save is unavailable until the quantity is
+confirmed with Enter. `field_error` and `field_pending` look for the field inside the
+current component; outside rendering they search the whole tree. For repeated fields,
+pass a key. Field names within a scope must be distinct.
 
-Простой `bind_value` сохраняет прежнее поведение: setter может отклонить/нормализовать
-строку, и следующий проход возвращает значение модели. Он не удерживает ошибочный
-черновик. Programmatic updates checkbox/select подавляют события, чтобы не создавать
-петлю model → DOM → model. Черновики удаляются вместе с DOM-узлами.
+Plain `bind_value` keeps no draft: the setter can reject or normalize the string, and
+the next pass restores the model value.
+Programmatic updates of checkbox/select suppress events so that they do not create a
+model → DOM → model loop. Drafts are removed together with their DOM nodes.
 
-## Виртуализация
+## Virtualization
 
 ```das
 virtual_each("assets",items,54.0,420.0,$(item:Asset) => item.id) $(item:Asset) {
@@ -336,29 +346,30 @@ virtual_each("assets",items,54.0,420.0,$(item:Asset) => item.id) $(item:Asset) {
 }
 ```
 
-Параметры: имя, массив, высота строки, высота viewport, функция уникального `int`-ключа,
-блок строки. Необязательный последний аргумент `overscan` по умолчанию равен 2.
-Высоты задаются в пикселях и должны быть положительными. На данный момент это
-**фиксированная высота**, без измерения переменных строк.
+Parameters: name, array, row height, viewport height, a function returning a unique
+`int` key, and the row block. The optional last argument `overscan` defaults to 2.
+Heights are in pixels and must be positive. For now this is a **fixed height**, with no
+measurement of variable rows.
 
-Runtime создаёт scroll-контейнер, верхний и нижний spacer и только видимые строки с
-запасом. Обёртка строки имеет фиксированную высоту и скрывает переполнение: содержимое
-должно в неё помещаться. При прокрутке просыпается владелец списка и его предки.
-При уменьшении массива scroll offset ограничивается новой длиной. Для программного
-перехода: `rui_scroll_to(ui_find("assets"),offset)`.
+The runtime creates a scroll container, a top and a bottom spacer, and only the visible
+rows plus a margin. The row wrapper has a fixed height and hides overflow: the content
+must fit into it. On scroll, the owner of the list and its ancestors wake up.
+When the array shrinks, the scroll offset is clamped to the new length. For a
+programmatic jump: `rui_scroll_to(ui_find("assets"),offset)`.
 
-Копируется только видимый срез, чтобы setter мог безопасно менять источник во время
-события. Все ключи проверяются на дубликаты: стоимость обновления списка включает
-**O(N) проверку ключей**, создание/обновление DOM — O(видимых строк). На спокойном кадре
-список не обходится, если компонент пропущен. Передача огромного массива как аргумента
-корневого компонента всё ещё требует снимка этого аргумента. В Catalog корень получает
-небольшие query/selection/revision, а фильтр кеширует массив в `computed`.
+Only the visible slice is copied, so that a setter can safely change the source during
+an event. All keys are checked for duplicates: the cost of a list update includes an
+**O(N) key check**, while DOM creation/update is O(visible rows). On an idle frame the
+list is not traversed if the component is skipped. Passing a huge array as an argument
+of the root component still requires a snapshot of that argument. In Catalog the root
+receives small query/selection/revision values, and the filter caches the array in
+`computed`.
 
-Ушедшая за overscan строка размонтируется. Возврат создаёт новый компонент. Долговечное
-редактируемое состояние строки храните в модели по ключу; локальное состояние
-компонента предназначено для текущего смонтированного экземпляра.
+A row that moves beyond the overscan is unmounted. Coming back creates a new component.
+Store durable editable row state in the model by key; component local state is meant
+for the currently mounted instance.
 
-## Фокус и размер окна
+## Focus and window size
 
 ```das
 on_mount() { request_focus("name") }
@@ -372,81 +383,82 @@ flow("workspace",900.0) {
 }
 ```
 
-`request_focus(name[,key])` применяется после reconciliation и layout. Поиск ограничен
-экземпляром компонента, из которого сделан запрос; внешний вызов ищет глобально.
-`focus_scope` циклически переводит Tab/Shift+Tab между видимыми доступными элементами
-области. При удалении области, в которой находился фокус, восстанавливает прежний
-фокус, если элемент ещё жив. Вложенные области восстанавливаются корректно и при
-одновременном удалении всего внешнего поддерева.
-Это область клавиатурного фокуса; для модального окна отдельно создайте перекрывающий
-фон, как в Catalog. Скрытые и disabled элементы пропускаются. Кнопки поддерживают
-клавиатурную активацию через стандартное поведение RmlUi.
+`request_focus(name[,key])` is applied after reconciliation and layout. The search is
+limited to the component instance that made the request; a call from outside searches
+globally. `focus_scope` cycles Tab/Shift+Tab between the visible, enabled elements of
+the scope. When a scope that held the focus is removed, it restores the previous
+focus if that element is still alive. Nested scopes are restored correctly even when
+the whole outer subtree is removed at once.
+This is a keyboard focus scope; for a modal window, create a covering backdrop
+separately, as in Catalog. Hidden and disabled elements are skipped. Buttons support
+keyboard activation through the standard RmlUi behavior.
 
-`on_key("Enter"/"Escape"/"Tab"/"Up"/"Down"/"Space") { ... }` получает именованную
-клавишу; `on_submit` — сокращение для Enter. Событие получает ближайший подписанный
-элемент. Tab внутри focus_scope обрабатывается навигацией до обычной доставки.
-Для остальных key codes доступен нативный SDL-цикл; этот helper не является полным
-менеджером глобальных сочетаний клавиш.
+`on_key("Enter"/"Escape"/"Tab"/"Up"/"Down"/"Space") { ... }` receives a named
+key; `on_submit` is shorthand for Enter. The event goes to the nearest subscribed
+element. Tab inside a focus_scope is handled by navigation before ordinary delivery.
+For other key codes the native SDL loop is available; this helper is not a full
+manager of global keyboard shortcuts.
 
-`flow(name,breakpoint)` переключает направление flex row/column, сохраняя узлы.
-`ui_width()` и `ui_height()` возвращают размеры RmlUi context в пикселях. Resize
-инвалидирует компоненты, а чтение размеров внутри binding учитывается в его зависимостях.
-Обычные `pct`, flex-свойства и `property` остаются доступны. Стили `[ui_style]` статичны;
-вычисляемые размеры задавайте внутри компонента. Длинная страница прокручивается.
+`flow(name,breakpoint)` switches the flex direction between row and column and keeps the
+nodes. `ui_width()` and `ui_height()` return the size of the RmlUi context in pixels.
+A resize invalidates components, and reading the size inside a binding is counted in its
+dependencies. Ordinary `pct`, flex properties and `property` remain available.
+`[ui_style]` styles are static; set computed sizes inside the component. A long page
+scrolls.
 
-## Диагностика
+## Diagnostics
 
-`[ui_component(dump=true)]` печатает реальные AST трёх сгенерированных функций при
-компиляции. Пример — `tests/macros_probe.das`.
+`[ui_component(dump=true)]` prints the actual AST of the three generated functions at
+compile time. Example: `tests/macros_probe.das`.
 
 ```das
 ui_trace(true)
 ui_frame(state) $(model:Model) { screen(model) }
 for (i in range(ui_trace_count())) {
     let entry=ui_trace_at(i)
-    print("{entry.owner} / {entry.site}: {entry.reason}\n") // owner: цепочка компонентов, «имя:номер/имя:номер»
+    print("{entry.owner} / {entry.site}: {entry.reason}\n") // owner: the component chain, "name:number/name:number"
 }
 ```
 
-Trace хранит последние 256 записей: mount, изменение аргументов/полей, явный сигнал,
-непрозрачный getter, событие ввода. При включённой трассировке сохраняются именованные
-снимки зависимостей, и причина перечисляет изменившиеся чтения, например `model.amount`
-или `viewport.width`. Значения полей в журнал не выводятся. `ui_trace(false)` очищает
-дополнительные снимки. `ui_stats()` возвращает счётчики компонентов, bindings и
-computed; `ui_clear_stats()` обнуляет их. Непрозрачный getter — консервативный fallback,
-а не доказательство полного отслеживания произвольных глобальных чтений.
+The trace keeps the last 256 entries: mount, argument/field change, explicit signal,
+opaque getter, input event. While tracing is on, named dependency snapshots are stored,
+and the reason lists the reads that changed, for example `model.amount` or
+`viewport.width`. Field values are not written to the log. `ui_trace(false)` clears
+the extra snapshots. `ui_stats()` returns counters for components, bindings and
+computed values; `ui_clear_stats()` resets them. An opaque getter is a conservative
+fallback, not proof that arbitrary global reads are fully tracked.
 
-Предупреждения и ошибки RmlUi печатаются в консоль с префиксом `rmlui warning:` или
-`rmlui error:` — в том числе опечатки в `property(...)` и в правилах `[ui_style]`.
-Для отклонённого inline-свойства следующей строкой выводятся тег и классы элемента.
-То же значение повторно не применяется, поэтому сообщение одно, а не на каждый проход.
-`rui_warning_count()` возвращает число таких сообщений с момента `rui_init`; в тестах
-удобно проверять, что корректное дерево даёт ноль. Хосты примеров `run_demo` и
-`run_gl_demo` делают это сами: smoke-прогон, в котором RmlUi выдал хотя бы одно
-предупреждение, завершается ошибкой. Саму эту проверку сторожит отрицательный тест
+RmlUi warnings and errors are printed to the console with the prefix `rmlui warning:` or
+`rmlui error:`. This includes typos in `property(...)` and in `[ui_style]` rules.
+For a rejected inline property, the next line prints the tag and classes of the element.
+The same value is not applied again, so there is one message, not one per pass.
+`rui_warning_count()` returns the number of such messages since `rui_init`; in tests it
+is useful to check that a correct tree gives zero. The example hosts `run_demo` and
+`run_gl_demo` do this themselves: a smoke run in which RmlUi produced at least one
+warning ends with an error. This check itself is guarded by the negative test
 `smoke_warning_error`.
 
-## Имена примитивов и частей
+## Primitive and part names
 
-Аннотация распознаёт примитивы DSL по имени, но только в позиции оператора. Вызов,
-использованный как значение (`let h = height(item)`, аргумент, операнд), остаётся
-обычным пользовательским кодом, даже если его имя совпадает с `height`, `color`,
-`text` и подобными. Собственную функцию с таким именем, вызываемую как оператор,
-уточняйте модулем: `_::height(item)`.
+The annotation recognizes DSL primitives by name, but only in statement position. A
+call used as a value (`let h = height(item)`, an argument, an operand) stays ordinary
+user code, even if its name matches `height`, `color`, `text` and the like. Qualify
+your own function with such a name, when it is called as a statement, with the module:
+`_::height(item)`.
 
-Имя части может быть выражением: `box(model.wide ? "wide" : "narrow") { ... }`.
-Элемент остаётся тем же, меняется его scoped-класс, и `ui_find` видит новое имя.
-Это работает для контейнеров и для `text`, `tab_label`, `sprite_image`, `progress_bar`.
+A part name can be an expression: `box(model.wide ? "wide" : "narrow") { ... }`.
+The element stays the same, its scoped class changes, and `ui_find` sees the new name.
+This works for containers and for `text`, `tab_label`, `sprite_image`, `progress_bar`.
 
-`button("name") { ... }` без подписи создаёт кнопку, содержимое которой целиком задаёт
-тело, например иконку. У кнопки с подписью дочерние элементы идут после текста и
-сохраняются при смене подписи.
+`button("name") { ... }` without a caption creates a button whose content is defined
+entirely by the body, for example an icon. For a button with a caption, child elements
+come after the text and are kept when the caption changes.
 
-## Условные свойства, порядок стилей и блоки
+## Conditional properties, style order and blocks
 
-Свойство применяется, когда выполнение доходит до его вызова, в том числе под `if` или
-`when` на уже существующем контейнере. Оно не снимается, когда условие становится
-ложным: задавайте обе ветви либо значение выражением.
+A property is applied when execution reaches its call, including under `if` or
+`when` on an already existing container. It is not removed when the condition becomes
+false: set both branches, or give the value as an expression.
 
 ```das
 box("panel") {
@@ -455,48 +467,49 @@ box("panel") {
 }
 ```
 
-Таблицы `[ui_style]` попадают в общий CSS в порядке первого использования. При равной
-специфичности побеждает правило из таблицы, использованной позже. Это важно только для
-глобальных селекторов (`rule("progress")`, `rule("input")`): классы `part(...)` у разных
-таблиц разные и между собой не конфликтуют.
+`[ui_style]` sheets go into the shared CSS in order of first use. With equal
+specificity, the rule from the sheet used later wins. This matters only for global
+selectors (`rule("progress")`, `rule("input")`): `part(...)` classes differ between
+sheets and do not conflict with each other.
 
-`box` — блочный элемент (`display: block`) при любом родителе; `row` и `column` — flex.
-Чтобы получить строчный `box`, задайте `property("display","inline")`.
+`box` is a block element (`display: block`) under any parent; `row` and `column` are
+flex. To get an inline `box`, set `property("display","inline")`.
 
-`on_key("Enter")` и `on_submit` срабатывают и от Enter на цифровой клавиатуре. Клавиши,
-у которых нет имени в `on_key`, в очередь DSL не попадают и компоненты не будят.
+`on_key("Enter")` and `on_submit` also fire for Enter on the numeric keypad. Keys that
+have no name in `on_key` do not enter the DSL queue and do not wake components.
 
-В GL-режиме `rui_render` сам очищает кадр. `rui_gl_clear(false)` отключает очистку:
-приложение рисует свою сцену, а интерфейс накладывается поверх неё.
+In GL mode `rui_render` clears the frame itself. `rui_gl_clear(false)` turns the clear
+off: the application draws its own scene and the UI is drawn on top of it.
 
-## Базовый шрифт
+## Base font
 
-Для абзацев с разным форматированием используйте `rich_text`, `span`, `strong`,
+For paragraphs with mixed formatting, use `rich_text`, `span`, `strong`,
 `emphasis`, `link`, `inline_image`/`inline_sprite`, `line_break`.
-[Inline rich text: API, наследование, baseline и динамические привязки](rich-text.md).
-`rui_default_font_styles()` загружает также Bold, Italic и BoldItalic.
+[Inline rich text: API, inheritance, baseline and dynamic bindings](rich-text.md).
+`rui_default_font_styles()` also loads Bold, Italic and BoldItalic.
 
 ```das
 verify(rui_font("assets/Inter-Regular.ttf"))
 set_base_text("Inter", px(15), rgb(30,34,40))
 ```
 
-`set_base_text(family, size, color)` задаёт текст по умолчанию для всех документов:
-семейство, размер и цвет. Размер и цвет необязательны и равны `px(16)` и
-`rgb(232,237,246)`. Без вызова используется `LatoLatin` — семейство шрифта, который
-загружает `rui_default_font()`. `base_font_family()` возвращает текущее семейство.
+`set_base_text(family, size, color)` sets the default text for all documents: family,
+size and color. Size and color are optional and default to `px(16)` and
+`rgb(232,237,246)`. Without the call, `LatoLatin` is used: the family of the font that
+`rui_default_font()` loads. `base_font_family()` returns the current family.
 
-Сам файл шрифта этот вызов не загружает: сначала `rui_font(path)`, затем имя семейства.
-Если семейство не загружено, RmlUi сообщит об этом предупреждением. Вызывайте
-`set_base_text` один раз при запуске: главный документ и документы, открытые позже,
-получают новые значения, а уже открытый документ-шаблон сохраняет те, с которыми был
-загружен. Правило `rule("body")` в `[ui_style]` по-прежнему перекрывает эти значения.
+This call does not load the font file itself: first call `rui_font(path)`, then pass
+the family name. If the family is not loaded, RmlUi reports it with a warning. Call
+`set_base_text` once at startup: the main document and documents opened later get the
+new values, while an already open template document keeps the values it was loaded
+with. A `rule("body")` in `[ui_style]` still overrides these values.
 
-Файл для `rui_default_font()` хост ищет рядом с exe (`assets/LatoLatin-Regular.ttf`),
-подробнее — в README, раздел «Где exe ищет скрипты и шрифт». Если файл не найден,
-функция возвращает `false`.
+The host looks for the `rui_default_font()` file next to the exe
+(`assets/LatoLatin-Regular.ttf`); for details see the README, section "Where the
+executable looks for scripts and the font". If the file is not found, the function
+returns `false`.
 
-## Классы по состоянию и произвольные теги
+## State classes and arbitrary tags
 
 ```das
 [ui_style]
@@ -507,45 +520,47 @@ def card_style() {
     part("field") |> with_pseudo("focus") |> rule() { property("border-color","#6aa7ff") }
 }
 
-// Внутри [ui_component], после use_style(@@card_style):
+// Inside [ui_component], after use_style(@@card_style):
 box("card") {
     class_if("selected", model.selected == item.id)
     pseudo_if("flagged", item.flagged)
 }
 ```
 
-`class_if(name, condition)` включает и выключает класс текущего контейнера,
-`pseudo_if(name, condition)` — псевдокласс. Условие — обычная зависимость привязки:
-пока прочитанные значения не изменились, оно не вычисляется заново. Класс получает
-префикс текущей таблицы стилей, поэтому выбирается через `with_class(selector, name)`,
-а не строкой `.selected`. `with_pseudo(selector, name)` добавляет `:name` и годится также
-для состояний самого RmlUi: `focus`, `active`, `checked`.
+`class_if(name, condition)` turns a class of the current container on and off;
+`pseudo_if(name, condition)` does the same for a pseudo-class. The condition is an
+ordinary binding dependency: it is not evaluated again until the values it read change.
+The class gets the prefix of the current style sheet, so select it with
+`with_class(selector, name)`, not with the string `.selected`.
+`with_pseudo(selector, name)` appends `:name` and also works for the states of RmlUi
+itself: `focus`, `active`, `checked`.
 
-Отличие от свойства существенное. Inline-свойство (`background(...)` с выражением)
-меняется мгновенно: RmlUi запускает `transition` только при смене класса или
-псевдокласса. Поэтому состояние, которое должно меняться плавно, задавайте классом, а
-оба вида оформления описывайте в `[ui_style]`.
+The difference from a property matters. An inline property (`background(...)` with an
+expression) changes instantly: RmlUi starts a `transition` only when a class or
+pseudo-class changes. So express a state that must change smoothly as a class, and
+describe both appearances in `[ui_style]`.
 
-Для `pseudo_if` выбирайте собственные имена: `hover`, `active`, `focus`, `checked` и
-`disabled` RmlUi выставляет сам и перезапишет ваше значение. В `[ui_template]` доступен
-`class_if` с постоянным условием; `pseudo_if` там отклоняется, шаблон статичен.
+For `pseudo_if`, choose your own names: RmlUi sets `hover`, `active`, `focus`, `checked`
+and `disabled` itself and will overwrite your value. In `[ui_template]`, `class_if` is
+available with a constant condition; `pseudo_if` is rejected there, because the template
+is static.
 
 ```das
 box("avatar") { element("photo","img") { attribute("src","assets/avatar.png") } }
-element("name_label","label") { attribute("for","name_field"); text("caption","Имя") }
+element("name_label","label") { attribute("for","name_field"); text("caption","Name") }
 text_input("name") { attribute("id","name_field") }
 ```
 
-`element(name, tag)` создаёт элемент с любым тегом RmlUi; порядок аргументов тот же,
-что у остальных примитивов — сначала имя части. Тело необязательно. Так доступны
-`img` с `src`, `label`, `form`, `p` и другие теги, у которых нет собственного helper'а.
-Нативное поведение сохраняется: `img` берёт размер файла, клик по `label` передаёт
-фокус полю из атрибута `for`. У RmlUi нет встроенной таблицы стилей, поэтому такой
-элемент строчный, пока правило не задаст `display`; внутри `row` и `column` он, как и
-любой flex-элемент, ведёт себя как блок. Тег места вызова не должен меняться между
-проходами. Обе конструкции работают и в `[ui_template]`.
+`element(name, tag)` creates an element with any RmlUi tag; the argument order is the
+same as for the other primitives: the part name comes first. The body is optional. This
+gives access to `img` with `src`, `label`, `form`, `p` and other tags that have no
+helper of their own. Native behavior is kept: `img` takes the size of the file, and a
+click on a `label` moves focus to the field named in its `for` attribute. RmlUi has no
+built-in style sheet, so such an element is inline until a rule sets `display`; inside
+`row` and `column` it behaves as a block, like any flex item. The tag of a call site
+must not change between passes. `element` and `attribute` also work in `[ui_template]`.
 
-## Типизированные свойства
+## Typed properties
 
 ```das
 rule(part("card")) {
@@ -556,63 +571,65 @@ rule(part("card")) {
 rule(part("badge")) { position("absolute"); top(px(-6)); right(px(-6)); z_index(2) }
 ```
 
-Каждый helper только записывает одно объявление через `property`, поэтому работает
-везде, где работает `property`: в `rule`, `keyframe`, `[ui_template]` и в теле
-компонента. Внутри компонента вызов helper'а — привязка с зависимостями, как у `width`.
+Each helper only writes one declaration through `property`, so it works wherever
+`property` works: in `rule`, `keyframe`, `[ui_template]` and in a component body.
+Inside a component, a helper call is a binding with dependencies, like `width`.
 
-| Группа | Helper'ы | Аргументы |
+| Group | Helpers | Arguments |
 |---|---|---|
-| Единицы | `px`, `dp`, `pct`, `em`, `rem`, `vw`, `vh` | число → `UiLength` |
-| Размеры | `width`, `height`, `min_width`, `min_height`, `max_width`, `max_height` | `UiLength` |
-| Внешние отступы | `margin`, `margin_top`, `margin_bottom`, `margin_left`, `margin_right`, `margin_x`, `margin_y` | `UiLength` |
-| Внутренние отступы | `padding`, `padding_top`, `padding_bottom`, `padding_left`, `padding_right`, `padding_x`, `padding_y` | `UiLength` |
-| Рамка | `border`, `border_top`, `border_right`, `border_bottom`, `border_left` | толщина, цвет, альфа |
+| Units | `px`, `dp`, `pct`, `em`, `rem`, `vw`, `vh` | number → `UiLength` |
+| Sizes | `width`, `height`, `min_width`, `min_height`, `max_width`, `max_height` | `UiLength` |
+| Margins | `margin`, `margin_top`, `margin_bottom`, `margin_left`, `margin_right`, `margin_x`, `margin_y` | `UiLength` |
+| Padding | `padding`, `padding_top`, `padding_bottom`, `padding_left`, `padding_right`, `padding_x`, `padding_y` | `UiLength` |
+| Border | `border`, `border_top`, `border_right`, `border_bottom`, `border_left` | width, color, alpha |
 | | `border_width`, `border_radius` | `UiLength` |
-| | `border_color` | цвет, альфа |
-| Цвет | `background`, `color` | цвет, альфа |
-| Позиция | `position` | `static`, `relative`, `absolute`, `fixed` |
+| | `border_color` | color, alpha |
+| Color | `background`, `color` | color, alpha |
+| Position | `position` | `static`, `relative`, `absolute`, `fixed` |
 | | `left`, `top`, `right`, `bottom` | `UiLength` |
 | | `z_index` | `int` |
-| Раскладка | `display` | значение `display` из RCSS |
+| Layout | `display` | a `display` value from RCSS |
 | | `gap` | `UiLength` |
 | | `flex_grow`, `flex_shrink` | `float` |
-| Текст | `font_size`, `letter_spacing` | `UiLength` |
-| Прочее | `opacity` | `float` |
+| Text | `font_size`, `letter_spacing` | `UiLength` |
+| Other | `opacity` | `float` |
 
-Альфа необязательна и задаётся от 0 до 1, как в остальных цветовых функциях DSL.
-`margin_x` и `padding_x` записывают левую и правую стороны, `_y` — верхнюю и нижнюю.
+Alpha is optional and ranges from 0 to 1, as in the other color functions of the DSL.
+`margin_x` and `padding_x` write the left and right sides, `_y` the top and bottom.
 
-Что даёт типизация. Длина и цвет — разные типы, поэтому `border_radius(rgb(1,2,3))` не
-компилируется. `position` и `display` принимают строку и сверяют её со значениями,
-которые понимает RmlUi: опечатка останавливает программу с понятным сообщением при
-первом использовании таблицы стилей, а не превращается в предупреждение разборщика.
+What typing gives you. Length and color are different types, so
+`border_radius(rgb(1,2,3))` does not compile. `position` and `display` take a string
+and check it against the values that RmlUi understands: a typo stops the program with a
+clear message on first use of the style sheet, instead of turning into a parser warning.
 
-Имена этих helper'ов, как и остальных примитивов, аннотация `[ui_component]` узнаёт по
-вызову-оператору. Собственную функцию с именем `left`, `top`, `position`, `display`,
-`margin`, `border` или `gap`, вызываемую как оператор внутри компонента, пишите с
-модулем: `_::display(text)`. Вызов, использованный как значение, не затрагивается.
+The `[ui_component]` annotation recognizes the names of these helpers, like those of the
+other primitives, by a statement call. Write your own function named `left`, `top`,
+`position`, `display`, `margin`, `border` or `gap`, when it is called as a statement
+inside a component, with the module: `_::display(text)`. A call used as a value is not
+affected.
 
-`transform`, `transition`, `box-shadow`, `font-effect`, `decorator` и `filter` остаются
-строками: у них составной синтаксис, и helper'а для них пока нет.
+`transform`, `transition`, `box-shadow`, `font-effect`, `decorator` and `filter` stay
+strings: they have compound syntax, and there is no helper for them yet.
 
-## Границы текущей реализации
+## Limits of the current implementation
 
-DSL покрывает перечисленные структурные конструкции, формы, стили и композицию,
-но не каждую возможность RmlUi. Нет автоматического вывода зависимостей через тела
-произвольных вызываемых функций, переменной высоты виртуальных строк,
-универсального менеджера shortcuts (hot reload с миграциями описан в [отдельном разделе](hot-reload.md)). Для drag-and-drop
-есть `draggable`/`on_drop` и проверенный пример `examples/drag_drop.das`. Backend
-SDL_Renderer не реализует полный набор renderer extensions RmlUi; отдельный GL3
-путь используется в `examples/effects.das`.
+The DSL covers the listed structural constructs, forms, styles and composition,
+but not every RmlUi feature. There is no automatic dependency inference through the
+bodies of arbitrary called functions, no variable height for virtual rows, and no
+general shortcut manager. Hot reload with migrations is described in
+[a separate document](hot-reload.md). For drag-and-drop there are
+`draggable`/`on_drop` and the tested example `examples/drag_drop.das`. The SDL_Renderer
+backend does not implement the full set of RmlUi renderer extensions; a separate GL3
+path is used in `examples/effects.das`.
 
-Актуальные различия между native возможностями, bindings, DSL и примерами:
-[матрица покрытия RmlUi](rmlui-coverage.md).
+Current differences between native features, bindings, the DSL and the examples:
+[RmlUi coverage matrix](rmlui-coverage.md).
 
-## Native документы и шаблоны
+## Native documents and templates
 
-`[ui_template]` описывает native template обычными вызовами daScript. Ручные RML/RCSS
-строки не нужны. Стили задаются через `[ui_style]` или привычные `width`, `padding`,
-`property` внутри узла шаблона.
+`[ui_template]` describes a native template with ordinary daScript calls. Hand-written
+RML/RCSS strings are not needed. Styles are set through `[ui_style]` or the usual
+`width`, `padding`, `property` inside a template node.
 
 ```das
 [ui_style]
@@ -646,10 +663,10 @@ def tool_window() {
 }
 ```
 
-Функция шаблона не принимает параметров; статическое описание кешируется.
-`open_template(@@tool_window, title, float2(x,y))` создаёт отдельный документ,
-задаёт положение и заполняет `title_slot` безопасным текстом. Закрытие документа
-и динамическое содержимое остаются в `[ui_component]`:
+A template function takes no parameters; the static description is cached.
+`open_template(@@tool_window, title, float2(x,y))` creates a separate document,
+sets its position and fills `title_slot` with safe text. Closing the document
+and dynamic content stay in `[ui_component]`:
 
 ```das
 state(WindowLife()) $(var local:WindowLife) {
@@ -661,136 +678,143 @@ state(WindowLife()) $(var local:WindowLife) {
 }
 ```
 
-`slot(name)` принимает выбранное приложением имя: `mission_actions`, `field_notes`
-и `crew_status` — примеры, а не встроенные типы слотов. Имя можно вычислить обычным
-кодом daScript при построении статического определения. Слот становится пустым `div`
-с document-local ID и scoped style class; оформить его можно через `part(name)` или
-`slot(name) { padding(...); property(...); attribute(...); }`.
+`slot(name)` takes a name chosen by the application: `mission_actions`, `field_notes`
+and `crew_status` are examples, not built-in slot types. The name can be computed with
+ordinary daScript code while the static definition is built. A slot becomes an empty
+`div` with a document-local ID and a scoped style class; style it through `part(name)`
+or `slot(name) { padding(...); property(...); attribute(...); }`.
 
-Главного слота нет. Прежний `content_slot` удалён без совместимого alias: замените
-вызовы на `slot` с тем же именем. Native `<template>` генерируется без атрибута
-`content`; DSL сам направляет каждый компонент в объявленный слот.
+There is no main slot: every slot is named. The native `<template>` is generated
+without the `content` attribute; the DSL itself routes each component into its declared
+slot.
 
-Текущие правила DSL:
+DSL rules:
 
-- Один `window_frame` обязателен. Именованных слотов может быть ноль, один или много;
-  заполнять каждый из них необязательно. Незаполненный слот остаётся пустым элементом.
-- `title_slot` необязателен; допускается не более одного.
-- `move_handle`/`resize_handle` генерируют native `<handle>` с target `#document`.
-- `row`, `column`, `box`, `text` внутри аннотации описывают статическую рамку.
-  Их имена становятся document-local ID и scoped style classes. Имена не должны
-  повторяться в одном шаблоне; одинаковые имена разных экземпляров допустимы.
-- Имена слотов непустые и не повторяют имена других узлов шаблона. Выбирайте имена,
-  пригодные для ID и CSS-классов, например `quest_details`; `#` запрещён.
-- У `slot`, `title_slot`, `resize_handle` есть варианты с блоком стилей.
-  В блоке `slot` допустимы свойства и атрибуты, а не дочерние элементы;
-  содержимое приложения помещайте в `document_content` внутри `[ui_component]`.
-- Текст и значения `attribute` экранируются при сериализации. `attribute("id",...)`,
-  `class`, `style`, `template`, `data-rui-slot` и `data-rui-template` зарезервированы:
-  используйте имя узла и `property`.
-- Состояние, `when`, keyed-списки, bindings и обработчики принадлежат компонентам.
-  Аннотация диагностирует эти конструкции в статическом шаблоне. `return` внутри
-  описания не поддерживается; вычисления можно вынести в обычные helper-функции.
+- Exactly one `window_frame` is required. There can be zero, one or many named slots;
+  filling each of them is optional. An unfilled slot stays an empty element.
+- `title_slot` is optional; at most one is allowed.
+- `move_handle`/`resize_handle` generate a native `<handle>` with the target `#document`.
+- `row`, `column`, `box`, `text` inside the annotation describe the static frame.
+  Their names become document-local IDs and scoped style classes. Names must not
+  repeat within one template; the same names in different instances are allowed.
+- Slot names are non-empty and do not repeat the names of other template nodes. Choose
+  names that are valid as IDs and CSS classes, for example `quest_details`; `#` is not
+  allowed.
+- `slot`, `title_slot` and `resize_handle` have forms with a style block.
+  A `slot` block may contain properties and attributes, not child elements;
+  put application content into `document_content` inside `[ui_component]`.
+- Text and `attribute` values are escaped during serialization. `attribute("id",...)`,
+  `class`, `style`, `template`, `data-rui-slot` and `data-rui-template` are reserved:
+  use the node name and `property`.
+- State, `when`, keyed lists, bindings and handlers belong to components.
+  The annotation reports these constructs in a static template. `return` inside
+  the description is not supported; computations can be moved into ordinary helper
+  functions.
 
-Макрос перенаправляет вызовы контейнеров в builder и оборачивает описание кешем.
-Builder создаёт native `<template>`, RCSS-ресурс и параметры корневого документа;
-`open_template` регистрирует ресурсы в памяти и подключает native template через
-`<link type="text/template">`. RmlUi разбирает результат своим штатным парсером.
-Отдельного парсера DSL нет. `template_markup(@@tool_window)` возвращает сгенерированный
-native template для инспекции; RCSS подключён из отдельного in-memory ресурса.
-При вызове сохраняется текущая область стилей вызывающего компонента.
+The macro redirects container calls to a builder and wraps the description in a cache.
+The builder creates the native `<template>`, an RCSS resource and the root document
+parameters; `open_template` registers the resources in memory and attaches the native
+template through `<link type="text/template">`. RmlUi parses the result with its
+standard parser. There is no separate DSL parser. `template_markup(@@tool_window)`
+returns the generated native template for inspection; the RCSS is linked from a separate
+in-memory resource. The call preserves the current style scope of the calling component.
 
-`ui_reset` очищает кеш builder, а `open_template` повторно регистрирует ресурсы для
-нового context. Определения статичны: это не hot reload, и изменение глобальных
-значений внутри шаблона не является способом обновить уже загруженный native cache.
-Для изменяемых данных используйте компоненты.
+`ui_reset` clears the builder cache, and `open_template` registers the resources again
+for a new context. Definitions are static: this is not hot reload, and changing global
+values inside a template is not a way to update an already loaded native cache.
+For changing data, use components.
 
-`document_content(document, name)` направляет создание узлов в объявленный слот.
-Опечатка в имени и попытка заполнить обычный статический узел вместо слота вызывают
-ошибку с именем target. Слот не является компонентом и сам не хранит состояние:
-вставленные компоненты используют обычные bindings, `state`, `when` и `each_keyed`.
-Если убрать вызов `document_content` условием, дочерние компоненты проходят unmount,
-а пустой контейнер слота остаётся в рамке. Другие слоты и документы не меняются.
+`document_content(document, name)` routes node creation into a declared slot.
+A typo in the name, or an attempt to fill an ordinary static node instead of a slot,
+raises an error that names the target. A slot is not a component and holds no state
+itself: the inserted components use ordinary bindings, `state`, `when` and `each_keyed`.
+If a condition removes the `document_content` call, the child components are unmounted
+and the empty slot container stays in the frame. Other slots and documents do not
+change.
 
-Шаблон владеет рамкой и target, runtime — вставленными детьми. ID документа и handle
-слота входят в путь идентичности. Смена `name` у того же вызова размонтирует старое
-поддерево и создаст новое в другом слоте; локальное состояние не переносится.
-При обычном обновлении содержимого того же слота handles и локальный state сохраняются.
-Stylesheets DSL применяются к документам вместе с исходными
-стилями шаблона; более специфичные template rules могут переопределять общую базу.
-Не удаляйте target вручную, пока компонент смонтирован. Закрытие документа делайте
-в `on_unmount`; остальные уже закрытые handles становятся недействительными.
+The template owns the frame and the target; the runtime owns the inserted children. The
+document ID and the slot handle are part of the identity of the inserted nodes. Changing `name` on the
+same call unmounts the old subtree and creates a new one in the other slot; local state
+is not carried over. On an ordinary content update of the same slot, handles and local
+state are kept. DSL stylesheets are applied to documents together with the template's
+own styles; more specific template rules can override the common base.
+Do not remove the target manually while the component is mounted. Close the document
+in `on_unmount`; handles into a closed document become invalid.
 
-`examples/templates.das` показывает `[ui_template]` без RML-строк, два экземпляра,
-три именованных слота с отдельными компонентами, условное удаление редактора,
-native `move_target`/`size_target`, редактирование и закрытие/повторное открытие.
-Модель переживает закрытие окна; локальный state создаётся заново.
+`examples/templates.das` shows `[ui_template]` without RML strings, two instances,
+three named slots with separate components, conditional removal of the editor,
+native `move_target`/`size_target`, editing, and close/reopen.
+The model survives closing the window; local state is created anew.
 
-Низкоуровневые `rui_resource` и `rui_document` сохранены для существующих RML-шаблонов
-и интеграций, которым нужна прямая загрузка разметки. RmlUi раскладывает документ уже
-во время загрузки, а стили DSL присоединяются после неё, поэтому такая разметка должна
-сама задавать `font-family`: иначе первый layout пройдёт без шрифта и RmlUi сообщит
-«No font face defined». Шаблоны из `[ui_template]` несут базовый шрифт в собственном CSS. Для документов, созданных
-напрямую через `rui_document`, `document_content` по-прежнему принимает произвольный
-существующий ID: проверка объявления слота относится к документам из `open_template`.
-Существующий `slot(block)` для композиции компонентов остаётся отдельной перегрузкой.
+The low-level `rui_resource` and `rui_document` are kept for existing RML templates
+and for integrations that need to load markup directly. RmlUi lays out a document
+during loading, and DSL styles are attached after it, so such markup must set
+`font-family` itself: otherwise the first layout runs without a font and RmlUi reports
+"No font face defined". Templates from `[ui_template]` carry the base font in their own
+CSS. For documents created directly through `rui_document`, `document_content` still
+accepts any existing ID: the slot declaration check applies to documents from
+`open_template`. The existing `slot(block)` for component composition remains a separate
+overload.
 
-## Перевод текста
+## Text translation
 
 ```das
 rui_translation("en", "hello", "Hello")
-rui_translation("ru", "hello", "Привет")
-// В компоненте:
+rui_translation("de", "hello", "Hallo")
+// In a component:
 text("greeting", tr("hello"))
-// В обработчике или до ui_frame:
-set_locale("ru")
+// In a handler or before ui_frame:
+set_locale("de")
 ```
 
-`tr` вызывает установленный `SystemInterface::TranslateString`. Нативный парсер
-также переводит `[hello]` при загрузке RML. Для отсутствующего перевода используется
-английский каталог; неизвестный ключ остаётся `[key]`. Замены токенов однопроходные.
-Каталоги и строки копируются в native storage; script callbacks не сохраняются.
+`tr` calls the installed `SystemInterface::TranslateString`. The native parser
+also translates `[hello]` when RML is loaded. For a missing translation the
+English catalog is used; an unknown key stays `[key]`. Token replacement is single-pass.
+Catalogs and strings are copied into native storage; script callbacks are not stored.
 
-Изменение языка/каталога увеличивает revision. Компоненты видят revision в снимке
-входов, а прямые `tr(...)`/`ui_locale()` в bindings получают зависимость от него.
-Поэтому текст обновляется без remount и изменения input handles. Если helper
-скрывает вызов `tr`, явно передайте `ui_locale()` в аргументы helper, как в
-`sample_phrase` примера. Автоматического межпроцедурного анализа нет.
+A language or catalog change increments a revision. Components see the revision in
+their input snapshot, and direct `tr(...)`/`ui_locale()` calls in bindings get a
+dependency on it. So the text updates without a remount and without changing input
+handles. If a helper hides the `tr` call, pass `ui_locale()` explicitly as a helper
+argument, as in `sample_phrase` in `examples/localization.das`. There is no automatic interprocedural
+analysis.
 
-Уже распарсенный текст native RML не переводится повторно автоматически: для
-живой смены языка используйте `tr` в DSL. `tr` в `text` создаёт обычный безопасный
-текст, а не интерпретирует перевод как RML. Сам native RML parser может разбирать
-разметку из доверенного каталога согласно поведению RmlUi.
+Already parsed native RML text is not translated again automatically: for a live
+language switch, use `tr` in the DSL. `tr` in `text` creates ordinary safe text; it
+does not interpret the translation as RML. The native RML parser itself can parse
+markup from a trusted catalog, following RmlUi behavior.
 
-Plural rules и подстановка `%name%` показаны на daScript для en/de/ru; это не ICU.
-`rui_font` загружает основное начертание, `rui_fallback_font` — fallback face.
-HarfBuzz/RTL и CJK-сценарии этим примером не заявлены.
+`examples/localization.das` shows plural rules and `%name%` substitution in daScript
+for en/de/ru; this is not ICU. `rui_font` loads the main face, `rui_fallback_font` loads
+a fallback face. The example does not cover HarfBuzz/RTL or CJK scenarios.
 
-## Drag-and-drop и прогресс
+## Drag-and-drop and progress
 
-`draggable(payload)` включает native `drag: clone`; `on_drop() $(payload:string)`
-получает копию payload ближайшего подписанного элемента. Обработчик меняет модель,
-после чего keyed reconciliation обновляет DOM. Исходный native pointer не хранится.
-Клон имеет `:drag`, drop target — `:drop`. Обработчик отвечает за валидацию payload
-и ограничений; сброс вне target не меняет модель. Полный набор drag lifecycle
-callbacks доступны через `on_event("dragstart"/"dragend"/"dragdrop", ...)`;
-`event.source` — безопасный handle источника, если native событие содержит
-`drag_element`. Автоскролл drop-зон отдельно не реализован.
+`draggable(payload)` enables native `drag: clone`; `on_drop() $(payload:string)` on the
+nearest subscribed element receives a copy of the payload. The handler changes the
+model, and keyed reconciliation then updates the DOM. The original native pointer is not
+stored. The clone has `:drag`, the drop target has `:drop`. The handler is responsible
+for validating the payload and any constraints; a drop outside a target does not change
+the model. The full set of drag lifecycle callbacks is available through
+`on_event("dragstart"/"dragend"/"dragdrop", ...)`; `event.source` is a safe handle of
+the source if the native event contains `drag_element`. Auto-scroll of drop zones is not
+implemented separately.
 
-`progress_bar(name,value,maximum,direction)` создаёт настоящий `<progress>`.
-`fill-image` принимает имя спрайта, `clockwise` включает радиальное раскрытие.
-Для произвольной кривой `examples/progress_lab.das` измеряет длину сегментов пути
-и обновляет их opacity с дробным последним сегментом. Скорость следует длине пути,
-а не горизонтальной координате. Это композиция DSL, не новый native progress type.
+`progress_bar(name,value,maximum,direction)` creates a real `<progress>`.
+`fill-image` takes a sprite name; `clockwise` turns on radial fill.
+For an arbitrary curve, `examples/progress_lab.das` measures the length of the path
+segments and updates their opacity, with a fractional last segment. Speed follows path
+length, not the horizontal coordinate. This is DSL composition, not a new native
+progress type.
 
-## События элементов и документов
+## Element and document events
 
-`on_event` работает внутри `[ui_component]` на текущем элементе, с любым native
-именем события (включая custom events). Макрос добавляет уникальный site; runtime
-создаёт native listener, кеширует его при пропуске компонента и удаляет при unmount
-или исчезновении подписки. Несколько подписок одного типа допустимы. Старые
-`on_click`, `on_key`, `bind_value` и `on_drop` продолжают работать отдельно и не
-получают дубли из новых listeners.
+`on_event` works inside `[ui_component]` on the current element, with any native
+event name (including custom events). The macro adds a unique site; the runtime
+creates a native listener, keeps it cached while the component is skipped, and removes
+it on unmount or when the subscription disappears. Several subscriptions of one type
+are allowed. The specialized `on_click`, `on_key`, `bind_value` and `on_drop` work
+separately and do not get duplicates from these listeners.
 
 ```dascript
 column("panel") {
@@ -809,57 +833,60 @@ document_events(editor_document) {
 }
 ```
 
-`UiEvent` — владеющая данными копия; native Event/Element pointers и daScript closures
-не сохраняются. Для сохранения события с таблицей параметров используйте `saved := event`.
+`UiEvent` is a copy that owns its data; native Event/Element pointers and daScript
+closures are not stored. To save an event together with its parameter table, use
+`saved := event`.
 
-| Поле | Значение |
+| Field | Meaning |
 |---|---|
-| `handle`, `target` | currentTarget и исходная цель; weak handles проверяются через `rui_alive` |
-| `kind`, `value` | native имя и строковое значение параметра `value` |
+| `handle`, `target` | currentTarget and the original target; weak handles are checked with `rui_alive` |
+| `kind`, `value` | The native name and the string value of the `value` parameter |
 | `phase` | 1 capture, 2 target, 4 bubble |
-| `key_code`, `key` | Полный native KeyIdentifier; удобные имена A–Z, 0–9, F1–F24, Enter, Escape, Tab, Space, стрелки, Home/End/PageUp/PageDown/Insert/Delete/Backspace. Для остальных клавиш имя пустое, код сохраняется |
+| `key_code`, `key` | The full native KeyIdentifier; convenient names A–Z, 0–9, F1–F24, Enter, Escape, Tab, Space, arrows, Home/End/PageUp/PageDown/Insert/Delete/Backspace. For other keys the name is empty and the code is kept |
 | `modifiers` | Ctrl=1, Shift=2, Alt=4, Meta=8, CapsLock=16, NumLock=32, ScrollLock=64; helpers `event_ctrl/shift/alt/meta` |
-| `mouse`, `screen`, `button`, `wheel` | Native mouse_x/y (проекция для текущего элемента), исходные координаты context в пикселях, кнопка 0=левая/1=правая/2=средняя или -1, native wheel_delta_x/y |
-| `interruptible` | Допускает ли RmlUi остановку этого события |
-| `source` | Handle native drag_element или 0 |
-| `parameters` | Таблица копий параметров: scalar, string, vector и colour в строковом представлении; `event_parameter(event,"text")`, `event_parameter(event,"reason")` и т. п. Native pointer/resource параметры не экспортируются |
+| `mouse`, `screen`, `button`, `wheel` | Native mouse_x/y (projected for the current element), the original context coordinates in pixels, button 0=left/1=right/2=middle or -1, native wheel_delta_x/y |
+| `interruptible` | Whether RmlUi allows this event to be stopped |
+| `source` | Handle of the native drag_element, or 0 |
+| `parameters` | A table of parameter copies: scalar, string, vector and color in string form; `event_parameter(event,"text")`, `event_parameter(event,"reason")` and so on. Native pointer/resource parameters are not exported |
 
 `UiEventOptions`: `use_capture`, `stop`, `stop_immediate`, `key`, `modifiers`,
-`enabled`. Пустой key не фильтрует клавишу. Modifiers=-1 принимает любую комбинацию,
-0–15 требует точное сочетание Ctrl/Shift/Alt/Meta, игнорируя lock keys. `enabled=false`
-снимает listener. Изменение параметров подписки аннулирует старые queued snapshots;
-при неизменных типе/фазе порядок listeners на одном узле сохраняется.
+`enabled`. An empty key does not filter by key. Modifiers=-1 accepts any combination;
+0–15 requires that exact combination of Ctrl/Shift/Alt/Meta and ignores lock keys.
+`enabled=false` removes the listener. Changing subscription parameters invalidates old
+queued snapshots; while type and phase are unchanged, the order of listeners on one node
+is kept.
 
-Доставка обработчиков отложена до `ui_frame`, в порядке native dispatch. После каждого
-обработчика выполняется reconciliation; следующие команды заново проверяют подписку,
-цель, disabled, visibility и modal focus. Поэтому удалённая цель, закрытое окно или
-фон нового modal не получают уже поставленные в очередь команды ввода. При доставке
-события родительские listeners не подменяют `target` своим `handle`.
+Handler delivery is deferred until `ui_frame`, in native dispatch order. Reconciliation
+runs after each handler; the following commands check the subscription, target,
+disabled state, visibility and modal focus again. So a removed target, a closed window
+or the background of a new modal do not receive input commands that were already queued.
+When an event is delivered, parent listeners do not replace `target` with their own
+`handle`.
 
-**Остановка применяется синхронно по параметрам подписки**, до native default action.
-В RmlUi StopPropagation также отменяет default actions; независимого PreventDefault
-в этой версии нет. `stop` оставляет другие listeners того же узла, `stop_immediate`
-останавливает и их. Неотменяемые события (например change) это игнорируют.
-Из отложенного блока нельзя задним числом отменить native событие. Изменение фокуса
-в таком блоке также происходит при `ui_frame`, после уже обработанного native ввода.
-Существующий `focus_scope` самостоятельно обрабатывает Tab/Shift+Tab.
+**Stopping is applied synchronously, from the subscription parameters**, before the
+native default action. In RmlUi, StopPropagation also cancels default actions; there is
+no independent PreventDefault in this version. `stop` leaves the other listeners of the
+same node running; `stop_immediate` stops them too. Non-interruptible events (for
+example change) ignore this. A deferred block cannot cancel a native event after the
+fact. A focus change in such a block also happens at `ui_frame`, after the native input
+has already been processed. The existing `focus_scope` handles Tab/Shift+Tab on its own.
 
-Подписывайтесь после создания документа: уже прошедший `load` не воспроизводится.
-После `close_document` snapshots удалённых handles отбрасываются; для освобождения
-ресурсов используйте `on_unmount`, а не отложенный `unload`. `show`/`hide` сохраняют
-native семантику: событие вызывается каждым соответствующим вызовом, даже если
-видимость уже такая. Custom события от внешнего native кода доступны тем же API.
-Это события RmlUi, не новая система browser PointerEvent/TouchEvent.
+Subscribe after the document is created: a `load` that has already happened is not
+replayed. After `close_document`, snapshots of removed handles are dropped; to release
+resources, use `on_unmount`, not a deferred `unload`. `show`/`hide` keep native
+semantics: the event fires on every matching call, even if the visibility is already in
+that state. Custom events from external native code are available through the same API.
+These are RmlUi events, not a new browser-style PointerEvent/TouchEvent system.
 
-## Режимы документов, popup и редакторы
+## Document modes, popups and editors
 
 ```dascript
-// Обычно в on_mount; on_unmount должен вызвать close_document(document).
+// Usually in on_mount; on_unmount must call close_document(document).
 let document = open_template(@@editor_window, "Notes", float2(40.,250.),
     UiDocumentOptions(visible=false))
 
 show_document(document, UiDocumentOptions(focus=UiDocumentFocus.Keep))
-hide_document(document)       // DOM, handles и локальное состояние сохраняются
+hide_document(document)       // DOM, handles and local state are kept
 bring_to_front(document)
 send_to_back(document)
 position_document(document, float2(100.,200.))
@@ -868,46 +895,47 @@ show_document(dialog, UiDocumentOptions(modal=UiModal.Modal))
 show_popup(menu, float2(300.,180.))
 ```
 
-`UiDocumentOptions` имеет `visible=true`, `modal=UiModal.None`,
-`focus=UiDocumentFocus.Auto`, `scroll=true`. `UiModal.Keep` сохраняет предыдущий modal
-флаг. Focus None не меняет фокус; Document фокусирует документ; Keep возвращает его
-последнему дочернему получателю; Auto ищет `autofocus`, иначе фокусирует документ.
-Это native режимы: modal блокирует фон, пока документ владеет фокусом. Сочетание
-Modal+Focus.None само по себе фокус не захватывает.
+`UiDocumentOptions` has `visible=true`, `modal=UiModal.None`,
+`focus=UiDocumentFocus.Auto`, `scroll=true`. `UiModal.Keep` keeps the previous modal
+flag. Focus None does not change focus; Document focuses the document; Keep returns
+focus to its last child recipient; Auto looks for `autofocus` and otherwise focuses the
+document. These are native modes: a modal blocks the background while the document holds
+the focus. The combination Modal+Focus.None does not take focus by itself.
 
-`open_template(..., visible=false)` создаёт скрытый документ без промежуточного Show
-и кражи фокуса. Продолжайте вызывать `document_content` для скрытого редактора:
-видимость не является unmount. Если убрать его компонент через `when`, состояние
-будет уничтожено по обычным правилам DSL. `hide_document`/`close_document` возвращают
-фокус сохранённому получателю, если фокус находился внутри скрываемого документа и
-получатель ещё жив, видим и доступен. `document_visible`/`document_modal` — запросы
-состояния; они не создают отдельную реактивную подписку.
+`open_template(..., visible=false)` creates a hidden document without an intermediate
+Show and without stealing focus. Keep calling `document_content` for a hidden editor:
+visibility is not an unmount. If you remove its component through `when`, the state
+is destroyed by the ordinary DSL rules. `hide_document`/`close_document` return
+focus to the saved recipient if the focus was inside the document being hidden and
+the recipient is still alive, visible and enabled. `document_visible`/`document_modal`
+are state queries; they do not create a separate reactive subscription.
 
-Front/back меняют порядок внутри одной группы native z-index. Явный z-index нужен,
-если полноэкранный основной документ не должен перекрывать вспомогательные окна
-при получении фокуса. Управление несколькими SDL windows/context сюда не входит.
+Front/back change the order within one native z-index group. An explicit z-index is
+needed if a full-screen main document must not cover auxiliary windows when it
+receives focus. Managing several SDL windows/contexts is out of scope here.
 
-`show_popup` показывает документ с modal focus и Auto, поднимает его и ограничивает
-положение границами viewport; после resize положение пересчитывается. Размер popup
-задаёт шаблон: oversized окно не уменьшается автоматически. Popup можно открыть
-поверх modal; после закрытия фокус возвращается в него. Верхний popup закрывается
-по Escape и внешнему нажатию, включая поглощение соответствующего mouse-up, чтобы
-клик не активировал фон. `document_events(menu)` + `on_event("dismiss")` получает
-`reason="escape"` или `"outside"`. Обычный `hide_document` не генерирует dismiss.
+`show_popup` shows a document with modal focus and Auto, brings it to the front and
+clamps its position to the viewport bounds; after a resize the position is recomputed.
+The popup size is set by the template: an oversized window is not shrunk automatically.
+A popup can be opened on top of a modal; after it closes, focus returns to the modal.
+The topmost popup closes on Escape and on an outside press, and it swallows the matching
+mouse-up so that the click does not activate the background.
+`document_events(menu)` + `on_event("dismiss")` receives `reason="escape"` or
+`"outside"`. An ordinary `hide_document` does not generate dismiss.
 
-Для меню используйте `attribute("autofocus","")` у начального пункта, native Enter/Tab
-и `on_event("keydown", UiEventOptions(key="Down",stop=true))` с
-`focus_next(menu)`; для Up — `focus_next(menu,true)`. Callback не переживает кадр.
-Реальный пример — `examples/event_studio.das`: контекстное меню, Ctrl+S, журнал,
-перемещаемый редактор с локальным черновиком, hide/show и modal подтверждение.
-`tests/events.das` и `tests/documents.das` проверяют native input, lifetime и очереди.
+For a menu, use `attribute("autofocus","")` on the initial item, native Enter/Tab,
+and `on_event("keydown", UiEventOptions(key="Down",stop=true))` with
+`focus_next(menu)`; for Up, use `focus_next(menu,true)`. The callback does not outlive
+the frame. A real example is `examples/event_studio.das`: a context menu, Ctrl+S, a log,
+a movable editor with a local draft, hide/show and a modal confirmation.
+`tests/events.das` and `tests/documents.das` check native input, lifetime and queues.
 
 ## Native spatial navigation
 
-DSL вызывает штатные RCSS `nav`, `nav-up/right/down/left` и `tab-index`. Поиск
-соседа, переключение `:focus-visible`, прокрутку и Enter/Space выполняет сама RmlUi
-во время native обработки клавиатуры. Обработчики `on_event("keydown", stop=true)`
-по-прежнему могут отменить это стандартное действие.
+The DSL uses the standard RCSS `nav`, `nav-up/right/down/left` and `tab-index`. RmlUi
+itself performs the neighbor search, the `:focus-visible` switch, scrolling and
+Enter/Space during native keyboard handling. `on_event("keydown", stop=true)` handlers
+can still cancel this default action.
 
 ```dascript
 [ui_style]
@@ -931,110 +959,116 @@ def panel() {
 }
 ```
 
-| Helper/режим | Native поведение |
+| Helper/mode | Native behavior |
 |---|---|
-| `nav()` / `nav(UiNav.Auto)` | Геометрический поиск по всем четырём направлениям |
-| `UiNav.None` | Нет автоматического перехода |
-| `UiNav.Horizontal` / `UiNav.Vertical` | Поиск только вдоль указанной оси |
-| `UiNav.TreeOrder` | Следующий/предыдущий tabbable элемент в порядке DOM, без циклического возврата к корню |
-| `nav_up/right/down/left(mode)` | Режим для отдельного направления |
-| `nav_up/right/down/left(nav_to("id"))` | Явный переход к ID в текущем документе |
-| `nav_id("id")` | Задать настоящий native ID текущего элемента |
-| `tab_stop(true/false)` | `tab-index: auto/none` для обычного элемента |
-| `document_nav(document, mode=UiNav.Auto)` | Навигация, когда фокус находится на самом документе |
+| `nav()` / `nav(UiNav.Auto)` | Geometric search in all four directions |
+| `UiNav.None` | No automatic move |
+| `UiNav.Horizontal` / `UiNav.Vertical` | Search only along the given axis |
+| `UiNav.TreeOrder` | The next/previous tabbable element in DOM order, without wrapping around to the root |
+| `nav_up/right/down/left(mode)` | Mode for a single direction |
+| `nav_up/right/down/left(nav_to("id"))` | Explicit move to an ID in the current document |
+| `nav_id("id")` | Set a real native ID on the current element |
+| `tab_stop(true/false)` | `tab-index: auto/none` for an ordinary element |
+| `document_nav(document, mode=UiNav.Auto)` | Navigation when the focus is on the document itself |
 
-Helpers стилей работают и в `[ui_template]`, и непосредственно в компоненте.
-`nav_id`/`nav_to` принимают непустой ID без `#` и пробельных символов; префикс `#`
-добавляется при генерации свойства. Имена document-local: они не превращаются в
-scoped classes и не разрешаются через глобальный `ui_find`. Для повторяющихся
-компонентов задавайте уникальные ID, например `nav_id("item_{item.id}")`.
-Одинаковые ID в разных документах допустимы. Явный target должен существовать и
-быть доступен для фокуса; DSL не создаёт его и не заменяет native правила проверки.
+The style helpers work both in `[ui_template]` and directly in a component.
+`nav_id`/`nav_to` take a non-empty ID without `#` or whitespace; the `#` prefix
+is added when the property is generated. The names are document-local: they do not
+become scoped classes and are not resolved through the global `ui_find`. For repeated
+components, set unique IDs, for example `nav_id("item_{item.id}")`.
+The same IDs in different documents are allowed. An explicit target must exist and
+be focusable; the DSL does not create it and does not replace the native validation
+rules.
 
-Nav-свойства не наследуются. Обычно `nav` задают каждому виду кнопок через
-`[ui_style]`, а документу — `document_nav` или `nav()` внутри `window_frame`.
-Без `autofocus`/`request_focus` начальный фокус может быть на документе; его native
-`nav:auto` позволяет перейти к первому/последнему tabbable элементу.
+Nav properties are not inherited. Usually `nav` is set for each kind of button through
+`[ui_style]`, and for the document through `document_nav` or `nav()` inside
+`window_frame`. Without `autofocus`/`request_focus` the initial focus can be on the
+document; its native `nav:auto` lets you move to the first/last tabbable element.
 
-`Auto` ограничивается ближайшим scroll container и пропускает скрытые/недоступные
-для фокуса элементы. `TreeOrder` может переходить между scroll containers.
-`focus_scope` по-прежнему ограничивает **Tab/Shift+Tab**, а не все варианты стрелок;
-для native геометрической области задайте контейнеру `overflow: auto`.
-Явные ID-переходы могут пересекать такие области внутри документа. Они не переходят
-в другой документ; native modal/popup остаётся отдельной областью фокуса.
-Текстовые поля сохраняют native обработку курсора; `nav(UiNav.None)` отключает их
-участие как источника автоматических переходов стрелками, но не Tab.
+`Auto` is limited to the nearest scroll container and skips hidden or non-focusable
+elements. `TreeOrder` can move between scroll containers.
+`focus_scope` still limits **Tab/Shift+Tab**, not all arrow moves;
+for a native geometric scope, set `overflow: auto` on the container.
+Explicit ID moves can cross such scopes within a document. They do not move
+into another document; a native modal/popup stays a separate focus scope.
+Text fields keep native cursor handling; `nav(UiNav.None)` stops them from being a
+source of automatic arrow moves, but not of Tab.
 
-`nav*` и `tab_stop` участвуют в обычной генерации mount/update и зависимостей
-отдельных bindings. Движение фокуса не требует пересчёта компонентов; если нужны
-изменения модели, подписывайтесь на `on_event("focus")`.
-`tests/navigation.das` проверяет режимы, ID, disabled/hidden, scroll, Tab scope,
-текстовый курсор, popup, активацию и отсутствие лишних обновлений. Геймпадная
-обвязка SDL в этот native API не входит.
+`nav*` and `tab_stop` take part in the ordinary generation of mount/update code and of
+the dependencies of individual bindings. Moving the focus does not require recomputing
+components; if you need model changes, subscribe to `on_event("focus")`.
+`tests/navigation.das` checks modes, IDs, disabled/hidden, scroll, Tab scope,
+the text cursor, popups, activation and the absence of extra updates. SDL gamepad
+glue is not part of this native API.
 
-## Встроенный RmlUi Debugger
+## Built-in RmlUi Debugger
 
-Подключён официальный `RmlUi::Debugger`; его DOM inspector, Event Log, Outlines и
-Data Models работают в текущем RmlUi context. Интерфейс и встроенный шрифт принадлежат
-плагину, отдельной реализации инспектора в DSL нет.
+The official `RmlUi::Debugger` is included; its DOM inspector, Event Log, Outlines and
+Data Models work in the current RmlUi context. The interface and the built-in font
+belong to the plugin; the DSL has no inspector implementation of its own.
 
 ```dascript
-// Обычно в on_mount приложения. Плагин загрузится при первом включении.
-debugger_hotkey()           // F8; имя клавиши в формате SDL
-debugger_hotkey("F9")       // сменить клавишу
-debugger_hotkey("")         // отключить горячую клавишу
+// Usually in the application's on_mount. The plugin loads on first enable.
+debugger_hotkey()           // F8; key name in SDL format
+debugger_hotkey("F9")       // change the key
+debugger_hotkey("")         // disable the hotkey
 
-debugger_init()             // необязательная предварительная инициализация
-debugger_show()             // показать панель; автоматически инициализирует
+debugger_init()             // optional early initialization
+debugger_show()             // show the panel; initializes automatically
 debugger_toggle()
 debugger_show(false)
-debugger_shutdown()         // освободить плагин и отключить горячую клавишу
+debugger_shutdown()         // release the plugin and disable the hotkey
 ```
 
-По умолчанию плагин не загружен и горячая клавиша не назначена. Регистрация клавиши
-не требует постоянного вызова из render. Нажатие и отпускание перехватываются до
-очереди приложения; autorepeat не переключает панель многократно. Хоткей работает
-также при фокусе в native документах инструментов и в popup.
+By default the plugin is not loaded and no hotkey is assigned. Registering the key
+does not require a repeated call from render. Press and release are intercepted before
+the application queue; autorepeat does not toggle the panel repeatedly. The hotkey also
+works when the focus is in the native tool documents and in a popup.
 
-`debugger_ready()` и `debugger_visible()` можно читать в компоненте: макрос
-автоматически подписывает его на изменение состояния Debugger. Несвязанные
-компоненты не инвалидируются. Это состояние панели инструментов, а не проверка
-отдельного окна Element Info или Event Log.
+`debugger_ready()` and `debugger_visible()` can be read in a component: the macro
+subscribes it to Debugger state changes automatically. Unrelated components are not
+invalidated. This is the state of the toolbar, not a check of a particular Element Info
+or Event Log window.
 
-В upstream `SetVisible(false)` скрывает только toolbar. Наш `debugger_show(false)`
-также закрывает окна инструментов, выключает Outlines и прекращает picking. При
-следующем показе появляется toolbar; нужный инструмент открывается его кнопкой.
-Если фокус был в окне Debugger, он возвращается живому доступному элементу,
-сохранённому при показе. Клик по Debugger поверх popup не считается внешним кликом
-для закрытия popup. Первый picking-click перехватывает native инспектор; повторный
-клик по уже выбранному элементу может пройти приложению по правилам RmlUi.
+Upstream `SetVisible(false)` hides only the toolbar. `debugger_show(false)`
+also closes the tool windows, turns off Outlines and stops picking. On the next show
+the toolbar appears; the tool you need is opened with its button.
+If the focus was in a Debugger window, it returns to the live, enabled element that was
+saved at show time. A click on the Debugger over a popup does not count as an outside
+click that closes the popup. The first picking click is intercepted by the native
+inspector; a repeated click on the already selected element may pass through to the
+application, following RmlUi rules.
 
-Документы Debugger не принадлежат component reconciliation и не получают stylesheets
-DSL. `ui_reset` удаляет прикладные узлы, но не выключает отдельно запущенный плагин;
-для component-owned lifetime вызовите `debugger_shutdown()` в `on_unmount`.
-При `rui_shutdown` плагин освобождает сама RmlUi. Инициализация идемпотентна;
-проверены явный restart и создание нового context после полного shutdown.
+Debugger documents are not part of component reconciliation and do not receive DSL
+stylesheets. `ui_reset` removes application nodes but does not turn off a separately
+started plugin; for a component-owned lifetime, call `debugger_shutdown()` in
+`on_unmount`. On `rui_shutdown`, RmlUi itself releases the plugin. Initialization is
+idempotent; an explicit restart and the creation of a new context after a full shutdown
+are tested.
 
-Data Models показывает **native RmlUi data models**, включая scalar slots гибридной
-модели `dasrmlui` и именованные поля [публичных моделей внешних RML](data-models.md).
-`ui_data_debugger()` сразу открывает эту панель. Публичную модель также можно
-использовать внутри `[ui_component]` через `native_data(name, model)` с `data_*`
-привязками, без внешнего RML; [синтаксис и граница владения](data-models.md#внутри-ui_component-без-внешнего-rml).
-Произвольные переменные daScript
-и полная структура состояния компонентов не отражаются. Для DSL остаются `ui_stats`
-и `ui_trace`. Выбрать другой context пока нельзя: bridge обслуживает один context.
+Data Models shows **native RmlUi data models**, including the scalar slots of the
+`dasrmlui` hybrid model and the named fields of
+[public models for external RML](data-models.md).
+`ui_data_debugger()` opens this panel directly. A public model can also be used
+inside `[ui_component]` through `native_data(name, model)` with `data_*` bindings,
+without external RML; see
+[syntax and the ownership boundary](data-models.md#inside-ui_component-without-external-rml).
+Arbitrary daScript variables and the full structure of component state are not shown.
+For the DSL, `ui_stats` and `ui_trace` remain. Another context cannot be selected yet:
+the bridge serves one context.
 
-Пример: `examples/navigation_lab.das` (Vector deck). Стрелки/Enter управляют плитками
-и popup; F8 открывает штатный Debugger. Element Info позволяет выбрать элемент и
-увидеть native ID, scoped classes, RCSS и геометрию. `tests/debugger.das` проверяет
-picking, отсутствие лишних callbacks, удаление выбранного элемента, изоляцию стилей,
-возврат фокуса, hide/shutdown, GC и повторную инициализацию.
+Example: `examples/navigation_lab.das` (Vector deck). Arrows/Enter control the tiles
+and the popup; F8 opens the standard Debugger. Element Info lets you pick an element and
+see its native ID, scoped classes, RCSS and geometry. `tests/debugger.das` checks
+picking, the absence of extra callbacks, removal of the selected element, style
+isolation, focus return, hide/shutdown, GC and re-initialization.
 
-## SVG и Lottie
+## SVG and Lottie
 
-Официальные плагины RmlUi включены в сборку. Элементы работают в `[ui_component]`
-и статическом `[ui_template]`, стили задаются через `[ui_style]` или родительский
-контейнер. Это native элементы `<svg>` и `<lottie>`; отдельного проигрывателя DSL нет.
+The official RmlUi plugins are included in the build. The elements work in
+`[ui_component]` and in a static `[ui_template]`; styles are set through `[ui_style]` or
+the parent container. These are the native `<svg>` and `<lottie>` elements; the DSL has
+no player of its own.
 
 ```das
 [ui_style]
@@ -1053,44 +1087,46 @@ def vector_view(var model:Model) {
 }
 ```
 
-- `svg_image(name, source, crop=false)` загружает SVG через FileInterface RmlUi.
-  `crop=true` задаёт `crop-to-content`: прозрачные поля убираются при растеризации;
-  intrinsic-размер самого SVG остаётся исходным.
-- `svg_inline(name, fragment, viewport:float2, crop=false)` принимает SVG XML
-  **без внешнего `<svg>`**. DSL задаёт namespace, width/height и `viewBox="0 0 w h"`.
-  Размеры должны быть конечными и положительными. SVG-пути внутри fragment не являются
-  DOM-элементами RmlUi и не получают отдельные UI-события. Можно собирать fragment
-  функцией daScript; API не вводит отдельный парсер или язык рисования.
-- `lottie(name, source)` загружает Lottie JSON. В текущем плагине воспроизведение
-  автоматическое, циклическое, по времени RmlUi; pause/seek/speed API отсутствует.
-  `when` удаляет и заново создаёт элемент; remount и смена источника запускают новую
-  анимацию. Простое скрытие элемента не означает паузу.
-- `svg_decorator(source, crop=false, paint_area="padding-box")` задаёт native
-  SVG-декоратор. Допустимы `padding-box`, `border-box`, `content-box`. В путях используйте
-  `/`; кавычки и переносы строк запрещены. Декоратор растягивается на область элемента.
-- `image_color(rgb(...))` и `opacity(...)` модулируют изображение SVG/Lottie.
-  Для изменения пропорций/размеров используйте обычные RCSS width/height. DPI учитывает
-  native плагин; при изменении размеров он создаёт текстуру подходящего разрешения.
+- `svg_image(name, source, crop=false)` loads an SVG through the RmlUi FileInterface.
+  `crop=true` sets `crop-to-content`: transparent margins are removed during
+  rasterization; the intrinsic size of the SVG itself stays the original one.
+- `svg_inline(name, fragment, viewport:float2, crop=false)` takes SVG XML
+  **without the outer `<svg>`**. The DSL sets the namespace, width/height and
+  `viewBox="0 0 w h"`. The sizes must be finite and positive. SVG paths inside the
+  fragment are not RmlUi DOM elements and do not receive separate UI events. You can
+  build the fragment with a daScript function; the API does not introduce a separate
+  parser or drawing language.
+- `lottie(name, source)` loads Lottie JSON. In the current plugin, playback is
+  automatic, looped and driven by RmlUi time; there is no pause/seek/speed API.
+  `when` removes and recreates the element; a remount and a source change start a new
+  animation. Hiding the element does not pause it.
+- `svg_decorator(source, crop=false, paint_area="padding-box")` sets a native
+  SVG decorator. `padding-box`, `border-box` and `content-box` are allowed. Use `/` in
+  paths; quotes and line breaks are not allowed. The decorator is stretched over the
+  element area.
+- `image_color(rgb(...))` and `opacity(...)` modulate the SVG/Lottie image.
+  To change proportions or sizes, use ordinary RCSS width/height. The native plugin
+  accounts for DPI; when the size changes it creates a texture of a suitable resolution.
 
-Source, fragment, viewport и crop отслеживаются **на уровне привязки**. Неизменившийся
-компонент не пересчитывается ради кадров Lottie — host продолжает вызывать
-`rui_update`/`rui_render`. При замене содержимого файла по прежнему пути native кеш
-не обязан перечитать его: это не hot reload. Используйте новый путь ресурса.
-`rui_resource(path, data)` позволяет зарегистрировать SVG/JSON в памяти и передать
-его путь тем же функциям. Relative paths разрешаются относительно документа.
+Source, fragment, viewport and crop are tracked **at the binding level**. An unchanged
+component is not recomputed for Lottie frames; the host keeps calling
+`rui_update`/`rui_render`. When the content of a file is replaced at the same path, the
+native cache is not required to read it again: this is not hot reload. Use a new
+resource path. `rui_resource(path, data)` lets you register SVG/JSON in memory and pass
+its path to the same functions. Relative paths are resolved relative to the document.
 
-Сборка загружает закреплённые LunaSVG 3.2.1 (с PlutoVG) и rlottie; см.
-[зависимости](vector-dependencies.md). Поддерживаемый SVG/Lottie subset определяется
-этими библиотеками; произвольный экспорт After Effects не гарантируется.
-Пример `examples/vector_lab.das` использует GL3; функциональные тесты работают с SDL
-dummy, пиксельные тесты SVG и анимации — с настоящим SDL renderer.
+The build downloads pinned LunaSVG 3.2.1 (with PlutoVG) and rlottie; see
+[dependencies](vector-dependencies.md). The supported SVG/Lottie subset is defined by
+these libraries; an arbitrary After Effects export is not guaranteed to work.
+The `examples/vector_lab.das` example uses GL3; functional tests run with the SDL
+dummy driver, while SVG and animation pixel tests run with a real SDL renderer.
 
-## Пользовательские native-элементы
+## Custom native elements
 
-`register_native_element` регистрирует настоящий `Rml::ElementInstancer`. Native
-подкласс `Rml::Element` вызывает обработчик daScript из своих виртуальных методов,
-а `native_element` создаёт его через Factory в компоненте или шаблоне.
-Регистрация выполняется **после `rui_init`/`rui_init_gl` и до создания элементов**.
+`register_native_element` registers a real `Rml::ElementInstancer`. A native
+subclass of `Rml::Element` calls the daScript handler from its virtual methods,
+and `native_element` creates it through the Factory in a component or a template.
+Registration is done **after `rui_init`/`rui_init_gl` and before elements are created**.
 
 ```das
 def meter(event:UiNativeEvent) {
@@ -1099,7 +1135,7 @@ def meter(event:UiNativeEvent) {
         native_line(event.element,float2(10.,10.),event.size-float2(10.,10.),3.,rgb(240,190,70))
     }
 }
-// В startup, после инициализации RmlUi:
+// At startup, after RmlUi is initialized:
 // register_native_element("app-meter",@@meter,float2(200.,80.))
 
 [ui_component]
@@ -1112,44 +1148,45 @@ def meter_view(var model:Model) {
 }
 ```
 
-Сигнатура: `register_native_element(tag, handler, intrinsic=float2(0.), continuous=false)`.
-Handler — обычная функция `@@name` или owning lambda `@(event:UiNativeEvent) { ... }`.
-Имя должно начинаться с латинской строчной буквы, содержать дефис и состоять из
-`a-z`, `0-9`, `-`. Встроенные типы и повторная регистрация одного имени отклоняются.
-Ошибки регистрации не заменяют прежний обработчик. Возвращается уникальный ID регистрации.
+Signature: `register_native_element(tag, handler, intrinsic=float2(0.), continuous=false)`.
+The handler is an ordinary function `@@name` or an owning lambda
+`@(event:UiNativeEvent) { ... }`. The name must start with a lowercase Latin letter,
+contain a hyphen and consist of `a-z`, `0-9`, `-`. Built-in types and a repeated
+registration of the same name are rejected. A failed registration does not replace the
+previous handler. A unique registration ID is returned.
 
-`UiNativeEvent` содержит `element:uint64`, `kind:UiNativeKind`, `name:string`,
-`size:float2` (content box в пикселях) и `time:double` (время RmlUi).
+`UiNativeEvent` contains `element:uint64`, `kind:UiNativeKind`, `name:string`,
+`size:float2` (the content box in pixels) and `time:double` (RmlUi time).
 
-| Kind | Когда вызывается |
+| Kind | When it is called |
 |---|---|
-| `Create` | Один раз после получения handle, до установки атрибутов Factory и присоединения к документу; размер может быть нулевым |
-| `Attribute` | Для каждого изменённого атрибута; `name` — его имя, значение читается через `rui_get_attr`/`rui_has_attr` |
-| `Property` | Для каждого изменённого computed property; `name` — имя RCSS-свойства; актуальные размеры для рисования берите в Paint |
-| `Resize` | Native `OnResize`, после изменения content box |
-| `Update` | Native `OnUpdate`, только при `continuous=true`; может вызываться несколько раз за кадр и для скрытого элемента |
-| `Paint` | В native `OnRender`, когда нужно построить или обновить геометрию |
-| `Destroy` | Один раз при уничтожении native-объекта; handle уже невалиден, используется только как ключ для cleanup |
+| `Create` | Once after the handle is obtained, before the Factory sets attributes and before attachment to a document; the size can be zero |
+| `Attribute` | For each changed attribute; `name` is its name, the value is read with `rui_get_attr`/`rui_has_attr` |
+| `Property` | For each changed computed property; `name` is the RCSS property name; take the current sizes for drawing in Paint |
+| `Resize` | Native `OnResize`, after the content box changes |
+| `Update` | Native `OnUpdate`, only with `continuous=true`; can be called several times per frame and for a hidden element |
+| `Paint` | In native `OnRender`, when geometry must be built or updated |
+| `Destroy` | Once when the native object is destroyed; the handle is already invalid and is used only as a key for cleanup |
 
-`native_rect`, `native_triangle`, `native_line` принимают handle, геометрию,
-`UiColor` и необязательный `alpha=1`. Координаты локальны относительно content box,
-в физических пикселях. Solid geometry копируется в native mesh и компилируется
-через `RenderManager`. Сохранённые native clipping/transform/layer states применяются
-при рисовании; возможности transforms/filters зависят от renderer (GL3).
-RCSS opacity применяется к цветам вершин каждого примитива: перекрывающиеся
-полупрозрачные примитивы смешиваются последовательно, это не отдельная opacity-layer.
-Примитивы полностью реализованы в daScript поверх `native_mesh`; отдельных C++
-привязок rect/triangle/line нет. Custom shader commands, hit testing и baseline
-overrides пока не экспортированы.
+`native_rect`, `native_triangle`, `native_line` take a handle, geometry,
+a `UiColor` and an optional `alpha=1`. Coordinates are local to the content box,
+in physical pixels. Solid geometry is copied into a native mesh and compiled
+through `RenderManager`. The saved native clipping/transform/layer states are applied
+when drawing; transform/filter capabilities depend on the renderer (GL3).
+RCSS opacity is applied to the vertex colors of each primitive: overlapping
+translucent primitives are blended one after another; this is not a separate opacity
+layer. The primitives are implemented entirely in daScript on top of `native_mesh`;
+there are no separate C++ bindings for rect/triangle/line. Custom shader commands, hit
+testing and baseline overrides are not exported yet.
 
-### Mesh, UV и текстуры
+### Mesh, UV and textures
 
-`UiNativeMesh` — обычная структура daScript с тремя массивами:
+`UiNativeMesh` is an ordinary daScript struct with three arrays:
 
-- `vertices:array<float4>`: `(x,y,u,v)`, координаты относительно content box в пикселях,
-  UV нормализованы относительно всей текстуры;
-- `colors:array<uint4>`: один **не premultiplied** RGBA 0..255 на вершину;
-- `indices:array<int>`: индексы с нуля, каждая тройка задаёт треугольник.
+- `vertices:array<float4>`: `(x,y,u,v)`, coordinates relative to the content box in
+  pixels, UV normalized to the whole texture;
+- `colors:array<uint4>`: one **non-premultiplied** RGBA 0..255 per vertex;
+- `indices:array<int>`: zero-based indices, each triple defines a triangle.
 
 ```das
 var mesh:UiNativeMesh
@@ -1157,129 +1194,137 @@ let a=mesh_vertex(mesh,float2(0.,0.),rgb(255,120,80),float2(0.,0.))
 let b=mesh_vertex(mesh,float2(200.,0.),rgb(80,230,210),float2(1.,0.))
 let c=mesh_vertex(mesh,float2(100.,120.),rgb(180,120,255),float2(0.5,1.))
 mesh_triangle(mesh,a,b,c)
-native_mesh(event.element,mesh) // Без текстуры, цвета интерполируются.
-// native_mesh(event.element,mesh,texture) — те же вершины с текстурой.
+native_mesh(event.element,mesh) // No texture, colors are interpolated.
+// native_mesh(event.element,mesh,texture) — the same vertices with a texture.
 ```
 
-`mesh_vertex(mesh,position,ink,uv=float2(0.),alpha=1.)` возвращает индекс добавленной
-вершины. `mesh_triangle(mesh,a,b,c)` добавляет индексы; вершины можно переиспользовать.
-`mesh_quad(mesh,bounds,ink,uv=float4(0.,0.,1.,1.),alpha=1.)` добавляет quad.
-В `bounds` лежат `(x,y,width,height)`, в `uv` — **`(u0,v0,u1,v1)`**, не ширина/высота.
-Массивы можно заполнять напрямую. Их данные синхронно копируются в C++ при
-`native_mesh(element,mesh,texture=0ul)`; после вызова исходные массивы можно менять,
-освобождать и собирать GC. Нулевой texture означает solid geometry.
+`mesh_vertex(mesh,position,ink,uv=float2(0.),alpha=1.)` returns the index of the added
+vertex. `mesh_triangle(mesh,a,b,c)` adds indices; vertices can be reused.
+`mesh_quad(mesh,bounds,ink,uv=float4(0.,0.,1.,1.),alpha=1.)` adds a quad.
+`bounds` holds `(x,y,width,height)`; `uv` holds **`(u0,v0,u1,v1)`**, not width/height.
+The arrays can be filled directly. Their data is copied into C++ synchronously by
+`native_mesh(element,mesh,texture=0ul)`; after the call the source arrays can be
+changed, freed and collected by the GC. A zero texture means solid geometry.
 
-В одном Paint можно отправить несколько mesh с разными текстурами. Порядок вызовов
-сохраняется; соседние submissions одной текстуры объединяются, включая solid geometry.
-RCSS opacity модулирует vertex alpha; vertex RGBA и generated texture RGBA
-premultiply выполняется в C++. На кадрах без invalidation геометрия не пересоздаётся.
-Все позиции/UV должны быть конечными, длины vertices/colors совпадать, indices
-быть кратны трём и ссылаться на существующие вершины. Лимит на один Paint —
-1 000 000 отправленных вершин и 3 000 000 индексов. Неверный mesh отклоняется
-целиком до изменения batches. Пустой mesh допустим; вызов всё равно требует Paint.
+One Paint can submit several meshes with different textures. The call order is
+preserved; adjacent submissions with the same texture are merged, including solid
+geometry. RCSS opacity modulates vertex alpha; premultiplication of vertex RGBA and
+generated texture RGBA is done in C++. On frames without invalidation the geometry is
+not rebuilt. All positions/UVs must be finite, the lengths of vertices and colors must
+match, and the number of indices must be a multiple of three and refer to existing
+vertices. The limit for one Paint is 1,000,000 submitted vertices and 3,000,000 indices.
+An invalid mesh is rejected as a whole before any batch changes. An empty mesh is
+allowed; the call still requires Paint.
 
-Текстуры принадлежат **конкретному экземпляру элемента**:
+Textures belong to a **specific element instance**:
 
 ```das
-// Инициализировать один раз в Paint, затем сохранить handles в состоянии по element.
+// Initialize once in Paint, then store the handles in state keyed by element.
 let atlas=native_texture_load(event.element,"examples/assets/native_mesh_atlas.png")
 verify(atlas!=0ul)
 var pixels=array<uint4>(uint4(255u,100u,40u,255u),uint4(40u,200u,255u,128u))
 let generated=native_texture_rgba(event.element,int2(2,1),pixels)
 verify(generated!=0ul)
-// Левая половина атласа. native_image — также daScript-обёртка над mesh.
+// The left half of the atlas. native_image is also a daScript wrapper over mesh.
 native_image(event.element,atlas,float4(0.,0.,64.,64.),float4(0.,0.,0.5,1.))
 ```
 
-- `native_texture_load(element,source):uint64` загружает PNG через RenderManager;
-  relative path разрешается относительно native документа. Ошибка загрузки даёт 0,
-  RmlUi может записать warning. Не вызывайте load заново на каждом Paint.
-- `native_texture_rgba(element,size:int2,pixels:array<uint4>):uint64` создаёт текстуру
-  из row-major RGBA, строка 0 сверху. Каналы 0..255, alpha не premultiplied.
-  Размер каждой стороны 1..4096, длина массива строго width*height. Неверные аргументы
-  вызывают ошибку; ошибка создания renderer даёт 0. Пиксели копируются, callback RmlUi
-  владеет C++-копией и не хранит указателей в daScript heap.
-- `native_texture_size(element,texture):int2` возвращает размер или `(0,0)` для
-  устаревшего/чужого handle.
-- `native_texture_release(element,texture):bool` удаляет handle; повторный вызов
-  возвращает false. Уже закешированная геометрия сохраняет ресурс до следующего Paint
-  или уничтожения элемента. Release сам по себе не инвалидирует геометрию.
-- `native_texture_resources():int` — число живых обёрток ресурсов для диагностики,
-  включая удержанные batches. Это не число GPU allocations: file textures дополнительно
-  кеширует RmlUi до освобождения его texture cache/shutdown. Generated textures
-  освобождаются вместе с последней ссылкой элемента/batch.
+- `native_texture_load(element,source):uint64` loads a PNG through RenderManager;
+  a relative path is resolved relative to the native document. A load failure gives 0,
+  and RmlUi may log a warning. Do not call load again on every Paint.
+- `native_texture_rgba(element,size:int2,pixels:array<uint4>):uint64` creates a texture
+  from row-major RGBA, row 0 at the top. Channels are 0..255, alpha is not
+  premultiplied. Each side is 1..4096, and the array length must be exactly
+  width*height. Invalid arguments raise an error; a creation failure in the renderer
+  gives 0. The pixels are copied; the RmlUi callback owns the C++ copy and keeps no
+  pointers into the daScript heap.
+- `native_texture_size(element,texture):int2` returns the size, or `(0,0)` for a
+  stale or foreign handle.
+- `native_texture_release(element,texture):bool` removes the handle; a repeated call
+  returns false. Already cached geometry keeps the resource until the next Paint
+  or until the element is destroyed. Release by itself does not invalidate geometry.
+- `native_texture_resources():int` is the number of live resource wrappers, for
+  diagnostics, including those held by batches. It is not the number of GPU allocations:
+  file textures are additionally cached by RmlUi until its texture cache is released or
+  it shuts down. Generated textures are released together with the last element/batch
+  reference.
 
-Создание текстур требует элемента, уже присоединённого к context; Create вызывается
-слишком рано. Используйте ленивую инициализацию в Paint или обычный код после mount.
-При Destroy все оставшиеся ресурсы освобождаются автоматически; handle элемента
-в этом callback уже невалиден. Handles монотонны и не переиспользуются при remount
-или shutdown/restart. Передача чужого или released texture в mesh вызывает ошибку.
-Для замены картинки создайте новый handle, освободите старый и вызовите invalidate.
+Creating textures requires an element that is already attached to the context; Create
+is called too early. Use lazy initialization in Paint or ordinary code after mount.
+On Destroy all remaining resources are released automatically; the element handle
+is already invalid in this callback. Handles are monotonic and are not reused on remount
+or shutdown/restart. Passing a foreign or released texture to a mesh raises an error.
+To replace an image, create a new handle, release the old one and call invalidate.
 
-Sampler пока задаёт backend: GL3 использует repeat/linear, SDL — своё штатное
-семплирование. Для атласов оставляйте padding/inset, если края соседних клеток не должны
-смешиваться. Индивидуальные sampler/filter/wrap настройки пока не экспортированы.
-Пример `examples/mesh_lab.das` показывает UV-ленту, кольцевой прогресс, градиент
-вершин, PNG-спрайты, tint/alpha, кеширование и remount/GC. Тест `native_mesh_pixels`
-проверяет те же API на SDL и GL3, включая lifecycle после ошибки Paint.
+For now the sampler is set by the backend: GL3 uses repeat/linear, SDL uses its standard
+sampling. For atlases, leave padding/inset if the edges of neighboring cells must not
+blend. Per-texture sampler/filter/wrap settings are not exported yet.
+The `examples/mesh_lab.das` example shows a UV ribbon, a ring progress indicator, a
+vertex gradient, PNG sprites, tint/alpha, caching and remount/GC. The
+`native_mesh_pixels` test checks the same APIs on SDL and GL3, including the lifecycle
+after a Paint error.
 
-Обычно Paint не вызывается каждый кадр. Атрибуты, native style changes, размеры
-и DPI помечают геометрию устаревшей; `native_invalidate(element)` делает это явно.
-Для анимации регистрируйте `continuous=true`, обновляйте своё состояние в Update
-и вызывайте invalidate. Сам компонент при этом остаётся закешированным. Одного
-изменения таблицы daScript недостаточно для native repaint без invalidate.
+Paint is normally not called every frame. Attributes, native style changes, sizes
+and DPI mark the geometry as stale; `native_invalidate(element)` does this explicitly.
+For animation, register with `continuous=true`, update your state in Update
+and call invalidate. The component itself stays cached. Changing a daScript table
+alone is not enough for a native repaint without invalidate.
 
-`intrinsic` задаёт размер в dp и aspect ratio; положительные размеры делают элемент
-replaced element. `(0,0)` оставляет обычную раскладку контейнера. Изменить intrinsic
-можно через `native_set_intrinsic(element,size)` из Create/Attribute/Update или обычного
-кода. Во время Paint/Destroy это запрещено. Размеры должны быть конечными и положительными.
-RCSS width/height переопределяют intrinsic. Атрибуты в DSL отслеживаются отдельными bindings.
+`intrinsic` sets the size in dp and the aspect ratio; positive sizes make the element a
+replaced element. `(0,0)` keeps ordinary container layout. The intrinsic size can be
+changed with `native_set_intrinsic(element,size)` from Create/Attribute/Update or from
+ordinary code. This is not allowed during Paint/Destroy. The sizes must be finite and
+positive. RCSS width/height override the intrinsic size. Attributes in the DSL are
+tracked by separate bindings.
 
-Обработчики синхронны и работают на UI-потоке. Из native-хука разрешены чтение
-свойств/атрибутов, изменение своего состояния daScript, native invalidate/size и
-рисование в Paint. Мутации DOM/context и повторный update/render/shutdown запрещены:
-выполняйте их в обычных `on_event`/`on_click` или основном цикле. Это предотвращает
-удаление элемента во время собственного native обхода. Рисовать можно только в Paint
-текущего элемента. `Create`/`Destroy` не следует использовать как замену component
-`on_mount`/`on_unmount`: native lifetime также охватывает элементы из RML/templates.
+Handlers are synchronous and run on the UI thread. From a native hook you may read
+properties/attributes, change your own daScript state, call native invalidate/size and
+draw in Paint. DOM/context mutations and a re-entrant update/render/shutdown are not
+allowed: do them in ordinary `on_event`/`on_click` handlers or in the main loop. This
+prevents an element from being removed during its own native traversal. Drawing is
+allowed only in the Paint of the current element. `Create`/`Destroy` should not be used
+as a replacement for the component `on_mount`/`on_unmount`: the native lifetime also
+covers elements from RML/templates.
 
-Реестр lambda хранится в глобальной таблице daScript, которую видит GC; C++ хранит
-только статический dispatcher и его Context. Захваченные owning значения и таблицы
-состояния сохраняются при GC. Не захватывайте указатели на уже завершившиеся стековые
-переменные. Для состояния отдельного экземпляра используйте таблицу по `event.element`,
-создавайте запись в Create и удаляйте в Destroy (см. Signal foundry).
+The lambda registry is kept in a global daScript table that the GC sees; C++ stores
+only a static dispatcher and its Context. Captured owning values and state tables
+survive GC. Do not capture pointers to stack variables whose scope has already ended.
+For per-instance state, use a table keyed by `event.element`; create the entry in
+Create and remove it in Destroy (see `examples/native_lab.das`).
 
-`ui_reset` удаляет компонентные элементы, сохраняя регистрации. Закрытие документа
-освобождает также его статические native-элементы. `unregister_native_element(tag)`
-возвращает false, пока есть живые экземпляры; при успехе освобождает handler/captures.
-`rui_shutdown` сначала уничтожает элементы, затем снимает GC roots обработчиков.
-Host завершает native context до уничтожения script Context; после нового init типы
-нужно зарегистрировать заново. ID не переиспользуются.
-Завершайте RmlUi до уничтожения SDL renderer или GL context. Host guard защищает
-срок жизни script Context, но не заменяет этот порядок освобождения графических ресурсов.
+`ui_reset` removes component elements and keeps registrations. Closing a document
+also releases its static native elements. `unregister_native_element(tag)`
+returns false while live instances exist; on success it releases the handler/captures.
+`rui_shutdown` first destroys the elements, then removes the GC roots of the handlers.
+The host shuts down the native context before the script Context is destroyed; after a
+new init the types must be registered again. IDs are not reused.
+Shut down RmlUi before the SDL renderer or GL context is destroyed. The host guard
+protects the lifetime of the script Context, but it does not replace this order of
+releasing graphics resources.
 
-Исключение callback перехватывается внутри C++-границы, элемент перестаёт получать
-обычные callbacks, но Destroy всё ещё вызывается для cleanup и должен учитывать
-частично завершившийся Create. Диагностика возвращается
-после `ui_frame`, `ui_reset`, `rui_render` или script `rui_shutdown`, когда native
-обход завершён. При работе через raw APIs вызывайте `rui_native_check()` после
-операции; `rui_native_error()` позволяет прочитать отложенную диагностику.
-Необработанная terminal script exception завершает host без повторного входа
-в повреждённый script Context; произвольный пользовательский cleanup при таком
-аварийном завершении не гарантируется.
+A callback exception is caught at the C++ boundary. The element stops receiving
+ordinary callbacks, but Destroy is still called for cleanup and must allow for a
+partially completed Create. The diagnostic is returned
+after `ui_frame`, `ui_reset`, `rui_render` or a script `rui_shutdown`, once the native
+traversal has finished. When working through raw APIs, call `rui_native_check()` after
+the operation; `rui_native_error()` lets you read the deferred diagnostic.
+An unhandled terminal script exception ends the host without re-entering
+the damaged script Context; arbitrary user cleanup is not guaranteed in such an
+abnormal exit.
 
-Для диагностики есть `native_registered`, `native_instance_count`, `native_handler_count`
-и `rui_is_native`. Пример — `examples/native_lab.das`; тесты — `native_elements.das`,
-`native_safety.das`, `native_host_lifetime.das` и `native_render.das` с pixel checker.
-Native contract сверяется с [RmlUi custom elements](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/custom_elements.html)
-и заголовками используемой локальной ревизии.
+For diagnostics there are `native_registered`, `native_instance_count`,
+`native_handler_count` and `rui_is_native`. Example: `examples/native_lab.das`; tests:
+`native_elements.das`, `native_safety.das`, `native_host_lifetime.das` and
+`native_render.das` with a pixel checker.
+The native contract is checked against [RmlUi custom elements](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/custom_elements.html)
+and the headers of the local revision in use.
 
-## Пользовательские decorators
+## Custom decorators
 
-`register_decorator` регистрирует `Rml::DecoratorInstancer`, который создаёт обычные
-native `Decorator`. Они оформляют существующие `box`, `button`, `input` и другие
-элементы: отдельный native-элемент для этого не нужен. Регистрация выполняется после
-инициализации RmlUi, **до первого вычисления стилей**.
+`register_decorator` registers an `Rml::DecoratorInstancer` that creates ordinary
+native `Decorator` objects. They decorate existing `box`, `button`, `input` and other
+elements: no separate native element is needed for this. Registration is done after
+RmlUi is initialized, **before styles are first computed**.
 
 ```das
 def draw_frame(event:UiDecoratorEvent) {
@@ -1288,7 +1333,7 @@ def draw_frame(event:UiDecoratorEvent) {
     let edge=decorator_length(event.canvas,"edge",event.size.x)
     native_rect(event.canvas,float4(0.,0.,edge,event.size.y),ink.ink,ink.alpha)
 }
-// В startup после rui_init / rui_init_gl:
+// At startup, after rui_init / rui_init_gl:
 // register_decorator("app-frame",array<UiDecoratorParam>(
 //     decorator_color_param("ink",rgb(70,120,100)),
 //     decorator_length_param("edge",dp(4))),@@draw_frame)
@@ -1305,103 +1350,107 @@ def frame_style() {
 }
 ```
 
-Сигнатура: `register_decorator(name,parameters,handler):uint64`. Handler — owning
-lambda `@(event:UiDecoratorEvent) { ... }` или функция `@@name`. Имена типов — строчные
-латинские буквы/цифры/дефис, начинаются с буквы и содержат дефис. Встроенные типы и
-дубликаты не заменяются. Имена параметров уникальны, по тем же правилам без обязательного
-дефиса; максимум 32 параметра, имя `decorator` зарезервировано. Пустая схема допустима.
+Signature: `register_decorator(name,parameters,handler):uint64`. The handler is an
+owning lambda `@(event:UiDecoratorEvent) { ... }` or a function `@@name`. Type names
+consist of lowercase Latin letters, digits and hyphens, start with a letter and contain
+a hyphen. Built-in types and duplicates are not replaced. Parameter names are unique and
+follow the same rules, except that the hyphen is not required; the maximum is 32
+parameters, and the name `decorator` is reserved. An empty schema is allowed.
 
-| Объявление параметра | Getter в callback | Native parser |
+| Parameter declaration | Getter in the callback | Native parser |
 |---|---|---|
 | `decorator_number_param(name,value:float)` | `decorator_number(canvas,name):float` | `number` |
 | `decorator_length_param(name,value:UiLength)` | `decorator_length(canvas,name,percentage_base=0.):float` | `length_percent` |
 | `decorator_color_param(name,value:UiColor,alpha=1.)` | `decorator_color(canvas,name):UiDecoratorColor` | `color` |
 | `decorator_string_param(name,value:string)` | `decorator_string(canvas,name):string` | `string` |
 
-`UiDecoratorColor` содержит `ink:UiColor` и `alpha:float` в диапазоне 0..1.
-Length getter возвращает физические пиксели: dp учитывает DPI, em — шрифт элемента,
-проценты разрешаются относительно явно переданного `percentage_base`. Например,
-для скоса угла можно передать `min(event.size.x,event.size.y)`.
-Неизвестный параметр, неверный getter или устаревший canvas вызывают ошибку.
+`UiDecoratorColor` contains `ink:UiColor` and `alpha:float` in the range 0..1.
+The length getter returns physical pixels: dp accounts for DPI, em for the element font,
+and percentages are resolved against the explicitly passed `percentage_base`. For
+example, for a corner bevel you can pass `min(event.size.x,event.size.y)`.
+An unknown parameter, a wrong getter or a stale canvas raises an error.
 
-`custom_decorator(name,args,paint_area="padding-box")` принимает именованные
-`decorator_arg(name,value)`; есть перегрузки для float/int, UiLength, UiColor/alpha
-и string. Порядок именованных аргументов не важен; пропущенные берутся из схемы.
-`custom_decorator(name)` применяет все defaults. RCSS-значения проверяются штатными
-парсерами RmlUi и сериализуются в каноническую декларацию, например
-`app-frame(rgb(160,90,60), 8dp) padding-box`. Ошибки имён, дубликаты и неверные
-значения обнаруживаются до изменения стиля. Строковые значения должны быть без
-кавычек, обратных слешей, переводов строк, `;` и фигурных скобок.
+`custom_decorator(name,args,paint_area="padding-box")` takes named
+`decorator_arg(name,value)` arguments; there are overloads for float/int, UiLength,
+UiColor/alpha and string. The order of named arguments does not matter; omitted ones are
+taken from the schema. `custom_decorator(name)` applies all defaults. RCSS values are
+checked by the standard RmlUi parsers and serialized into a canonical declaration, for
+example `app-frame(rgb(160,90,60), 8dp) padding-box`. Name errors, duplicates and
+invalid values are detected before the style changes. String values must not contain
+quotes, backslashes, line breaks, `;` or braces.
 
-Helper работает в `[ui_style]`, статических шаблонах и непосредственно в
-`[ui_component]`, где становится отдельной reactive-привязкой. Применяется обычный
-RCSS cascade, включая hover, classes, media и themes. Как `svg_decorator`, helper
-задаёт всё свойство `decorator`; повторный вызов заменяет предыдущее значение.
-Несколько decorators в native RCSS list (`a(), b()`) поддержаны runtime;
-каждое применение получает свой canvas, даже на одном элементе.
+The helper works in `[ui_style]`, in static templates and directly in
+`[ui_component]`, where it becomes a separate reactive binding. The ordinary
+RCSS cascade applies, including hover, classes, media and themes. Like `svg_decorator`,
+the helper sets the whole `decorator` property; a repeated call replaces the previous
+value. Several decorators in a native RCSS list (`a(), b()`) are supported by the
+runtime; each application gets its own canvas, even on one element.
 
-`UiDecoratorEvent` содержит:
+`UiDecoratorEvent` contains:
 
-- `canvas:uint64` — уникальные данные **одного применения** декоратора. Передавайте
-  его в `native_mesh`, `native_rect/triangle/line/image`, texture API и `native_invalidate`;
-- `element:uint64` — обычный DOM handle для чтения атрибутов/свойств. Это не canvas;
-- `kind:UiDecoratorKind` — Create, Paint или Destroy;
-- `size:float2` — размер выбранной области в физических пикселях;
-- `dpi:float` — актуальный density-independent pixel ratio;
-- `paint_area:string` — `border-box`, `padding-box` или `content-box`.
+- `canvas:uint64` — the unique data of **one application** of the decorator. Pass it
+  to `native_mesh`, `native_rect/triangle/line/image`, the texture API and
+  `native_invalidate`;
+- `element:uint64` — an ordinary DOM handle for reading attributes/properties. It is
+  not a canvas;
+- `kind:UiDecoratorKind` — Create, Paint or Destroy;
+- `size:float2` — the size of the selected area in physical pixels;
+- `dpi:float` — the current density-independent pixel ratio;
+- `paint_area:string` — `border-box`, `padding-box` or `content-box`.
 
-Координаты рисунка начинаются в левом верхнем углу **выбранной paint-area**, runtime
-применяет её offset. Область не является автоматической обрезкой произвольного mesh
-по border-radius: для фигурной рамки формируйте соответствующую геометрию.
-Действуют native clipping/transform/layer состояния; возможности зависят от renderer.
-Opacity применяется к каждому submission, как у native-элементов.
+Drawing coordinates start at the top-left corner of the **selected paint area**; the
+runtime applies its offset. The area does not automatically clip an arbitrary mesh to
+the border-radius: for a shaped frame, build the matching geometry.
+Native clipping/transform/layer states apply; capabilities depend on the renderer.
+Opacity is applied to each submission, as for native elements.
 
-Create соответствует `GenerateElementData`, Destroy — `ReleaseElementData`.
-RmlUi может пересоздать данные при resize, DPI, opacity, изменении параметров или
-каскада, **не удаляя сам DOM-элемент**. При этом новый Create иногда приходит раньше
-старого Destroy. Храните состояние в таблице по `event.canvas`, а не только по element.
-Paint вызывается для нового/инвалидированного canvas; следующие кадры используют
-кеш mesh без входа в daScript. Для изменения внешнего состояния вызовите
-`native_invalidate(canvas)`. Изменение произвольного атрибута DOM само по себе не
-является зависимостью декоратора — передавайте реактивное значение параметром либо
-инвалидируйте canvas явно.
+Create corresponds to `GenerateElementData`, Destroy to `ReleaseElementData`.
+RmlUi can recreate the data on resize, DPI change, opacity change, or a change of
+parameters or the cascade, **without removing the DOM element itself**. In that case
+the new Create sometimes arrives before the old Destroy. Keep state in a table keyed by
+`event.canvas`, not only by element.
+Paint is called for a new or invalidated canvas; later frames use the cached mesh
+without entering daScript. When external state changes, call
+`native_invalidate(canvas)`. A change of an arbitrary DOM attribute is not by itself a
+dependency of the decorator: pass the reactive value as a parameter or invalidate the
+canvas explicitly.
 
-Текстуры доступны в Create/Paint, поскольку декорируемый элемент уже присоединён
-к context. Все ресурсы canvas автоматически освобождаются после Destroy. Во время
-Destroy canvas уже невалиден; он служит ключом удаления состояния, а элемент может
-находиться в процессе разрушения. Ошибка Create/Paint отключает Paint этого canvas,
-но не отменяет Destroy. Ошибки перехватываются на C++-границе и сообщаются через
-тот же `rui_native_check`/`rui_native_error`, что у native-элементов.
-Мутации DOM, update/render/shutdown внутри callbacks запрещены.
+Textures are available in Create/Paint, because the decorated element is already
+attached to the context. All canvas resources are released automatically after Destroy.
+During Destroy the canvas is already invalid; it serves as the key for removing state,
+and the element may be in the process of destruction. A Create/Paint error disables
+Paint for that canvas but does not cancel Destroy. Errors are caught at the C++ boundary
+and reported through the same `rui_native_check`/`rui_native_error` as for native
+elements. DOM mutations and update/render/shutdown inside callbacks are not allowed.
 
-Owning lambda остаётся в GC-root таблице до unregister/shutdown. C++ не хранит
-указателей в script heap; mesh и пиксели копируются. Привязки сохраняют реальную
-позицию вызова и стековый кадр, чтобы GC внутри Paint/Destroy корректно обходил
-локальные значения приостановленного вызывающего daScript-кода.
+The owning lambda stays in the GC-root table until unregister/shutdown. C++ keeps no
+pointers into the script heap; meshes and pixels are copied. The bindings preserve the
+real call position and stack frame, so that a GC inside Paint/Destroy correctly walks
+the local values of the suspended calling daScript code.
 
-`decorator_registered`, `decorator_instance_count` (живые canvas) и
-`decorator_handler_count` доступны для диагностики. `unregister_decorator(name)`
-возвращает false, пока тип используют canvas **или кешированные native Decorator
-definitions**. Поэтому даже после удаления элементов stylesheet может удерживать
-тип. Неиспользуемый тип можно снять и зарегистрировать снова; старый C++ instancer
-остаётся неактивным до shutdown, поскольку разобранный RCSS хранит raw pointers на
-него и его property definitions. Lambda при успешном unregister освобождается сразу.
-Повторная регистрация не переназначает уже разобранный RCSS старому stylesheet:
-для нового типа пересоздайте соответствующие стили/документы.
-`ui_reset` сохраняет регистрации, `rui_shutdown` удаляет их после native teardown.
-Как и для native-элементов, shutdown должен предшествовать освобождению SDL/GL renderer.
+`decorator_registered`, `decorator_instance_count` (live canvases) and
+`decorator_handler_count` are available for diagnostics. `unregister_decorator(name)`
+returns false while the type is used by canvases **or by cached native Decorator
+definitions**. So a stylesheet can hold the type even after the elements are removed.
+An unused type can be unregistered and registered again; the old C++ instancer
+stays inactive until shutdown, because parsed RCSS holds raw pointers to it and to its
+property definitions. On a successful unregister the lambda is released immediately.
+A repeated registration does not rebind the already parsed RCSS of an old stylesheet:
+for the new type, recreate the corresponding styles/documents.
+`ui_reset` keeps registrations; `rui_shutdown` removes them after the native teardown.
+As for native elements, shutdown must come before the SDL/GL renderer is released.
 
-Пример: `examples/decorator_lab.das` (Decorator Studio). `decorator_pixels` проверяет
-SDL/GL3, параметры/defaults, hover, paint-area, texture, opacity, DPI/resize, clipping,
-cache, несколько decorators на элементе, captured values/GC, stale handles и ошибки.
-`decorator_host_lifetime` проверяет поздний Destroy до освобождения script Context.
+Example: `examples/decorator_lab.das` (Decorator Studio). `decorator_pixels` checks
+SDL/GL3, parameters/defaults, hover, paint area, texture, opacity, DPI/resize, clipping,
+cache, several decorators on one element, captured values/GC, stale handles and errors.
+`decorator_host_lifetime` checks a late Destroy before the script Context is released.
 
 
-## Пользовательские filters и shaders GL3
+## Custom GL3 filters and shaders
 
-Регистрация выполняется после `rui_init_gl` и до вычисления стилей. Код GLSL находится
-в обычной строке daScript; встроенный `%_esc~ ... %_esc` позволяет не экранировать
-фигурные скобки. Отдельного парсера DSL или shader-файла не требуется.
+Registration is done after `rui_init_gl` and before styles are computed. The GLSL code
+lives in an ordinary daScript string; the built-in `%_esc~ ... %_esc` lets you avoid
+escaping braces. No separate DSL parser or shader file is needed.
 
 ```das
 register_shader("app-stripes",%_esc~
@@ -1441,99 +1490,107 @@ def material(amount:float) {
 }
 ```
 
-`register_shader(name, source, params)` создаёт native DecoratorInstancer, который
-рисует фон элемента через CompiledShader. `register_filter(name, source, params,
- overflow=0.)` создаёт native FilterInstancer: он обрабатывает слой элемента вместе
-с потомками или backdrop. `overflow` — дополнительная область рисования в `dp`
-вокруг элемента, например для blur или смещения; для backdrop она не расширяет
-его область. Есть перегрузки регистрации без массива параметров.
+`register_shader(name, source, params)` creates a native DecoratorInstancer that
+draws the element background through a CompiledShader.
+`register_filter(name, source, params, overflow=0.)` creates a native FilterInstancer:
+it processes the element layer together with its descendants, or the backdrop.
+`overflow` is an extra drawing area in `dp` around the element, for example for a blur
+or an offset; for a backdrop it does not extend its area. There are registration
+overloads without the parameter array.
 
-`UiEffectParam`/`UiEffectArg` используют тот же формат схемы, что и параметры
-script decorators. Поддержаны `effect_number_param`, `effect_length_param`,
-`effect_color_param` и перегрузки `effect_arg` для float/int, UiLength и UiColor
-с alpha. Строковые параметры для GPU не поддержаны. Имена эффектов содержат дефис,
-имена параметров — строчные латинские буквы, цифры и дефис; первый символ — буква.
-Схема неизменна: до 32 параметров, исходник до 1 MiB. Defaults и значения проходят
-native RCSS parser, неизвестные и повторяющиеся аргументы отклоняются.
+`UiEffectParam`/`UiEffectArg` use the same schema format as the parameters of
+script decorators. `effect_number_param`, `effect_length_param`,
+`effect_color_param` and `effect_arg` overloads for float/int, UiLength and UiColor
+with alpha are supported. String parameters are not supported for the GPU. Effect names
+contain a hyphen; parameter names consist of lowercase Latin letters, digits and
+hyphens; the first character is a letter. The schema is immutable: up to 32 parameters,
+source up to 1 MiB. Defaults and values go through the native RCSS parser; unknown and
+repeated arguments are rejected.
 
-`custom_shader(name, args, paint_area="padding-box")` поддерживает также
-`border-box` и `content-box`. Геометрия учитывает скругления, opacity и transforms
-RmlUi. `custom_filter` записывает `filter`, `custom_backdrop_filter` —
-`backdrop-filter`. Несколько вызовов одного свойства заменяют его значение.
-Для последовательных проходов используйте:
+`custom_shader(name, args, paint_area="padding-box")` also supports
+`border-box` and `content-box`. The geometry respects RmlUi rounded corners, opacity
+and transforms. `custom_filter` writes `filter`, `custom_backdrop_filter` writes
+`backdrop-filter`. Several calls for the same property replace its value.
+For sequential passes, use:
 
 ```das
 custom_filters(array<UiFilterEffect>(
     filter_effect("app-desaturate",array<UiEffectArg>(effect_arg("amount",0.8))),
-    filter_effect("app-other"))) // app-other должен быть зарегистрирован
+    filter_effect("app-other"))) // app-other must be registered
 ```
 
-`custom_backdrop_filters` принимает такой же массив. Порядок элементов — порядок
-проходов. Пустой массив снимает фильтр (`none`). Native built-in и пользовательские
-фильтры можно смешивать через обычное `property("filter", "app-desaturate(0.5) blur(2px)")`.
-Все helpers доступны в `[ui_style]`, `[ui_template]` и `[ui_component]`. В компоненте
-изменение параметра обновляет только соответствующую привязку свойства.
+`custom_backdrop_filters` takes the same kind of array. The order of the items is the
+order of the passes. An empty array removes the filter (`none`). Native built-in and
+custom filters can be mixed through an ordinary
+`property("filter", "app-desaturate(0.5) blur(2px)")`.
+All helpers are available in `[ui_style]`, `[ui_template]` and `[ui_component]`. In a
+component, a parameter change updates only the corresponding property binding.
 
-### Контракт GLSL
+### GLSL contract
 
-Пользователь задаёт `vec4 effect(vec2 uv)`; `#version 330`, uniforms и `main`
-добавляются runtime. Можно определять собственные вспомогательные GLSL-функции.
-Возвращается **straight RGBA** в диапазоне 0..1; wrapper выполняет clamp и
-premultiply для native blending RmlUi. RGB не нужно заранее умножать на alpha.
+You define `vec4 effect(vec2 uv)`; `#version 330`, the uniforms and `main`
+are added by the runtime. You can define your own GLSL helper functions.
+The function returns **straight RGBA** in the range 0..1; the wrapper clamps and
+premultiplies it for RmlUi native blending. RGB does not need to be multiplied by alpha
+in advance.
 
-| Имя | Значение |
+| Name | Meaning |
 |---|---|
-| `uv` | Локальные координаты 0..1, начало сверху слева |
-| `u_time` | Время SystemInterface RmlUi, float в секундах; обновляется при draw |
-| `u_size` | Shader: размер paint area в px. Filter: размер текущей clipped postprocess области, включая overflow |
-| `u_texel` | `1 / u_size`, удобно для соседних выборок |
-| `p_<name>` | Number и length — float; color — vec4 straight RGBA 0..1. Дефисы в имени заменяются на `_` |
-| `sample_source(uv)` | Только filter: straight RGBA исходного слоя, прозрачный чёрный вне текущей области |
+| `uv` | Local coordinates 0..1, origin at the top left |
+| `u_time` | RmlUi SystemInterface time, float in seconds; updated on draw |
+| `u_size` | Shader: size of the paint area in px. Filter: size of the current clipped postprocess area, including overflow |
+| `u_texel` | `1 / u_size`, convenient for neighboring samples |
+| `p_<name>` | Number and length are float; color is vec4 straight RGBA 0..1. Hyphens in the name are replaced with `_` |
+| `sample_source(uv)` | Filter only: straight RGBA of the source layer, transparent black outside the current area |
 
-Length/dp разрешаются в пиксели, проценты — относительно **ширины** paint area
-shader или border box элемента filter. `u_size` фильтра может отличаться от размера
-элемента из-за clipping, overflow и viewport. Выборка ограничена текущей областью,
-чтобы не читать оставшиеся пиксели чужого слоя из переиспользуемого framebuffer.
-`u_time` не создаёт зависимости daScript: GPU-анимация работает без обновления
-компонента, пока приложение продолжает вызывать render.
+Length/dp values are resolved to pixels; percentages are resolved against the **width**
+of the paint area for a shader, or of the element border box for a filter. The filter
+`u_size` can differ from the element size because of clipping, overflow and the
+viewport. Sampling is limited to the current area, so that leftover pixels of another
+layer are not read from a reused framebuffer.
+`u_time` does not create a daScript dependency: GPU animation runs without component
+updates as long as the application keeps calling render.
 
-### Lifetime и ограничения
+### Lifetime and limitations
 
-Исходники/схемы копируются, GLSL компилируется и линкуется один раз при регистрации.
-Ошибка компилятора вызывает исключение daScript с диагностикой GL; частичные
-ресурсы освобождаются, имя можно зарегистрировать заново. Изменение параметров
-пересоздаёт native instance с новыми uniforms, но переиспользует GL program.
-Отдельных daScript callbacks в render нет; сборка GC не затрагивает GPU-ресурсы.
+Sources and schemas are copied; GLSL is compiled and linked once at registration.
+A compiler error raises a daScript exception with the GL diagnostic; partial
+resources are released, and the name can be registered again. A parameter change
+recreates the native instance with new uniforms but reuses the GL program.
+There are no separate daScript callbacks during render; a GC collection does not affect
+GPU resources.
 
-`gpu_effects_available()` проверяет GL3 capability. `gpu_effect_counts()` возвращает
-`int2(programs, compiled_instances)` для диагностики. `shader_registered` и
-`filter_registered` проверяют тип; `unregister_shader`/`unregister_filter` возвращают
-false, пока существуют native definitions (в том числе кеш RCSS) или compiled instances.
-Удаление элемента освобождает его instances; кеш RCSS может удерживать definitions
-до сброса соответствующих stylesheet/document caches. Retired instancers сохраняются
-до shutdown, поскольку разобранный RCSS может содержать их указатели. При shutdown
-native instances/definitions освобождаются раньше registry и GL context.
+`gpu_effects_available()` checks the GL3 capability. `gpu_effect_counts()` returns
+`int2(programs, compiled_instances)` for diagnostics. `shader_registered` and
+`filter_registered` check a type; `unregister_shader`/`unregister_filter` return
+false while native definitions (including the RCSS cache) or compiled instances exist.
+Removing an element releases its instances; the RCSS cache can hold definitions
+until the corresponding stylesheet/document caches are reset. Retired instancers are
+kept until shutdown, because parsed RCSS may contain pointers to them. On shutdown,
+native instances/definitions are released before the registry and the GL context.
 
-Это GL3 fragment API с готовым vertex stage и одним проходом на filter. Произвольные
-vertex/compute shaders, дополнительные texture samplers, mutable framebuffer handles
-и пользовательские uniforms вне зарегистрированной схемы пока не экспортированы.
-Для нескольких проходов используйте цепочку. SDL_Renderer выдаёт явную ошибку
-регистрации; автоматического fallback нет. GLSL исполняется драйвером и предназначен
-для доверенного кода приложения.
+This is a GL3 fragment API with a ready-made vertex stage and one pass per filter.
+Arbitrary vertex/compute shaders, additional texture samplers, mutable framebuffer
+handles and user uniforms outside the registered schema are not exported yet.
+For several passes, use a chain. SDL_Renderer gives an explicit registration error;
+there is no automatic fallback. GLSL is executed by the driver and is meant
+for trusted application code.
 
-`examples/shader_lab.das` — процедурная Aurora, chromatic filter и frosted backdrop,
-slider, смена tint, static phase, remount и GC. `gpu_effect_pixels` проверяет цвета,
-alpha, последовательность проходов, backdrop, built-in filter после custom,
-transform/clipping, overflow, DPI, time без binding updates, template, GC и
-shutdown/restart с живыми instances. `gpu_backend` проверяет отказ на SDL renderer.
+`examples/shader_lab.das` shows a procedural Aurora, a chromatic filter and a frosted
+backdrop, a slider, a tint change, a static phase, remount and GC. `gpu_effect_pixels`
+checks colors, alpha, pass order, backdrop, a built-in filter after a custom one,
+transform/clipping, overflow, DPI, time without binding updates, a template, GC, and
+shutdown/restart with live instances. `gpu_backend` checks the rejection on the SDL
+renderer.
 
-## Шейдеры на daScript: dasGlsl
+## Shaders in daScript: dasGlsl
 
-`require dasrmlui/shaders` подключает `[ui_shader]` и `[ui_filter]`. Они передают
-типизированный AST функций существующему генератору `dasGlsl` из daScript.
-Отдельного парсера нет; функции, helpers, арифметика, ветвления, циклы и локальные
-структуры компилируются в GLSL 330. Компиляция AST происходит при загрузке скрипта,
-компиляция/линковка GL program — при регистрации. На каждом кадре эти стадии не повторяются.
+`require dasrmlui/shaders` brings in `[ui_shader]` and `[ui_filter]`. They pass the
+typed AST of functions to the existing `dasGlsl` generator from daScript.
+There is no separate parser; functions, helpers, arithmetic, branches, loops and local
+structs are compiled to GLSL 330. The AST is compiled when the script is loaded;
+the GL program is compiled and linked at registration. These stages are not repeated
+every frame.
 
 ```das
 require dasrmlui/shaders
@@ -1551,7 +1608,7 @@ def desaturate(uv:float2; amount:float):float4 {
     return float4(lerp(c.xyz,float3(luma),amount),c.w)
 }
 
-// После rui_init_gl, до применения стилей:
+// After rui_init_gl, before styles are applied:
 register_shader("app-stripes",stripes_shader(),array<UiEffectParam>(
     effect_length_param("pitch",dp(20)),
     effect_number_param("speed",0.2),
@@ -1560,43 +1617,44 @@ register_filter("app-desaturate",desaturate_filter(),array<UiEffectParam>(
     effect_number_param("amount",0.5)))
 ```
 
-Аннотация генерирует фабрику дескриптора `имя_shader()` или `имя_filter()`.
-Она возвращает `UiShaderProgram`: сгенерированный исходник, сигнатуру параметров и
-тип эффекта. Исходник можно посмотреть через `.source`; это одна строковая константа
-на функцию. Перегрузки `register_shader`/`register_filter` принимают этот дескриптор
-вместо строки GLSL. Перегрузки со строками продолжают работать.
+The annotation generates a descriptor factory `<name>_shader()` or `<name>_filter()`.
+It returns a `UiShaderProgram`: the generated source, the parameter signature and the
+effect type. The source can be inspected through `.source`; it is one string constant
+per function. Overloads of `register_shader`/`register_filter` take this descriptor
+instead of a GLSL string. The string overloads keep working.
 
-Сигнатура входной функции определяет uniforms:
+The signature of the entry function defines the uniforms:
 
-| Аргумент | Тип daScript | Значение |
+| Argument | daScript type | Meaning |
 |---|---|---|
-| `uv` | `float2` | Локальные UV, начало сверху слева |
+| `uv` | `float2` | Local UV, origin at the top left |
 | `time` | `float` | GPU uniform `u_time` |
 | `size` | `float2` | GPU uniform `u_size` |
 | `texel` | `float2` | GPU uniform `u_texel` |
-| Любой другой | `float` | Именованный RCSS parameter с parser number или length/percent |
-| Любой другой | `float4` | Именованный RCSS color, straight RGBA 0..1 |
+| Any other | `float` | A named RCSS parameter with the number or length/percent parser |
+| Any other | `float4` | A named RCSS color, straight RGBA 0..1 |
 
-Встроенные аргументы можно опускать и переставлять; они не входят в RCSS schema.
-Например, `[ui_shader] def pulse(time:float):float4` не требует массива параметров.
-Все остальные аргументы должны присутствовать в schema ровно один раз, включая
-неиспользуемые в теле. Порядок schema не обязан совпадать с порядком аргументов.
-`edge_width` в daScript соответствует RCSS-имени `edge-width`. Number и length
-остаются разными RCSS parser-ами, хотя оба передаются функции как float.
-Несоответствие kind, отсутствие/дублирование/лишний параметр или неверный parser
-вызывает исключение до создания native registry entry и GL program.
+Built-in arguments can be omitted and reordered; they are not part of the RCSS schema.
+For example, `[ui_shader] def pulse(time:float):float4` needs no parameter array.
+All other arguments must be present in the schema exactly once, including those
+not used in the body. The schema order does not have to match the argument order.
+`edge_width` in daScript corresponds to the RCSS name `edge-width`. Number and length
+remain different RCSS parsers, although both are passed to the function as float.
+A kind mismatch, a missing, duplicated or extra parameter, or a wrong parser
+raises an exception before the native registry entry and the GL program are created.
 
-Аргументы entry-функции доступны только для чтения; для изменений создавайте
-локальную переменную. Default-значения задаются в schema, а не в аргументах функции.
-Возвращаемый тип — `float4`, straight RGBA. Итоговый clamp, premultiply, opacity,
-clipping и transforms выполняет существующая обвязка GL3/RmlUi.
+The arguments of the entry function are read-only; to modify a value, create a
+local variable. Default values are set in the schema, not in the function arguments.
+The return type is `float4`, straight RGBA. The final clamp, premultiply, opacity,
+clipping and transforms are done by the existing GL3/RmlUi glue.
 
-`sample_source(uv)` доступен в `[ui_filter]`, включая вызовы из helpers. Он возвращает
-straight RGBA исходного слоя; вне текущей postprocess области — прозрачный чёрный.
-Адаптер использует тот же перевод координат и защиту границ framebuffer, что и
-строковый API. В `[ui_shader]` такая выборка запрещена, потому что исходного слоя нет.
+`sample_source(uv)` is available in `[ui_filter]`, including calls from helpers. It
+returns straight RGBA of the source layer; outside the current postprocess area it
+returns transparent black. The adapter uses the same coordinate conversion and
+framebuffer bounds protection as the string API. In `[ui_shader]` such sampling is not
+allowed, because there is no source layer.
 
-Стиль и reactive bindings остаются обычными:
+Styles and reactive bindings stay the usual ones:
 
 ```das
 [ui_style]
@@ -1615,26 +1673,27 @@ def material(amount:float) {
 }
 ```
 
-Это shader-подмножество daScript. Mutable CPU globals, dynamic arrays, строки и
-CPU-only операции не становятся GPU-данными автоматически. Mutable globals,
-неподходящие аргументы/result и выборка source в shader отклоняются при компиляции
-скрипта; остальные неподдерживаемые конструкции диагностирует dasGlsl или GL compiler.
-Числовые константы и вспомогательные функции из импортированных модулей поддержаны.
-Entry имена нельзя перегружать; имена `main` и `dasrmlui_entry` зарезервированы,
-опции аннотаций пока не предусмотрены. Эти функции предназначены для исполнения
-на GPU: не вызывайте filter-функции как CPU-функции для чтения экрана.
+This is a shader subset of daScript. Mutable CPU globals, dynamic arrays, strings and
+CPU-only operations do not become GPU data automatically. Mutable globals,
+unsuitable arguments or result, and source sampling in a shader are rejected when the
+script is compiled; other unsupported constructs are reported by dasGlsl or the GL
+compiler. Numeric constants and helper functions from imported modules are supported.
+Entry names cannot be overloaded; the names `main` and `dasrmlui_entry` are reserved,
+and annotation options are not provided yet. These functions are meant to run
+on the GPU: do not call filter functions as CPU functions to read the screen.
 
-Самостоятельный host подключает `glsl` из `daScript/modules/dasGlsl/glsl`; runtime
-package устанавливает эту папку вместе с daslib. dasOpenGL, SPIR-V, shadercross и
-дополнительный native renderer для адаптера не нужны. Зависимость daScript не изменяется.
+The standalone host loads `glsl` from `daScript/modules/dasGlsl/glsl`; the runtime
+package installs this folder together with daslib. The adapter does not need dasOpenGL,
+SPIR-V, shadercross or an additional native renderer. The daScript dependency is not
+modified.
 
-Полный пример — `examples/shader_lab_effects.das` и `examples/shader_lab.das`:
-Aurora, Prism и Glass целиком написаны на daScript. Тест `shader_dsl_compiler`
-проверяет генерацию/сигнатуры/helpers, восемь отрицательных тестов — диагностику.
-`gpu_effect_pixels` прогоняет исходный GLSL и dasGlsl с одинаковыми pixel oracles,
-включая alpha, chain/backdrop, DPI, время, GC, remount и shutdown/restart.
-`runtime_package` запускает Shader Lab из установленной автономной папки.
+The full example is `examples/shader_lab_effects.das` and `examples/shader_lab.das`:
+Aurora, Prism and Glass are written entirely in daScript. The `shader_dsl_compiler` test
+checks generation, signatures and helpers; eight negative tests check the diagnostics.
+`gpu_effect_pixels` runs the original GLSL and dasGlsl against the same pixel oracles,
+including alpha, chain/backdrop, DPI, time, GC, remount and shutdown/restart.
+`runtime_package` runs Shader Lab from the installed standalone folder.
 
 ## Hot reload
 
-LiveHost, именованные root/local state, `ui_migrate` и `[ui_style(name="...")]` для styles entry: [hot-reload.md](hot-reload.md).
+LiveHost, named root/local state, `ui_migrate` and `[ui_style(name="...")]` for the styles entry: [hot-reload.md](hot-reload.md).

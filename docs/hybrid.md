@@ -1,11 +1,11 @@
-# Состояние UI: native DataModel и компоненты daScript
+# UI state: native DataModel and daScript components
 
-`[ui_component]` по умолчанию использует гибридный runtime. Корневая модель
-принадлежит `ui_state`, кадр выполняется через `ui_frame(state)`. События внутри
-компонентов автоматически отслеживают записи; для изменений из таймера, загрузчика
-или другого внешнего кода используется `ui_edit`.
+`[ui_component]` uses the hybrid runtime by default. The root model is owned by
+`ui_state`, and a frame runs through `ui_frame(state)`. Events inside components
+track writes automatically; for changes from a timer, a loader or other external
+code, use `ui_edit`.
 
-## Минимальное приложение
+## Minimal application
 
 ```dascript
 options gen2
@@ -47,12 +47,12 @@ def main(smoke:bool):int {
 }
 ```
 
-`run_demo` вызывает render callback; сам callback открывает `ui_frame(state)`.
-В обычном SDL-цикле этот же вызов размещается после обработки native событий.
-Параметр frame-блока записан как `model:Model`: макрос предоставляет scoped mutable
-borrow, необходимый компонентам с `var model` и их обработчикам.
+`run_demo` calls the render callback; the callback itself opens `ui_frame(state)`.
+In a regular SDL loop the same call is placed after native event processing.
+The frame block parameter is written as `model:Model`: the macro provides the scoped
+mutable borrow that components with `var model` and their handlers need.
 
-Чтение вне кадра не открывает доступ к записи:
+Reading outside a frame does not open write access:
 
 ```dascript
 ui_read(state) $(model:Model) {
@@ -60,8 +60,8 @@ ui_read(state) $(model:Model) {
 }
 ```
 
-Для внешнего изменения не нужна отдельная `[ui_action]`, если запись находится
-непосредственно в `ui_edit`:
+An external change does not need a separate `[ui_action]` if the write is located
+directly in `ui_edit`:
 
 ```dascript
 ui_edit(state) $(var model:Model) {
@@ -70,215 +70,222 @@ ui_edit(state) $(var model:Model) {
 }
 ```
 
-Обработчики `on_click`, setters, события и другие поддерживаемые callbacks
-компонента уже отслеживаются. В Catalog рабочие изменения происходят в них,
-поэтому дополнительный `ui_edit` вокруг каждого события не требуется. В Progress
-Lab playback меняет модель из tick, поэтому tick использует `ui_edit`.
-Smoke-код примеров также использует `ui_edit` для доступа к проверяемой модели.
+`on_click` handlers, setters, events and other supported component callbacks are
+already tracked. In Catalog the working changes happen in them, so an additional
+`ui_edit` around each event is not required. In Progress Lab, playback changes the
+model from tick, so tick uses `ui_edit`. The smoke code of the examples also uses
+`ui_edit` to access the model under test.
 
-## Отслеживание helpers
+## Tracking helpers
 
-Прямые записи в `ui_edit` и обработчиках отслеживаются по полям. Для неизвестного
-изменяющего helper runtime применяет консервативную инвалидацию: корректность
-сохраняется, но может обновиться больше привязок. `[ui_action]` на helper позволяет
-отслеживать его записи точнее. Аннотируйте также изменяющие helpers, которые он
-вызывает: межпроцедурного анализа произвольного кода нет.
+Direct writes in `ui_edit` and in handlers are tracked per field. For an unknown
+mutating helper the runtime applies conservative invalidation: correctness is
+preserved, but more bindings may be updated. `[ui_action]` on a helper makes it
+possible to track its writes more precisely. Also annotate the mutating helpers it
+calls: there is no interprocedural analysis of arbitrary code.
 
-Глобальные данные вне `ui_state` не становятся реактивными автоматически. Для них
-сохраняются `ui_signal` / `ui_touch` / `ui_watch` или явная revision в модели.
-Catalog использует revision для глобального массива assets, Component Lab — сигнал
-для журнала lifecycle. Это отдельные зависимости, а не доступ к root через старую
-переменную `initial`.
+A global variable that a component reads directly is tracked like the model; see
+[Global data and opaque getters](#global-data-and-opaque-getters). Data that is read
+through a function call is not visible to the annotation: report its changes with
+`ui_changed`, with `ui_signal` / `ui_touch` / `ui_watch`, or keep an explicit revision
+in the model. Catalog uses a revision for the global assets array, Component Lab uses a
+signal for the lifecycle log.
 
-## Что генерируется и исполняется
+## What is generated and executed
 
-Присваивание `model.title = value` концептуально разворачивается в:
+The assignment `model.title = value` conceptually expands to:
 
 ```dascript
 rt_ui_write(model.title) $(var target:string&) { target = value }
 ```
 
-Helper получает ссылку на lvalue один раз, выполняет запись и уведомляет мост.
-Поддерживаются `=`, `:=`, `<-`, составные `+=`, `-=`, `*=`, `/=`, `%=`, `|=`,
-`&=`, `^=`, сдвиги/логические составные присваивания, statement-инкременты `++`/`--`,
-а также statement-вызовы `push`, `push_clone`, `emplace`, `insert`,
-`erase`, `clear`, `resize`, `pop`, `sort`, `reverse`. Для неизвестных изменяющих helpers
-действует консервативная инвалидация; `[ui_action]` уточняет отслеживаемые записи.
+The helper gets the lvalue reference once, performs the write and notifies the bridge.
+Supported: `=`, `:=`, `<-`, the compound `+=`, `-=`, `*=`, `/=`, `%=`, `|=`,
+`&=`, `^=`, shift/logical compound assignments, the statement increments `++`/`--`,
+and the statement calls `push`, `push_clone`, `emplace`, `insert`,
+`erase`, `clear`, `resize`, `pop`, `sort`, `reverse`. For unknown mutating helpers
+conservative invalidation applies; `[ui_action]` refines the tracked writes.
 
-Прямые field/index/variable-привязки `text`, `bind_value`, `bind_checked`,
+The direct field/index/variable bindings `text`, `bind_value`, `bind_checked`,
 `attribute("name", field)`, `property("name", field)`, `class_if("name", field)`
-регистрируют native variable и view. Scalar-типы: string, int, float, bool, double.
-Сложные выражения, typed style helpers, `when`, computed и прочие операции
-продолжают исполняться DSL runtime. Их зависимости регистрируются как причины
-структурного прохода; при неизменной модели покадрового снимка всей модели нет.
-Обычные `if`/`while` в компоненте тоже регистрируют зависимости условий. Условия
-на временных локальных значениях консервативно оставляют повторный проход.
-Legacy-компонент внутри hybrid-дерева также включает такой fallback. Обычные
-helper-функции, создающие UI, и список по локальному или вычисленному массиву также
-включают консервативный проход. Привязка к элементу по индексу
-(`text("title", model.rows[model.picked].title)`) привязана к элементу, выбранному
-в этом проходе; запись в то, что читает индекс, вызывает проход и новый выбор.
+register a native variable and view. Scalar types: string, int, float, bool, double.
+Complex expressions, typed style helpers, `when`, computed and other operations
+are still executed by the DSL runtime. Their dependencies are registered as reasons
+for a structural pass; while the model is unchanged there is no per-frame snapshot of
+the whole model. Regular `if`/`while` in a component also register the dependencies
+of their conditions. Conditions on temporary local values conservatively keep the
+repeated pass. A legacy component inside a hybrid tree also enables this fallback.
+Regular helper functions that create UI, and a list over a local or computed array,
+also enable the conservative pass. A binding to an element by index
+(`text("title", model.rows[model.picked].title)`) is bound to the element selected
+in that pass; a write to whatever the index reads triggers a pass and a new selection.
 
-### Аргументы вызова — это зависимости
+### Call arguments are dependencies
 
-Перед вызовом компонента вызывающий подписывается на то, из чего вычислены аргументы.
-Значение, переданное по значению (`lane(board, 2, "Review")`, `metric("Open", "{length(items)}")`),
-внутри компонента — копия: она меняется только вместе с вызывающим, поэтому привязка
-к ней не держит проход на каждом кадре. Запись в её источник (`model.caption`, из
-которого вычислен аргумент) вызывает один структурный проход. Аргумент ссылочного типа
-(строка списка, структура модели) остаётся тем же хранилищем: поля, к которым компонент
-привязан напрямую, по-прежнему обновляются без прохода.
+Before calling a component, the caller subscribes to whatever the arguments are
+computed from. A value passed by value (`lane(board, 2, "Review")`,
+`metric("Open", "{length(items)}")`) is a copy inside the component: it changes only
+together with the caller, so a binding to it does not hold a pass on every frame.
+A write to its source (`model.caption`, from which the argument is computed) triggers
+one structural pass. An argument of a reference type (a list row, a model structure)
+remains the same storage: the fields the component is bound to directly are still
+updated without a pass.
 
-То же правило действует для вычисляемых аргументов примитивов: имени части
-(`box(wide ? "wide" : "narrow")`), документа в `document_content`, `draggable`,
-`animate`, `select_options`. Примитивы с собственной привязкой (`progress_bar`,
+The same rule applies to computed arguments of primitives: the part name
+(`box(wide ? "wide" : "narrow")`), the document in `document_content`, `draggable`,
+`animate`, `select_options`. Primitives with their own binding (`progress_bar`,
 `sprite_image`, `tab_label`, `svg_image`, `lottie`, `nav*`, `custom_decorator`,
-`custom_shader`, `custom_filter`, `pseudo_if`) и контейнеры `native_element`, `flow`
-на быстром пути работают как `text` и `property`.
+`custom_shader`, `custom_filter`, `pseudo_if`) and the containers `native_element`,
+`flow` work on the fast path like `text` and `property`.
 
-Обычная функция, вызванная из компонента, не включает консервативный проход, если по
-её телу видно, что результат задан аргументами и глобальными переменными, которые она
-читает сама: она вызывает `use_style`, `property`, `attribute`, типизированные свойства
-и такие же функции и ветвится по ним. Прочитанные ею глобальные переменные отслеживаются
-в месте вызова. Функция, создающая элементы или принимающая блок, остаётся непрозрачной.
+A regular function called from a component does not enable the conservative pass if
+its body shows that the result is determined by the arguments and by the global
+variables it reads itself: it calls `use_style`, `property`, `attribute`, typed
+properties and functions of the same kind, and branches on them. The global variables
+it reads are tracked at the call site. A function that creates elements or takes a
+block remains opaque.
 
-Блок-аргумент — слот (`slot(content)`) или событие компонента (`emit(removed, id)`) —
-это код вызывающего компонента, и всё, что он читает, уже зарегистрировано там.
-Компонент с таким аргументом не держит проход, если вызван из hybrid-компонента;
-вызванный из непрозрачного кода — держит. Аргументы типа function и lambda
-по-прежнему непрозрачны.
+A block argument — a slot (`slot(content)`) or a component event
+(`emit(removed, id)`) — is code of the calling component, and everything it reads is
+already registered there. A component with such an argument does not hold a pass if
+it is called from a hybrid component; called from opaque code, it does. Arguments of
+type function and lambda are still opaque.
 
-После события выполняется один структурный проход, а не два: второй нужен, только
-если первый сам запросил обновление (например, запись в `on_mount`).
+After an event one structural pass runs, not two: the second is needed only if the
+first itself requested an update (for example, a write in `on_mount`).
 
-Копией считается и параметр блока, который runtime сам держит свежим: элемент
-`each_keyed` по списку скаляров (`model.ids |> each_keyed(...) $(id:int)` — список
-следит за элементом) и значение `computed` (оно меняется только внутри прохода).
+A block parameter that the runtime itself keeps fresh also counts as a copy: an
+`each_keyed` element over a list of scalars (`model.ids |> each_keyed(...) $(id:int)` —
+the list watches the element) and a `computed` value (it changes only inside a pass).
 
-Консервативный проход на каждом кадре сохраняется для локальной переменной
-(`let total = …; badge(total)`, `text("t", total)`) и для списка по локальному
-массиву. Компонент, вызванный не из другого hybrid-компонента (из тела `ui_frame`,
-из непрозрачной функции), свои аргументы по значению покрытыми не считает.
-Вызываемый компонент, прозрачная функция и глобальная переменная должны быть
-объявлены выше места использования.
+The conservative pass on every frame remains for a local variable
+(`let total = …; badge(total)`, `text("t", total)`) and for a list over a local
+array. A component called not from another hybrid component (from the `ui_frame` body,
+from an opaque function) does not treat its by-value arguments as covered.
+The called component, the transparent function and the global variable must be
+declared above the place where they are used.
 
-### Глобальные данные и непрозрачные getter-ы
+### Global data and opaque getters
 
-Глобальная переменная, которую компонент читает напрямую — в привязке, условии,
-аргументе, как коллекцию `each_keyed`, — на время прохода становится таким же
-отслеживаемым хранилищем, как модель:
+A global variable that a component reads directly — in a binding, a condition, an
+argument, as an `each_keyed` collection — becomes, for the duration of the pass, the
+same kind of tracked storage as the model:
 
 ```dascript
 var crew : array<Member>
 
 [ui_action]
-def rename(index:int; name:string) { crew[index].name = name }   // сообщит о записи само
+def rename(index:int; name:string) { crew[index].name = name }   // reports the write itself
 
 [ui_component]
 def roster(model:Model) {
     crew |> each_keyed($(member:Member) => member.id) $(member:Member) {
-        text("name", member.name)                                  // обновляется без прохода
+        text("name", member.name)                                  // updates without a pass
     }
 }
 ```
 
-Запись в такую переменную из обработчика hybrid-компонента или из `[ui_action]`
-сообщает о себе автоматически. Запись из любого другого кода не обнаруживается:
-после неё вызывают `ui_changed(crew)` или `ui_changed(crew[0].name)`. Выражение
-привязки, читающее глобальную переменную, вычисляется заново на каждом проходе.
+A write to such a variable from a handler of a hybrid component or from an
+`[ui_action]` reports itself automatically. A write from any other code is not
+detected: after it, call `ui_changed(crew)` or `ui_changed(crew[0].name)`. A binding
+expression that reads a global variable is re-evaluated on every pass.
 
-Непрозрачный getter — выражение, не читающее ни данных компонента, ни глобальных
-переменных напрямую (`text("clock") { return clock_text() }`, аргумент
-`badge(now_text())`, условие `if (is_ready())`) — вычисляется на каждом проходе, но
-сам проход не запрашивает. Об изменении того, что он читает, сообщают
-`ui_changed(value)` или `ui_touch(signal)` вместе с `ui_watch(signal)` в компоненте.
-До этого изменения такие выражения держали проход на каждом кадре.
+An opaque getter — an expression that reads neither component data nor global
+variables directly (`text("clock") { return clock_text() }`, the argument
+`badge(now_text())`, the condition `if (is_ready())`) — is evaluated on every pass,
+but does not request a pass itself. A change in what it reads is reported with
+`ui_changed(value)`, or with `ui_touch(signal)` together with `ui_watch(signal)` in
+the component.
 
-Native-часть использует настоящий **Rml::DataModel / DataViews**, `BindFunc`,
-`DirtyVariable`, стандартные views value/checked/attribute/style/class. Для текста
-есть небольшой адаптер `DataView`, обновляющий существующий текстовый узел без
-повторного разбора RML и без потери кеша текста при keyed-перестановке.
-Каждая привязка имеет отдельную native-переменную. Поэтому запись одной строки
-не помечает dirty весь массив `rows`.
+The native part uses the real **Rml::DataModel / DataViews**, `BindFunc`,
+`DirtyVariable` and the standard value/checked/attribute/style/class views. For text
+there is a small `DataView` adapter that updates the existing text node without
+re-parsing RML and without losing the text cache on a keyed reorder.
+Each binding has its own native variable. So a write to one row does not mark the
+whole `rows` array dirty.
 
-Модель зарегистрирована в Context под резервным именем `dasrmlui` и обновляется
-через `rui_hybrid_flush` перед финальным Context::Update. Штатный Debugger показывает
-её scalar slots (`v0`, `v1`, …), а не полную script-структуру. Для внешних RML есть
-[публичный DataModel API](data-models.md) с именованными полями. Используются внутренние
-заголовки закреплённой версии RmlUi (`DataModel.h`, `DataView.h`); upstream не
-модифицируется. При обновлении RmlUi совместимость этого адаптера нужно проверять.
+The model is registered in the Context under the reserved name `dasrmlui` and is
+updated through `rui_hybrid_flush` before the final Context::Update. The stock Debugger
+shows its scalar slots (`v0`, `v1`, …), not the full script structure. For external
+RML there is a [public DataModel API](data-models.md) with named fields. Internal
+headers of the pinned RmlUi version are used (`DataModel.h`, `DataView.h`); upstream
+is not modified. When RmlUi is updated, the compatibility of this adapter must be
+checked.
 
-## Память, lifetime и структура
+## Memory, lifetime and structure
 
-- Native хранит **копии scalar-значений**, включая собственные строки. Адреса полей
-  — ключи подписок; Update/Render никогда не разыменовывают сохранённую script-память.
-  Script lambda/borrowed block/объект модели не удерживаются native-моделью.
-- На структурном проходе фиксируются адреса полей переданной модели, её массивов
-  и хранилищ локального состояния/computed.
-  Временные локальные/вычисленные значения вне этого набора требуют повторного
-  выполнения компонента; они не получают опасную долговременную адресную подписку.
-- После изменения коллекции, ключа или зависимости структуры выполняется обычный
-  проход компонентов и `each_keyed`, затем адресные подписки строятся заново.
-  Изменение самого ключа пересоздаёт соответствующий компонент; перестановка
-  существующих ключей сохраняет DOM и локальное состояние.
-- Узел, компонент, привязка и обработчик названы 64-битным числом: номер места, в
-  которое они вложены, смешанный с их собственным местом вызова, ключом или порядковым
-  номером. Снимок зависимостей — тоже число. Сам структурный проход поэтому почти
-  ничего не оставляет в куче скрипта; временные строки дают вычисляемые привязки,
-  когда их значение меняется. Два разных места получают одно число с вероятностью
-  порядка 2^-64 на пару.
-- Куча скрипта постоянная. Цикл приложения вызывает между кадрами
-  `ui_collect_garbage(8)`: сбор выполняется, когда куча выросла на заданное число
-  мегабайт с прошлого сбора; второй аргумент включает сбор принудительно. В простое
-  на быстром пути проходов нет и куча не растёт.
-- `ui_find` и `request_focus` с ключом элемента находят узел по ключам охватывающих
-  списков. Хранятся четыре уровня вложенных `each_keyed`; у более глубоких узлов
-  самый внешний ключ не учитывается.
-- Native-переменные освобождённых привязок переиспользуются: ёмкость ограничена
-  максимальным числом одновременно существовавших привязок. `ui_reset` и shutdown
-  уничтожают модель полностью. На unmount обработчики видят ещё живой DOM.
-- На render-проходе hybrid `each_keyed` читает исходный массив без clone. Нельзя
-  менять структуру этого массива из render/on_mount при обходе — действует обычная
-  блокировка массива daScript. Event-dispatch сохраняет snapshot-путь.
-- Ввод dispatch-ится нашими обработчиками; tracked setter обновляет модель, а native
-  view выводит принятый результат. Отклонённое значение восстанавливается из модели.
-  `change`, возникающие при программном применении native view, не возвращаются
-  в setter как новые пользовательские команды (включая checkbox).
+- Native stores **copies of scalar values**, including its own strings. Field addresses
+  are subscription keys; Update/Render never dereference stored script memory.
+  The native model does not hold a script lambda, a borrowed block or the model object.
+- On a structural pass the addresses of the fields of the passed model, of its arrays
+  and of the local state/computed storages are recorded.
+  Temporary local/computed values outside this set require the component to be
+  executed again; they do not get a dangerous long-lived address subscription.
+- After a change to a collection, a key or a structural dependency, a regular pass
+  over components and `each_keyed` runs, then the address subscriptions are rebuilt.
+  A change of the key itself recreates the corresponding component; a reorder of
+  existing keys preserves the DOM and the local state.
+- A node, a component, a binding and a handler are named by a 64-bit number: the number
+  of the place they are nested in, mixed with their own call site, key or ordinal
+  number. A dependency snapshot is also a number. The structural pass itself therefore
+  leaves almost nothing in the script heap; temporary strings come from computed
+  bindings when their value changes. Two different places get the same number with a
+  probability of the order of 2^-64 per pair.
+- The script heap is persistent. The application loop calls `ui_collect_garbage(8)`
+  between frames: a collection runs when the heap has grown by the given number of
+  megabytes since the last collection; the second argument forces a collection. In idle
+  on the fast path there are no passes and the heap does not grow.
+- `ui_find` and `request_focus` with an element key find the node by the keys of the
+  enclosing lists. Four levels of nested `each_keyed` are stored; for deeper nodes the
+  outermost key is not taken into account.
+- Native variables of released bindings are reused: capacity is bounded by the maximum
+  number of bindings that existed at the same time. `ui_reset` and shutdown destroy the
+  model completely. On unmount, handlers see a DOM that is still alive.
+- On the render pass, hybrid `each_keyed` reads the source array without a clone. Do
+  not change the structure of this array from render/on_mount during the traversal —
+  the regular daScript array lock applies. Event dispatch keeps the snapshot path.
+- Input is dispatched by our handlers; a tracked setter updates the model, and the
+  native view displays the accepted result. A rejected value is restored from the
+  model. `change` events that arise when a native view is applied programmatically are
+  not returned to the setter as new user commands (including checkbox).
 
-## Владение, заимствование и ошибки
+## Ownership, borrowing and errors
 
-- `ui_state(initial)` создаётся один раз на срок жизни экрана, до цикла кадров.
-  Он глубоко копирует initial в объект, управляемый GC. Это обычная переменная,
-  без `inscope`. Последующие записи в original initial не меняют состояние UI.
-- Root должен быть структурой с принадлежащими ей данными. Заимствованные pointers,
-  lambdas и borrowed blocks в root не допускаются. Массивы и вложенные структуры
-  инициализируйте до `ui_state`, либо меняйте позже внутри `ui_edit`.
-- `ui_read` даёт readonly доступ. `ui_edit` и `ui_frame` предоставляют ограниченное
-  временем блока заимствование; не сохраняйте ссылки/указатели на модель и её поля
-  и не захватывайте их в escaping callbacks. Для следующего обращения храните state.
-- `ui_edit` не является транзакцией с rollback. Если выполнение блока прервалось
-  ошибкой после части записей, сделанные изменения остаются и публикуются runtime.
-- `ui_frame` внутри `ui_edit` запрещён. Завершите edit, выполните frame, затем при
-  необходимости откройте следующий read/edit scope. Так устроены дополнительные
-  smoke-кадры Templates и Event Studio.
-- При передаче другого state в `ui_frame` старое дерево сбрасывается. Это смена
-  владельца экрана, а не способ сохранить локальное состояние старого дерева.
-  `ui_reset()` очищает дерево перед shutdown; вложенные frame-вызовы запрещены.
+- `ui_state(initial)` is created once for the lifetime of the screen, before the frame
+  loop. It deep-copies initial into a GC-managed object. It is a regular variable,
+  without `inscope`. Later writes to the original initial do not change the UI state.
+- The root must be a structure that owns its data. Borrowed pointers, lambdas and
+  borrowed blocks are not allowed in the root. Initialize arrays and nested structures
+  before `ui_state`, or change them later inside `ui_edit`.
+- `ui_read` gives readonly access. `ui_edit` and `ui_frame` provide a borrow limited to
+  the lifetime of the block; do not store references/pointers to the model and its
+  fields, and do not capture them in escaping callbacks. Store the state for the next
+  access.
+- `ui_edit` is not a transaction with rollback. If the block is interrupted by an error
+  after some of the writes, the changes already made remain and are published by the
+  runtime.
+- `ui_frame` inside `ui_edit` is forbidden. Finish the edit, run the frame, then open
+  the next read/edit scope if needed. The additional smoke frames of Templates and
+  Event Studio are arranged this way.
+- When a different state is passed to `ui_frame`, the old tree is reset. This is a
+  change of the screen owner, not a way to preserve the local state of the old tree.
+  `ui_reset()` clears the tree before shutdown; nested frame calls are forbidden.
 
-Frame body описывает UI и может пропускаться в простое. Не меняйте модель в обычном
-теле компонента или getter: используйте обработчик либо внешний `ui_edit`.
-Размер, locale/style/debugger revisions, события и явные сигналы учитываются runtime.
-Виртуализация, presence-анимации и запросы фокуса сохраняют обычный проход.
+The frame body describes the UI and can be skipped in idle. Do not change the model in
+a regular component body or getter: use a handler or an external `ui_edit`.
+The runtime takes into account size, locale/style/debugger revisions, events and
+explicit signals. Virtualization, presence animations and focus requests keep the
+regular pass.
 
-Гибридный режим не означает, что каждая привязка обслуживается native DataView.
-Структурные зависимости, сложные выражения и непрозрачные внешние чтения сохраняют
-fallback. Во время таких проходов могут использоваться снимки зависимостей,
-обходы и временные выделения памяти. Оптимизация точечных записей не устраняет
-стоимость произвольной перестройки дерева.
+Hybrid mode does not mean that every binding is served by a native DataView.
+Structural dependencies, complex expressions and opaque external reads keep the
+fallback. During such passes, dependency snapshots, traversals and temporary
+allocations may be used. Optimizing point writes does not remove the cost of an
+arbitrary tree rebuild.
 
-## Явный legacy-режим
+## Explicit legacy mode
 
-Для старого механизма сравнения значений нужны оба явных обозначения:
+The old value-comparison mechanism needs both explicit markers:
 
 ```dascript
 [ui_component(legacy=true)]
@@ -286,25 +293,24 @@ def legacy_screen(var model:Model) {
     text("title", model.title)
 }
 
-// model здесь — обычная долгоживущая структура, без ui_state.
+// model here is a regular long-lived structure, without ui_state.
 ui_legacy_frame() { legacy_screen(model) }
 ```
 
-Не смешивайте режимы кадров для одного смонтированного дерева. Публичного
-`ui_hybrid_frame` больше нет. `rt_hybrid_frame` — внутренний низкоуровневый путь,
-сохранённый для отдельных исторических тестов, а не API приложения.
+Do not mix frame modes for one mounted tree. There is no public `ui_hybrid_frame`.
+`rt_hybrid_frame` is an internal low-level entry used by a few tests, not an
+application API.
 
-## Проверки и измерения
+## Checks and measurements
 
-Контракт managed state проверяется в `tests/state_api.das`; низкоуровневые свойства
-моста и lifetime — в `tests/hybrid.das` и `tests/hybrid_lifecycle.das`. Примеры
-используют новый API; smoke запускается через `ctest --test-dir build -R '^demo_'`.
-Inventory запускается отдельно: `./build/bin/dasrmlui.exe examples/inventory.das --smoke-test`.
+The managed state contract is checked in `tests/state_api.das`; the low-level properties
+of the bridge and of lifetime are checked in `tests/hybrid.das` and
+`tests/hybrid_lifecycle.das`; what keeps the fast path is checked in
+`tests/hybrid_arguments.das`, `tests/hybrid_globals.das` and `tests/hybrid_removal.das`.
+The examples use this API; their smoke runs are
+`ctest --test-dir build -R '^demo_'`. Inventory is run separately:
+`./build/bin/dasrmlui.exe examples/inventory.das --smoke-test`.
 
-Бенчмарк сравнивает DSL, native C++ data-for и гибридный runtime. Фазу `mutation`,
-включающую изменение модели и уведомления, нужно учитывать вместе с `bindings`.
-[Повторный бенчмарк managed state](../benchmarks/state-results.md) включает стоимость
-`ui_edit`, отдельные Update/render и выделения памяти. Полный прогон: **93/93 passed**,
-лог `logs/ctest-state-final.log`; все 22 примера прошли smoke.
-[Предыдущий отчёт](../benchmarks/hybrid-results.md) описывает исторический API
-и результаты своего запуска; его числа не являются измерением нового managed state.
+The [benchmark](../benchmarks/README.md) compares the DSL, native C++ data-for and the
+hybrid runtime. The `mutation` phase, which includes the model change and the
+notifications, must be considered together with `bindings`.

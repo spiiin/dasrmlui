@@ -1,245 +1,205 @@
-# Покрытие RmlUi в dasrmlui
+# RmlUi coverage in dasrmlui
 
-Аудит исходников на 2026-11-12. Проверена локальная ревизия RmlUi
-`821cbd229d804cb1c905b729af86c21133abceee` (CMake version 6.4, unreleased),
-а не только возможности последней опубликованной документации.
+This matrix was compiled against the sources of RmlUi revision
+`821cbd229d804cb1c905b729af86c21133abceee` (CMake version 6.4, unreleased), not only
+against the features listed in the latest published documentation.
 
-**Есть** означает наличие реализации в проекте. **Частично** означает наличие
-общего механизма или части API, но не законченного интерфейса и проверки всех
-сценариев. Наличие функции в самой RmlUi не означает, что она экспортирована в
-daScript. Наличие примера не означает, что он включён в CTest.
+The first table lists what the project implements. The second lists what exists only as
+a general mechanism or as part of the API, without a finished interface or a check of
+all scenarios. A function existing in RmlUi itself does not mean it is exported to
+daScript.
 
-## Что уже есть
+## What is already present
 
-| Область | Реализация и примеры | Граница покрытия |
+| Area | Implementation and examples | Coverage boundary |
 |---|---|---|
-| Компоненты | `[ui_component]`, mount/update/dispatch, зависимости bindings, keyed-списки, `when`; hybrid по умолчанию, `[ui_action]` для helpers | В hybrid прямые scalar-привязки обслуживает native DataModel; структура/lifecycle остаются в dasrmlui. [Контракт](hybrid.md) |
-| Состояние и композиция | `ui_state`, `ui_frame(state)`, readonly `ui_read`, tracked `ui_edit`; local state, mount/unmount, computed, слоты, события, сигналы | Root — GC-owned копия initial; scoped borrow без escape. Локальное состояние живёт до unmount; смена root state сбрасывает дерево. [Контракт](hybrid.md) |
-| Виртуализация | `virtual_each`, Catalog, `tests/viewport.das` | Фиксированная высота строки, int-ключи, проверка всех ключей при обновлении |
-| Формы | Текст, числовые drafts, checkbox, select, ошибки, Enter/blur/Escape | Прикладная валидация; не универсальная обёртка `<form>` |
-| Дополнительные native controls | range, radio, textarea, tabset, progress в `examples/expedition.das` | Smoke включён в CTest |
-| Фокус и раскладка | Tab/Shift+Tab scope, восстановление фокуса, resize, `flow`, flex через свойства | Не менеджер окон или всех сочетаний клавиш |
-| Native события | `on_event`, `document_events`, capture/target/bubble, target/currentTarget, клавиши/modifiers, mouse/wheel, copied parameters, синхронные stop flags | Обработчик получает snapshot в ui_frame; cancellation задаётся до dispatch. Нет browser PointerEvent API; load не воспроизводится после создания, cleanup выполняет on_unmount |
-| Режимы документов | Скрытая загрузка шаблона, hide/show, modal/focus/scroll flags, front/back, position, retained editor; `show_popup` с clamping/Escape/outside dismissal и возвратом фокуса | Один context; native modal изолирует ввод при владении фокусом; front/back внутри z-index; popup не уменьшает свой размер |
-| Стили | Scoped `[ui_style]`, произвольные селекторы в `rule`, RCSS через `property` | Большинство свойств строковые; отдельный типизированный helper не обязателен для доступа |
-| Inline rich text | `rich_text`, вложенные span/strong/emphasis/underline/strike, link, inline PNG/sprite, br; reactive text/href/src, legacy/hybrid и static templates; The Field Notes | [Отображение и layout реализованы](rich-text.md); редактор rich text — отдельное расширение |
-| Спрайты | `spritesheet(source,resolution)`, `sprite`, `sprite_image`, PNG atlas в Expedition и Style Lab | Выбор разных atlases можно задать media/theme rules |
-| SVG / Lottie | Официальные плагины включены; `svg_image`, `svg_inline`, `svg_decorator`, `lottie`, `image_color`; компоненты/шаблоны, отдельные bindings; Vector atelier | Native automatic loop, без pause/seek. Subset форматов зависит от LunaSVG/rlottie; перезапись ресурса по старому пути не является hot reload |
-| Эффекты | `examples/effects.das`: фильтры, backdrop blur, тени, поворот/масштаб, upstream shader `creation`, glow/outline/shadow текста | GL3 smoke включён в CTest; пользовательские программы отдельно в Shader Lab |
-| Native templates | `[ui_template]` + `[ui_style]`, произвольные `slot(name)`, автоматический title, native handles; Field Office заполняет три слота отдельными компонентами | Без главного слота и прежнего `content_slot`. Проверяются имена, изоляция экземпляров, обновления/state/focus, смена target, lifecycle, кеш, экранирование и перезапуск |
-| Локализация | `examples/localization.das`: TranslateString, реактивный tr, en/de/ru, plural forms, fallback каталога | Проверены UTF-8, native parser и сохранение input/focus; не ICU/RTL |
-| Прогресс по кривой | `examples/progress_lab.das`: S-кривая по длине сегментов и radial sprite fill | GL3 smoke, play/pause/reset и проверки фактических свойств/геометрии |
-| Keyframe-анимации | Scoped `keyframes`/`keyframe`, `motion`/`animate`, repeat/alternate, stop/replay, `animated_when`, grouped completion и transition callback; `examples/animations.das` | Проверены native интерполяция без пересчёта компонентов, cancel exit/state/focus, unmount, устаревшие события, GC и GL3 smoke |
-| Media/themes/DPI/ninepatch | `media`, `theme`, context theme API, `dp`, пользовательский scale поверх display scale, atlas resolution, `ninepatch`; `examples/style_lab.das` | Native стили без remount, подписки читателей среды, DPI и pixel checks углов/центра на SDL; физический переход между мониторами не проверен |
-| Диагностика DSL | `ui_stats`, `ui_trace`, AST dump, отрицательные тесты | Это не визуальный RmlUi Debugger |
-| Spatial navigation | Typed `nav`, `nav_up/right/down/left`, `UiNav`, `nav_to`, `nav_id`, `tab_stop`, `document_nav`; native geometry/tree-order/ID и focus-visible | Native auto ограничен scroll container; focus_scope ограничивает Tab; геймпадная обвязка SDL отдельно |
-| RmlUi Debugger | Официальный плагин: lazy init, F8, toolbar, Element Info, Event Log, Outlines, Data Models, hide/shutdown и reactive status; Vector deck и Harbour | Один context; видны публичные модели и scalar slots гибридной модели `dasrmlui`, не вся script-структура. Hide дополнительно закрывает инструменты и выключает picking/outlines |
-| Публичный DataModel | `ui_data_model`, `ui_data_bind/set`, scalar/struct/array, writable native controls, expressions, callbacks, dirty, Context/Debugger; `native_data` и `data_*` внутри `[ui_component]`, Harbour целиком на daScript; внешний RML также поддержан | Native-owned копии; native-область владеет своим деревом, события обрабатываются отложенно через `ui_data_events`. [Контракт](data-models.md); синхронные script getters/setters и custom transforms не экспортированы |
-| Пользовательские native-элементы | `register_native_element`, `native_element` в компонентах/шаблонах; native ElementInstancer, Create/Attribute/Property/Resize/Update/Paint/Destroy, intrinsic, indexed mesh/UV/vertex colors, PNG/RGBA textures и GC-safe registry; Signal foundry и Mesh Lab | Имена с дефисом; без переопределения built-ins, shader/sampler commands, baseline/custom hit testing. Мутации DOM внутри native-хуков запрещены; обычные DSL events доступны |
-| Пользовательские decorators | `register_decorator`, typed number/length/color/string параметры, `custom_decorator` в стилях/компонентах/шаблонах; native DecoratorInstancer, отдельные canvas, Create/Paint/Destroy, mesh/textures и GC; Decorator Studio | RmlUi может пересоздавать canvas при resize/style/DPI без unmount элемента; schema неизменна, unregister запрещён пока есть native definitions/data; custom shader/filter API отдельно |
-| Пользовательские filters и shaders | `[ui_shader]`/`[ui_filter]` на daScript через dasGlsl, регистрация и typed RCSS-параметры, DSL styles/components/templates, ordered chains, backdrop, native instances/GC; Shader Lab и pixel tests (GLSL и DSL) | Только GL3: fragment-функции с готовым vertex stage; один проход на filter, без дополнительных samplers, vertex shaders и compute |
+| Components | `[ui_component]`, mount/update/dispatch, binding dependencies, keyed lists, `when`; hybrid by default, `[ui_action]` for helpers | In hybrid, direct scalar bindings are served by the native DataModel; structure/lifecycle stay in dasrmlui. [Contract](hybrid.md) |
+| State and composition | `ui_state`, `ui_frame(state)`, readonly `ui_read`, tracked `ui_edit`; local state, mount/unmount, computed, slots, events, signals | The root is a GC-owned copy of the initial value; scoped borrow without escape. Local state lives until unmount; changing the root state resets the tree. [Contract](hybrid.md) |
+| Virtualization | `virtual_each`, Catalog, `tests/viewport.das` | Fixed row height, int keys, all keys are checked on update |
+| Forms | Text, numeric drafts, checkbox, select, errors, Enter/blur/Escape | Application-level validation; not a general `<form>` wrapper |
+| Additional native controls | range, radio, textarea, tabset, progress in `examples/expedition.das` | Smoke test is included in CTest |
+| Focus and layout | Tab/Shift+Tab scope, focus restoration, resize, `flow`, flex through properties | Not a manager of windows or of all keyboard shortcuts |
+| Native events | `on_event`, `document_events`, capture/target/bubble, target/currentTarget, keys/modifiers, mouse/wheel, copied parameters, synchronous stop flags | The handler receives a snapshot in ui_frame; cancellation is set before dispatch. No browser PointerEvent API; load is not replayed after creation, cleanup is done by on_unmount |
+| Document modes | Hidden template loading, hide/show, modal/focus/scroll flags, front/back, position, retained editor; `show_popup` with clamping/Escape/outside dismissal and focus return | One context; a native modal isolates input while it owns focus; front/back within a z-index; a popup does not shrink its size |
+| Styles | Scoped `[ui_style]`, arbitrary selectors in `rule`, RCSS through `property` | Most properties are strings; a dedicated typed helper is not required for access |
+| Inline rich text | `rich_text`, nested span/strong/emphasis/underline/strike, link, inline PNG/sprite, br; reactive text/href/src, legacy/hybrid and static templates; The Field Notes | [Display and layout are implemented](rich-text.md); a rich text editor is a separate extension |
+| Sprites | `spritesheet(source,resolution)`, `sprite`, `sprite_image`, PNG atlas in Expedition and Style Lab | Different atlases can be selected with media/theme rules |
+| SVG / Lottie | Official plugins are enabled; `svg_image`, `svg_inline`, `svg_decorator`, `lottie`, `image_color`; components/templates, separate bindings; Vector atelier | Native automatic loop, no pause/seek. The format subset depends on LunaSVG/rlottie; overwriting a resource at its old path is not hot reload |
+| Effects | `examples/effects.das`: filters, backdrop blur, shadows, rotate/scale, upstream shader `creation`, text glow/outline/shadow | GL3 smoke test is included in CTest; custom programs are covered separately in Shader Lab |
+| Native templates | `[ui_template]` + `[ui_style]`, arbitrary `slot(name)`, automatic title, native handles; Field Office fills three slots with separate components | There is no main slot. Checked: names, instance isolation, updates/state/focus, target change, lifecycle, cache, escaping and restart |
+| Localization | `examples/localization.das`: TranslateString, reactive tr, en/de/ru, plural forms, catalog fallback | Checked: UTF-8, the native parser and input/focus preservation; not ICU/RTL |
+| Progress along a curve | `examples/progress_lab.das`: S-curve by segment length and radial sprite fill | GL3 smoke test, play/pause/reset and checks of actual properties/geometry |
+| Keyframe animations | Scoped `keyframes`/`keyframe`, `motion`/`animate`, repeat/alternate, stop/replay, `animated_when`, grouped completion and transition callback; `examples/animations.das` | Checked: native interpolation without component recomputation, cancel exit/state/focus, unmount, stale events, GC and GL3 smoke |
+| Media/themes/DPI/ninepatch | `media`, `theme`, context theme API, `dp`, user scale on top of display scale, atlas resolution, `ninepatch`; `examples/style_lab.das` | Native styles without remount, subscriptions of environment readers, DPI and pixel checks of corners/center on SDL; a physical move between monitors is not tested |
+| DSL diagnostics | `ui_stats`, `ui_trace`, AST dump, negative tests | This is not the visual RmlUi Debugger |
+| Spatial navigation | Typed `nav`, `nav_up/right/down/left`, `UiNav`, `nav_to`, `nav_id`, `tab_stop`, `document_nav`; native geometry/tree-order/ID and focus-visible | Native auto is limited to the scroll container; focus_scope limits Tab; SDL gamepad glue is separate |
+| RmlUi Debugger | Official plugin: lazy init, F8, toolbar, Element Info, Event Log, Outlines, Data Models, hide/shutdown and reactive status; Vector deck and Harbour | One context; public models and the scalar slots of the hybrid `dasrmlui` model are visible, not the whole script structure. Hide also closes the tools and turns off picking/outlines |
+| Public DataModel | `ui_data_model`, `ui_data_bind/set`, scalar/struct/array, writable native controls, expressions, callbacks, dirty, Context/Debugger; `native_data` and `data_*` inside `[ui_component]`, Harbour is entirely in daScript; external RML is also supported | Native-owned copies; the native region owns its tree, events are handled deferred through `ui_data_events`. [Contract](data-models.md); synchronous script getters/setters and custom transforms are not exported |
+| Custom native elements | `register_native_element`, `native_element` in components/templates; native ElementInstancer, Create/Attribute/Property/Resize/Update/Paint/Destroy, intrinsic, indexed mesh/UV/vertex colors, PNG/RGBA textures and GC-safe registry; Signal foundry and Mesh Lab | Names with a hyphen; no overriding of built-ins, no shader/sampler commands, no baseline/custom hit testing. DOM mutations inside native hooks are forbidden; regular DSL events are available |
+| Custom decorators | `register_decorator`, typed number/length/color/string parameters, `custom_decorator` in styles/components/templates; native DecoratorInstancer, separate canvases, Create/Paint/Destroy, mesh/textures and GC; Decorator Studio | RmlUi may recreate a canvas on resize/style/DPI without unmounting the element; the schema is immutable, unregister is forbidden while native definitions/data exist; the custom shader/filter API is separate |
+| Custom filters and shaders | `[ui_shader]`/`[ui_filter]` in daScript through dasGlsl, registration and typed RCSS parameters, DSL styles/components/templates, ordered chains, backdrop, native instances/GC; Shader Lab and pixel tests (GLSL and DSL) | GL3 only: fragment functions with a ready-made vertex stage; one pass per filter, no additional samplers, vertex shaders or compute |
+| Hot reload | LiveHost, the SDL3/GL3 adapter, root and local state, migrations and a styles entry without remount; Live workbench | [Lifecycle, state keys and migrations](hot-reload.md) |
 
-Файлы реализации: [ui.das](../dasrmlui/ui.das),
+Implementation files: [ui.das](../dasrmlui/ui.das),
 [macros.das](../dasrmlui/macros.das),
 [rml_module.cpp](../src/rml_module.cpp).
 
-## Что ещё не покрыто или покрыто частично
+## What is not covered yet or is covered partially
 
-| Возможность RmlUi | Текущее состояние dasrmlui | Что потребуется |
+| RmlUi feature | Current state in dasrmlui | What is needed |
 |---|---|---|
-| Несколько context/SDL-окон | Несколько native документов в одном context поддержаны, включая режимы окон | Отдельные context и рендеринг в нескольких SDL windows |
-| Полный drag-and-drop | `draggable(payload)`/`on_drop`, native clone, подсветка target; lifecycle через `on_event`, безопасный source handle | Автоскролл, более сложные payloads и дополнительные прикладные сценарии |
-| Дополнительное управление анимациями | Управляемые CSS keyframes и enter/exit реализованы; одна анимация на узле | Прямые `Element::Animate`/`AddAnimationKey`, pause/resume, параллельные клипы, плавный разворот exit и автоматическое удержание удалённых записей списка; `var(...)` внутри managed keys пока не поддержан |
-| Дополнительные media queries | Native `media(...)`, typed условия, conjunction/not и theme API реализованы | Остальные native условия доступны строкой; nested queries и CSS Level 4 comparisons не поддерживаются самим RmlUi |
-| RCSS custom properties/`var(...)` | Доступны строками через `property`, поддерживаются локальной RmlUi | Удобные токены и пример смены палитры; отдельный механизм наследования писать не требуется |
-| DPI на реальном оборудовании | Начальный display scale и pixel dimensions, события смены display scale с сохранением user scale, dp и atlas resolution реализованы | Физические переходы между мониторами разных DPI; тесты сейчас программно меняют display ratio |
-| Другие tiled/text decorators | Ninepatch helper и пример готовы; tiled-box, tiled-horizontal/vertical и text decorator доступны через `property` | Отдельные helpers/примеры для этих decorators и font icons |
-| Radial/conic gradients, mask-image, 3D perspective | Доступны через RCSS с подходящим renderer; GL3 реализует необходимые расширения | Примеры/проверки масок, градиентов, вложенного clipping и 3D. Нельзя переносить этот статус на SDL_Renderer |
-| Полная семантика форм | `<label>` и `<form>` создаются через `element(name, tag)`, переход label→focus проверен в `tests/elements.das`; native submit dictionary не привязан; password возможен через input type attribute | Name/value отправки формы. Нынешний `on_submit` — Enter handler, а не native form submit |
-| Touch и IME | SDL adapter передаёт touch, подключён IME handler; есть защита композиции при обновлении input | Реальные сценарии на устройствах/IME, прикладные touch callbacks и жесты. Базовая передача событий уже есть |
-| Шрифтовый fallback и shaping | Есть `rui_font` и `rui_fallback_font`; кириллица показана с Segoe UI. Используется FreeType | Проверки цепочек fallback/CJK; отдельная интеграция HarfBuzz для сложного shaping и проверка RTL. Загрузка шрифта сама этого не решает |
-| Табличная раскладка | `display: table*` доступен через `property` | Helpers/пример таблицы с row/col spans |
-| Дополнительные DataModel callbacks | Публичные модели, native bindings и отложенные event callbacks реализованы | Синхронные пользовательские `BindFunc` getters/setters и transform callbacks из daScript |
-| Файловая система и ресурсы | FileInterface читает зарегистрированные текстовые ресурсы из памяти, остальные файлы — с диска; texture loaders читают PNG с диска | Архивы, invalidation/cache reload, in-memory textures, расширение форматов при необходимости |
-| Планирование обновлений | Компоненты пропускают пересчёт, но host продолжает Update/Render и SDL_Delay | Интеграция `Context::GetNextUpdateDelay` с очередью событий, анимациями и сигналами; проверить idle CPU |
+| Multiple contexts/SDL windows | Multiple native documents in one context are supported, including window modes | Separate contexts and rendering into several SDL windows |
+| Full drag-and-drop | `draggable(payload)`/`on_drop`, native clone, target highlighting; lifecycle through `on_event`, safe source handle | Autoscroll, more complex payloads and additional application scenarios |
+| Additional animation control | Managed CSS keyframes and enter/exit are implemented; one animation per node | Direct `Element::Animate`/`AddAnimationKey`, pause/resume, parallel clips, smooth reversal of exit and automatic retention of removed list entries; `var(...)` inside managed keys is not supported yet |
+| Additional media queries | Native `media(...)`, typed conditions, conjunction/not and the theme API are implemented | The remaining native conditions are available as a string; nested queries and CSS Level 4 comparisons are not supported by RmlUi itself |
+| RCSS custom properties/`var(...)` | Available as strings through `property`, supported by the local RmlUi | Convenient tokens and a palette switching example; no separate inheritance mechanism has to be written |
+| DPI on real hardware | Initial display scale and pixel dimensions, display scale change events that keep the user scale, dp and atlas resolution are implemented | Physical moves between monitors with different DPI; the tests currently change the display ratio programmatically |
+| Other tiled/text decorators | The ninepatch helper and example are ready; tiled-box, tiled-horizontal/vertical and the text decorator are available through `property` | Dedicated helpers/examples for these decorators and for font icons |
+| Radial/conic gradients, mask-image, 3D perspective | Available through RCSS with a suitable renderer; GL3 implements the required extensions | Examples/checks of masks, gradients, nested clipping and 3D. This status must not be carried over to SDL_Renderer |
+| Full form semantics | `<label>` and `<form>` are created through `element(name, tag)`, the label→focus transition is checked in `tests/elements.das`; the native submit dictionary is not bound; password is possible through the input type attribute | Name/value form submission. The current `on_submit` is an Enter handler, not a native form submit |
+| Touch and IME | The SDL adapter forwards touch, an IME handler is connected; composition is protected when an input is updated | Real scenarios on devices/IME, application touch callbacks and gestures. Basic event forwarding is already there |
+| Font fallback and shaping | `rui_font` and `rui_fallback_font` exist; the Localization example shows Cyrillic with Segoe UI. FreeType is used | Checks of fallback chains/CJK; a separate HarfBuzz integration for complex shaping and an RTL check. Loading a font does not solve this by itself |
+| Table layout | `display: table*` is available through `property` | Helpers and a table example with row/col spans |
+| Additional DataModel callbacks | Public models, native bindings and deferred event callbacks are implemented | Synchronous user `BindFunc` getters/setters and transform callbacks from daScript |
+| File system and resources | FileInterface reads registered text resources from memory and other files from disk; texture loaders read PNG from disk | Archives, invalidation/cache reload, in-memory textures, more formats if needed |
+| Update scheduling | Components skip recomputation, but the host keeps calling Update/Render and SDL_Delay | Integration of `Context::GetNextUpdateDelay` with the event queue, animations and signals; check idle CPU |
+| CSS Grid | Not available: the RmlUi property index has no grid layout | Nothing to export until RmlUi supports it |
 
-`rui_watch` остаётся legacy подпиской на ограниченный набор типов. Новый `on_event`
-регистрируется непосредственно на элементе для любого native event. `stop` и
-`stop_immediate` применяются синхронно по параметрам подписки: RmlUi связывает
-остановку распространения с отменой default actions. Отложенный setter не может
-изменить уже завершившийся native dispatch; независимого PreventDefault здесь нет.
+`rui_watch` remains a legacy subscription for a limited set of types. The new `on_event`
+is registered directly on the element for any native event. `stop` and
+`stop_immediate` are applied synchronously from the subscription parameters: RmlUi ties
+stopping propagation to cancelling default actions. A deferred setter cannot change a
+native dispatch that has already finished; there is no independent PreventDefault here.
 
-## Примеры native возможностей и тесты
+## Examples of native features and tests
 
-- `rich_text_lab.das`: The Field Notes, вложенные начертания и размеры, inline PNG/спрайты,
-  ссылки с мышью/клавиатурой, динамическая ширина и сноска. `tests/rich_text.das`
-  проверяет native переносы, baseline разных шрифтов и изображения, superscript,
-  наследование, br/whitespace, reactive text/href/src, hybrid idle и GC.
+- `rich_text_lab.das`: The Field Notes, nested font styles and sizes, inline PNG/sprites,
+  links with mouse/keyboard, dynamic width and a footnote. `tests/rich_text.das`
+  checks native line wrapping, baselines of different fonts and images, superscript,
+  inheritance, br/whitespace, reactive text/href/src, hybrid idle and GC.
 
-- `drag_drop.das`: перенос, перестановка с сохранением keyed handle, отказ при
-  заполненном контейнере, отмена снаружи и невалидный payload.
-- `templates.das`: два экземпляра native template, три именованных слота, выборочное
-  удаление редактора, move/resize, input binding, закрытие/повторное открытие и ui_reset.
-- `localization.das`: три языка, plural forms, fallback, native RML translation,
-  внешний set_locale без изменения модели, сохранение input/focus.
-- `progress_lab.das`: 0/50/100%, opacity разных участков кривой, позиция спрайта,
-  размер/значение radial progress, reset и play/pause.
-- `expedition.das`: range/radio/tabset/textarea/sprite selection и resize.
-- `effects.das`: filter controls, вкладки transform/type и reset.
-- `animations.das`: плавающий корабль, циклический beacon, отмена exit панели без
-  remount, уведомления с отложенным удалением, completion запуска и stop ambient.
-- `style_lab.das`: две темы, dp-масштаб, media layout, один atlas для рамок разных
-  размеров, сохранение текста. Отдельный ninepatch pixel test работает на SDL.
-- `event_studio.das`: keyboard/context menu, popup, modal и скрываемый локальный
-  редактор. `events.das` и `documents.das` проверяют фазы/параметры событий,
-  cancellation, подписки/GC, фокус, слои, modal, popup и отбрасывание stale команд.
-- `navigation_lab.das`: native nav, ID-переходы, scroll, popup и штатный Debugger.
-  `navigation.das` и `debugger.das` проверяют режимы, фокус, picking, styles,
-  lifecycle/GC, restart и отсутствие лишних обновлений; есть отрицательный ID test.
+- `drag_drop.das`: move, reorder that keeps the keyed handle, rejection when the
+  container is full, cancel outside and an invalid payload.
+- `templates.das`: two instances of a native template, three named slots, selective
+  removal of the editor, move/resize, input binding, close/reopen and ui_reset.
+- `localization.das`: three languages, plural forms, fallback, native RML translation,
+  external set_locale without changing the model, input/focus preservation.
+- `progress_lab.das`: 0/50/100%, opacity of different parts of the curve, sprite
+  position, size/value of the radial progress, reset and play/pause.
+- `expedition.das`: range/radio/tabset/textarea/sprite selection and resize.
+- `effects.das`: filter controls, transform/type tabs and reset.
+- `animations.das`: floating ship, looping beacon, cancelling the panel exit without
+  remount, notifications with deferred removal, launch completion and stop ambient.
+- `style_lab.das`: two themes, dp scale, media layout, one atlas for frames of different
+  sizes, text preservation. A separate ninepatch pixel test runs on SDL.
+- `event_studio.das`: keyboard/context menu, popup, modal and a hideable local
+  editor. `events.das` and `documents.das` check event phases/parameters,
+  cancellation, subscriptions/GC, focus, layers, modal, popup and dropping stale commands.
+- `navigation_lab.das`: native nav, ID transitions, scroll, popup and the stock Debugger.
+  `navigation.das` and `debugger.das` check modes, focus, picking, styles,
+  lifecycle/GC, restart and the absence of extra updates; there is a negative ID test.
 
-- `vector_lab.das`: SVG file/inline/crop/decorator и native Lottie, смена источника,
-  цвета, размеров и remount. Runtime и pixel tests проверяют независимые bindings,
-  native factories, templates, DPI, lifecycle, загрузку и кадры анимации по времени.
+- `vector_lab.das`: SVG file/inline/crop/decorator and native Lottie, changing the
+  source, color and size, and remount. Runtime and pixel tests check independent
+  bindings, native factories, templates, DPI, lifecycle, loading and animation frames
+  over time.
 
-- `native_lab.das`: custom waveform elements из daScript, update/paint независимо от
-  компонентов, атрибуты, события, keyed identity, resize, Hold и GC. Runtime tests
-  проверяют captured values, callbacks, шаблоны, снятие регистрации, shutdown и ошибки.
+- `native_lab.das`: custom waveform elements from daScript, update/paint independent of
+  components, attributes, events, keyed identity, resize, Hold and GC. Runtime tests
+  check captured values, callbacks, templates, unregistration, shutdown and errors.
 
-Также добавлены Mesh Lab, Decorator Studio и Shader Lab: произвольная геометрия и
-текстуры, scripted decorators, пользовательские GLSL-программы и фильтры.
-Все пятнадцать зарегистрированы в CTest. Effects, Progress Lab, Animations, Style Lab, Vector Lab, Native Lab, Mesh Lab, Decorator Studio и Shader Lab имеют метку `opengl`
-и требуют настоящего OpenGL 3.3 context; остальные используют SDL dummy для smoke.
-Для визуальной проверки SDL-примеры отдельно запущены с Windows renderer.
+There are also Mesh Lab, Decorator Studio and Shader Lab: arbitrary geometry and
+textures, scripted decorators, custom GLSL programs and filters.
+All of them are registered in CTest. Effects, Progress Lab, Animations, Style Lab,
+Vector Lab, Native Lab, Mesh Lab, Decorator Studio and Shader Lab have the `opengl` label
+and need a real OpenGL 3.3 context; the rest use the SDL dummy driver for smoke tests.
 
-## Приоритет дальнейшей работы
+## Library extensions
 
-1. **Готово:** анимации — DSL keyframes, запуск/повтор/остановка, enter/exit lifecycle,
-   пример Orbital и регрессионные тесты.
-2. **Готово:** универсальные именованные слоты — `slot(name)`, заполнение через
-   `document_content(document, name)`, проверки имён, изоляции экземпляров,
-   обновлений и lifecycle; Field Office с тремя слотами. Прежний `content_slot`
-   удалён без alias, главного слота больше нет.
-3. **Готово:** media/themes/DPI и ninepatch — DSL, пример Relay Station,
-   проверки runtime и pixels; реальный перенос между мониторами остаётся непроверенным.
-4. **Готово:** события элементов/документов с snapshots и синхронными параметрами
-   остановки; hide/show, modal/focus/front/back, popup с dismissal и сохранением
-   фокуса; Signal desk, runtime и smoke тесты.
-5. **Готово:** встроенный Debugger RmlUi и native spatial navigation — DSL, пример
-   Vector deck, проверки инспектора, клавиатурных переходов, popup, фокуса и lifecycle.
-6. **Готово:** SVG/Lottie — официальные плагины с закреплёнными зависимостями, DSL
-   компонентов/шаблонов/стилей, Vector atelier, runtime/negative/pixel tests.
-7. **Готово:** пользовательские native-элементы — регистрация ElementInstancer из
-   daScript, DSL, Signal foundry, lifecycle/GC/error и pixel tests. Универсальная
-   геометрия и PNG/RGBA-текстуры, примитивы на daScript, Mesh Lab и SDL/GL3 pixel tests.
-8. **Готово:** пользовательские decorators из daScript — регистрация, RCSS-параметры,
-   DSL стилей, Decorator Studio, lifecycle/GC/host teardown и SDL/GL3 pixel tests.
-9. **Готово:** пользовательские GL3 filters/shaders — регистрация GLSL из daScript,
-   typed RCSS-параметры, DSL, цепочки/backdrop, Shader Lab, lifecycle/GC и pixel tests.
-   Адаптер dasGlsl добавляет `[ui_shader]`/`[ui_filter]`; Shader Lab написан на daScript
-   без строк GLSL, генератор входит в автономный runtime package.
-10. **Готово:** hybrid по умолчанию, managed `ui_state`, tracked `ui_edit`
-    и наши keyed-компоненты. Прямые scalar-привязки используют native DataModel;
-    структурные и внешние зависимости сохраняют fallback. Публичный API внешних
-    RML `data-*`, структуры/массивы, native формы, callbacks, lifecycle/GC и
-    Context/Debugger реализованы; пример Harbour. Границы API описаны выше.
+Possible extensions of dasrmlui on top of RmlUi. They are not implemented and are not
+part of the missing native API support.
 
-В локальном property index нет CSS Grid: обещать его как просто неэкспортированный
-режим RmlUi также нельзя.
-
-## Расширения библиотеки
-
-Расширения dasrmlui поверх RmlUi; реализованные пункты отмечены отдельно. Они не
-относятся к недостающей поддержке native API. Порядок оставшихся работ пока не определён.
-
-| Расширение | Назначение и состояние |
+| Extension | Purpose |
 |---|---|
-| Tree widget | Компонент дерева с раскрытием узлов, выбором и клавиатурной навигацией |
-| Table widget | Компонент таблицы с сортировкой, выбором строк и редактированием ячеек; native RCSS table layout учитывается отдельно в покрытии RmlUi |
-| Docking | Пристыковка панелей, разделители и сохранение раскладки рабочего пространства |
-| Hot reload — реализован | LiveHost, SDL3/GL3 adapter, root/local state, миграции и styles entry без remount; [описание](hot-reload.md) |
-| Виртуализация переменной высоты | Измерение строк разной высоты, расчёт видимого диапазона и сохранение позиции прокрутки |
+| Tree widget | Tree component with node expansion, selection and keyboard navigation |
+| Table widget | Table component with sorting, row selection and cell editing; native RCSS table layout is tracked separately in the RmlUi coverage |
+| Docking | Panel docking, splitters and saving the workspace layout |
+| Variable-height virtualization | Measuring rows of different heights, computing the visible range and keeping the scroll position |
 
-## Renderer и проверка
+## Renderer and verification
 
-`rui_init` использует локальный SDL_Renderer bridge: геометрия, PNG, текст и
-прямоугольный scissor. Он не реализует transforms, clip masks, layers, filters и
-shader hooks. `rui_init_gl` использует закреплённую копию upstream GL3 renderer в
-`src/gl3/` с пользовательскими программами и проходами в native filter pipeline;
-SDL3 по-прежнему создаёт окно/context и доставляет ввод.
+`rui_init` uses a local SDL_Renderer bridge: geometry, PNG, text and a
+rectangular scissor. It does not implement transforms, clip masks, layers, filters or
+shader hooks. `rui_init_gl` uses a pinned copy of the upstream GL3 renderer in
+`src/gl3/` with custom programs and passes in the native filter pipeline;
+SDL3 still creates the window/context and delivers input.
 
-После добавления `native_data` в DSL `ctest --test-dir build -j 4 --output-on-failure`:
-**102/102 passed** в полном прогоне, включая `runtime_package` и benchmark smoke
-(2026-11-13). Лог: `logs/ctest-native-data-dsl-final.log`. Component-примеры
-используют `ui_state`/`ui_frame`; Harbour подключает публичную модель внутри компонента.
-Всего 22 зарегистрированы как `demo_*`, Inventory дополнительно проверен отдельно.
-`data_models`, `demo_data_models` и `data_model_type_error` проверяют внешний RML,
-native views/controllers, структуры/массивы, ошибки/GC/очередь callbacks,
-Context/Debugger и shutdown/restart. Harbour проверен визуально на Windows;
-runtime package запускает его целиком из `.das`, без внешних RML/RCSS.
-`native_data_dsl` проверяет native-область в hybrid/legacy компонентах, отсутствие
-пересчётов при native записях, scoped styles, экранирование, вложенные списки,
-keyed reorder с сохранением handles/focus/selection, смену модели, GC и lifecycle.
-Четыре отрицательных теста проверяют captures, границы области и managed-операции.
-Включены девять OpenGL-примеров, pixel tests,
-генерация/слоты шаблонов, анимации, media/theme/DPI, события/режимы документов,
-Debugger/spatial navigation, SVG/Lottie, native custom elements, регрессии и отрицательные проверки DSL.
-Пять новых native-element тестов прошли в полном прогоне: `native_elements`,
-`native_safety`, `demo_native_lab`, `native_host_lifetime`, `native_pixels`.
-Они покрывают captured values/GC, native callbacks, keyed identity, templates,
-ошибки и reentry, unregister, shutdown/restart, поздний cleanup после main,
-геометрию, clipping, opacity, resize и DPI. Signal foundry также проверен визуально в GL3.
-`demo_mesh_lab` и `native_mesh_pixels` проверяют indexed geometry, UV, PNG/RGBA,
-vertex colors, premultiplied alpha, tint, порядок batches, кеш после release handle,
-копирование массивов/GC, stale/foreign handles, remount/shutdown и cleanup после
-ошибки Paint. Пиксели проверяются на SDL и GL3; Mesh Lab проверен визуально в GL3.
-`demo_decorator_lab`, `decorator_pixels` и `decorator_host_lifetime` проверяют регистрацию
-и параметры decorators, стили/hover/templates, отдельные canvas, paint-area, texture,
-opacity/DPI/resize, GC внутри Paint/Destroy (включая локальные данные вызывающего кода),
-кеширование, ошибки, unregister и поздний host teardown. Decorator Studio проверен визуально.
-`gpu_backend`, `demo_shader_lab` и `gpu_effect_pixels` проверяют регистрацию GLSL,
-ошибки компиляции/схемы, typed uniforms, cascade/templates и granular bindings,
-порядок filter chain, backdrop, native filter после custom, straight/premultiplied
-alpha, overflow, transform/clipping, DPI, GPU time при idle-компоненте, GC и
-shutdown/restart с живыми instances. Shader Lab также проверен визуально в GL3.
-Shader Lab использует `[ui_shader]`/`[ui_filter]` и dasGlsl без строк GLSL.
-`shader_dsl_compiler` и восемь отрицательных тестов проверяют генерацию, typed schema,
-helpers/структуры/циклы, типы входов/result, mutable/default параметры, CPU capture
-и ограничения source sampling. `gpu_effect_pixels` повторяет fixture с GLSL и DSL.
-Runtime package содержит dasGlsl и проверяется запуском SDL Dashboard и GL3 Shader Lab.
-Signal desk и Vector deck также проверены на Windows renderer по снимкам редактора,
-modal, popup и штатного инспектора RmlUi.
-Vector atelier визуально проверен в OpenGL. SVG/Lottie pixel test на SDL проверяет
-прозрачные поля/crop, декоратор, tint/opacity, inline replacement, DPI, resize,
-смену источника и реальные положения анимированной фигуры через 0/0.5/1/2 секунды.
-Runtime дополнительно проверяет in-memory и повреждённые ресурсы, ошибки загрузки
-с последующим восстановлением и повторную регистрацию плагинов после shutdown.
-Ninepatch отдельно проверяется по пикселям четырёх углов и центра на SDL при
-разных размерах, 1x/2x и смене темы. Это не проверка всех строк матрицы и не полное
-pixel-golden сравнение всех экранов.
+The full run is `ctest --test-dir build -j 4 --output-on-failure`; it includes
+`runtime_package` and the benchmark smoke test. Component examples
+use `ui_state`/`ui_frame`; Harbour attaches the public model inside a component.
+Every example is registered as a `demo_*` test.
+`data_models`, `demo_data_models` and `data_model_type_error` check external RML,
+native views/controllers, structs/arrays, errors/GC/the callback queue,
+Context/Debugger and shutdown/restart. The runtime package runs Harbour entirely from
+`.das`, without external RML/RCSS.
+`native_data_dsl` checks the native region in hybrid/legacy components, the absence of
+recomputation on native writes, scoped styles, escaping, nested lists,
+keyed reorder that keeps handles/focus/selection, model change, GC and lifecycle.
+Four negative tests check captures, region boundaries and managed operations.
+The run includes the OpenGL examples, pixel tests,
+template generation/slots, animations, media/theme/DPI, events/document modes,
+Debugger/spatial navigation, SVG/Lottie, native custom elements, regressions and
+negative DSL checks.
+The native-element tests are `native_elements`, `native_safety`, `demo_native_lab`,
+`native_host_lifetime` and `native_pixels`.
+They cover captured values/GC, native callbacks, keyed identity, templates,
+errors and reentry, unregister, shutdown/restart, late cleanup after main,
+geometry, clipping, opacity, resize and DPI.
+`demo_mesh_lab` and `native_mesh_pixels` check indexed geometry, UV, PNG/RGBA,
+vertex colors, premultiplied alpha, tint, batch order, the cache after a handle is
+released, array copying/GC, stale/foreign handles, remount/shutdown and cleanup after
+a Paint error. Pixels are checked on SDL and GL3.
+`demo_decorator_lab`, `decorator_pixels` and `decorator_host_lifetime` check decorator
+registration and parameters, styles/hover/templates, separate canvases, paint-area,
+texture, opacity/DPI/resize, GC inside Paint/Destroy (including local data of the
+calling code), caching, errors, unregister and late host teardown.
+`gpu_backend`, `demo_shader_lab` and `gpu_effect_pixels` check GLSL registration,
+compilation/schema errors, typed uniforms, cascade/templates and granular bindings,
+filter chain order, backdrop, a native filter after a custom one, straight/premultiplied
+alpha, overflow, transform/clipping, DPI, GPU time with an idle component, GC and
+shutdown/restart with live instances.
+Shader Lab uses `[ui_shader]`/`[ui_filter]` and dasGlsl without GLSL strings.
+`shader_dsl_compiler` and eight negative tests check generation, the typed schema,
+helpers/structs/loops, input/result types, mutable/default parameters, CPU capture
+and source sampling restrictions. `gpu_effect_pixels` repeats the fixture with GLSL
+and with the DSL.
+The runtime package contains dasGlsl and is checked by running the SDL Dashboard and
+the GL3 Shader Lab.
+The SVG/Lottie pixel test on SDL checks
+transparent margins/crop, the decorator, tint/opacity, inline replacement, DPI, resize,
+source change and the actual positions of the animated shape after 0/0.5/1/2 seconds.
+The runtime tests also check in-memory and corrupted resources, load errors
+followed by recovery, and re-registration of the plugins after shutdown.
+Ninepatch is checked separately by the pixels of the four corners and the center on SDL
+at different sizes, at 1x/2x and on a theme change. This is not a check of every row of
+the matrix and not a full pixel-golden comparison of all screens.
 
-## Источники
+## Sources
 
 - [Native elements](https://mikke89.github.io/RmlUiDoc/pages/rml/element_index.html)
 - [RCSS property index](https://mikke89.github.io/RmlUiDoc/pages/rcss/property_index.html)
-- [Media queries и темы](https://mikke89.github.io/RmlUiDoc/pages/rcss/media_queries.html)
-- [Decorators и требования к renderer](https://mikke89.github.io/RmlUiDoc/pages/rcss/decorators.html)
+- [Media queries and themes](https://mikke89.github.io/RmlUiDoc/pages/rcss/media_queries.html)
+- [Decorators and renderer requirements](https://mikke89.github.io/RmlUiDoc/pages/rcss/decorators.html)
 - [Ninepatch](https://mikke89.github.io/RmlUiDoc/pages/rcss/decorators/ninepatch.html)
-- [Documents и modal state](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/documents.html)
-- [User interface, drag и navigation](https://mikke89.github.io/RmlUiDoc/pages/rcss/user_interface.html)
-- [Встроенный Debugger](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/debugger.html)
+- [Documents and modal state](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/documents.html)
+- [User interface, drag and navigation](https://mikke89.github.io/RmlUiDoc/pages/rcss/user_interface.html)
+- [Built-in Debugger](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/debugger.html)
 - [SVG plugin](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/svg.html)
 - [Lottie plugin](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/lottie.html)
 - [Custom elements](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/custom_elements.html)
-- [C++ API и плагины](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual.html)
+- [C++ API and plugins](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual.html)
 - [Native data binding](https://mikke89.github.io/RmlUiDoc/pages/data_bindings.html)
 
-Также сверены локальные `Context.h`, `Element.h`, `ElementDocument.h`,
-`Factory.cpp`, `ElementFormControlInput.cpp`, SDL/GL3 backends и состав Samples.
-
-### Проверка LiveHost (2026-11-13)
-
-**109/109 passed**, включая шесть live-сценариев, `runtime_package`, GL3/pixel tests
-и benchmark smoke. Лог: `logs/ctest-hot-reload-verified.log`. Из-за параллельной
-пересборки основного exe прогон выполнен на его отдельной копии через
-`ctest --test-dir build/hot-reload-validation -j 4 --output-on-failure`.
-Live workbench добавляет 23-й `demo_*`; снимок интерфейса — `logs/live_lab.png`.
+`Context.h`, `Element.h`, `ElementDocument.h`, `Factory.cpp`,
+`ElementFormControlInput.cpp`, the SDL/GL3 backends and the set of Samples of that
+revision were also checked.

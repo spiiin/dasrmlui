@@ -1,32 +1,34 @@
-# Зависимости SVG/Lottie
+# SVG/Lottie dependencies
 
-`cmake/vector_plugins.cmake` включает официальные RmlUi plugins и статически собирает:
+`cmake/vector_plugins.cmake` enables the official RmlUi plugins and statically builds:
 
-| Библиотека | Закреплённая ревизия | Лицензия |
+| Library | Pinned revision | License |
 |---|---|---|
 | LunaSVG 3.2.1 | `f8aabfb444bb37f69df7290790f57e4a27730a93` | MIT |
-| PlutoVG | submodule, закреплённый LunaSVG | MIT |
-| Samsung rlottie | `ea06d2f29ba01b8d06c00a838d107f5e484ae59b` | MIT; сторонние файлы имеют собственные notices |
+| PlutoVG | submodule pinned by LunaSVG | MIT |
+| Samsung rlottie | `ea06d2f29ba01b8d06c00a838d107f5e484ae59b` | MIT; third-party files have their own notices |
 
-Первый `./tools/build.ps1` требует Git и сеть для FetchContent. Исходники, лицензии
-и сборки сохраняются под `build/_deps`; существующие checkout RmlUi и dasSDL3 не
-изменяются. При распространении бинарника сохраните LICENSE/COPYING и notices этих
-зависимостей, включая вложенные third-party файлы rlottie.
+The first `./tools/build.ps1` run needs Git and network access for FetchContent.
+Sources, licenses and build outputs are stored under `build/_deps`; the existing RmlUi
+and dasSDL3 checkouts are not modified. When you distribute a binary, keep the
+LICENSE/COPYING files and notices of these dependencies, including the nested
+third-party files of rlottie.
 
-`patch_rlottie.cmake` исправляет только полученную build-копию: поднимает минимальную
-версию CMake с 3.3 до 3.15 и убирает навязанный `/MT`, чтобы все библиотеки использовали
-один CRT `/MD`. `renderSync` работает без фоновых потоков; внешний image-loader DLL
-отключён. Утилита lottie2gif не входит в обычную сборку.
+`patch_rlottie.cmake` patches only the fetched build copy: it raises the minimum
+CMake version from 3.3 to 3.15 and removes the forced `/MT`, so that all libraries use
+the same `/MD` CRT. `renderSync` works without background threads; the external
+image-loader DLL is disabled. The lottie2gif utility is not part of the regular build.
 
-Для offline configure можно передать `FETCHCONTENT_SOURCE_DIR_LUNASVG` (с заполненным
-submodule PlutoVG) и `FETCHCONTENT_SOURCE_DIR_RLOTTIE`. CMake пропускает PATCH_COMMAND
-при таком override: используйте подготовленную build-копию либо примените
-`cmake -DSOURCE_DIR=<rlottie-copy> -P cmake/patch_rlottie.cmake` к отдельной копии заранее.
+For an offline configure you can pass `FETCHCONTENT_SOURCE_DIR_LUNASVG` (with the
+PlutoVG submodule populated) and `FETCHCONTENT_SOURCE_DIR_RLOTTIE`. CMake skips
+PATCH_COMMAND with such an override: use a prepared build copy, or apply
+`cmake -DSOURCE_DIR=<rlottie-copy> -P cmake/patch_rlottie.cmake` to a separate copy
+beforehand.
 
-SVG/JSON из `examples/assets/vector_*` — оригинальные геометрические рисунки этого
-проекта. Они воспроизводятся `python tools/make_vector_assets.py` и не требуют
-скачивания чужих иллюстраций. Probe assets предназначены для детерминированных tests;
-flower/orbit/motion/pulse — для интерактивного примера.
+The SVG/JSON files in `examples/assets/vector_*` are original geometric drawings of
+this project. They are reproduced with `python tools/make_vector_assets.py` and do not
+require downloading third-party illustrations. The probe assets are meant for
+deterministic tests; flower/orbit/motion/pulse are for the interactive example.
 
 Native API: [SVG](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/svg.html),
 [Lottie](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/lottie.html).

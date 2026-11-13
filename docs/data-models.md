@@ -1,12 +1,13 @@
-# Публичный DataModel: компоненты daScript и внешний RML
+# Public DataModel: daScript components and external RML
 
-`require dasrmlui/ui` экспортирует API моделей, зарегистрированных в текущем
-`Rml::Context`. Модель можно подключить к `[ui_component]` через `native_data`
-или к существующим `.rml`/`.rcss` с native `data-*`.
-Компоненты с обычными `bind_value`/`text(model.field)` продолжают использовать `ui_state`, `ui_edit`
-и `ui_frame`; вручную создавать эту модель или опрашивать её события не нужно.
+`require dasrmlui/ui` exports the API of the models registered in the current
+`Rml::Context`. A model can be connected to a `[ui_component]` through `native_data`
+or to existing `.rml`/`.rcss` with native `data-*`.
+Components with regular `bind_value`/`text(model.field)` continue to use `ui_state`,
+`ui_edit` and `ui_frame`; you do not need to create this model manually or poll its
+events.
 
-## Внутри ui_component, без внешнего RML
+## Inside ui_component, without external RML
 
 ```dascript
 [ui_style]
@@ -22,12 +23,12 @@ def dispatch_panel(model:UiDataModel) {
         column("fields") {
             text_input("captain") { data_value("voyage.captain") }
             checkbox("ready") { data_checked("voyage.ready") }
-            button("depart", "Разрешить отправку") {
+            button("depart", "Clear for departure") {
                 data_disabled("!voyage.ready")
                 data_event("click", "depart(voyage.captain)")
             }
             text("status") { data_text("status") }
-            data_if("notice", "voyage.ready") { text("notice_text", "Готово") }
+            data_if("notice", "voyage.ready") { text("notice_text", "Ready") }
             data_for("cargo_row", "item", "cargo") {
                 data_class("priority", "item.priority")
                 text("name") { data_text("item.name") }
@@ -37,49 +38,52 @@ def dispatch_panel(model:UiDataModel) {
 }
 ```
 
-Модель объявляется теми же `ui_data_model`/`ui_data_bind`, что и для внешнего RML.
-Её handle можно хранить в структуре `ui_state` и передавать компоненту внутри
-`ui_frame`. `ui_data_events(model)` обрабатывается приложением перед кадром;
-`data_event` регистрирует native expression, а имя callback предварительно
-объявляется через `ui_data_on`. Смена handle через `ui_edit` переподключает область.
+The model is declared with the same `ui_data_model`/`ui_data_bind` as for external RML.
+Its handle can be stored in the `ui_state` structure and passed to the component inside
+`ui_frame`. `ui_data_events(model)` is processed by the application before the frame;
+`data_event` registers a native expression, and the callback name is declared
+beforehand through `ui_data_on`. Replacing the handle through `ui_edit` reconnects
+the scope.
 
-| Конструкция | Native-привязка |
+| Construct | Native binding |
 |---|---|
-| `data_text(expression)` | Текстовая интерполяция RmlUi |
-| `data_value(path)`, `data_checked(path)` | Двустороннее значение input/select/textarea и checkbox |
-| `data_disabled(expression)` | Атрибут disabled |
-| `data_attribute(name, expression)` | Атрибут элемента |
-| `data_style(name, expression)` | Inline-свойство RCSS |
-| `data_class(name, expression)` | Scoped state class, совместимая с `with_class` |
-| `data_event(kind, expression)` | Native event expression: callback или присваивание |
-| `data_if(name, expression) { ... }` | Native условная область |
-| `data_for(name, alias, array_path) { ... }` | Native повторение; допускается вложенность |
+| `data_text(expression)` | RmlUi text interpolation |
+| `data_value(path)`, `data_checked(path)` | Two-way value of input/select/textarea and checkbox |
+| `data_disabled(expression)` | The disabled attribute |
+| `data_attribute(name, expression)` | Element attribute |
+| `data_style(name, expression)` | Inline RCSS property |
+| `data_class(name, expression)` | Scoped state class, compatible with `with_class` |
+| `data_event(kind, expression)` | Native event expression: a callback or an assignment |
+| `data_if(name, expression) { ... }` | Native conditional scope |
+| `data_for(name, alias, array_path) { ... }` | Native repetition; nesting is allowed |
 
-Внутри области доступны `column`, `row`, `box`, `element`, `text`, `button`,
-`text_input`, `checkbox`, `select_input`, `text_area`, `attribute` и обычные
-typed property helpers. `element` позволяет описывать дополнительные native теги,
-например `option`, `img` или `label`. Текст и значения атрибутов экранируются;
-`text("name", "...")` остаётся буквальным текстом, включая двойные фигурные скобки.
+Inside the scope, `column`, `row`, `box`, `element`, `text`, `button`,
+`text_input`, `checkbox`, `select_input`, `text_area`, `attribute` and the regular
+typed property helpers are available. `element` lets you describe additional native
+tags, for example `option`, `img` or `label`. Text and attribute values are escaped;
+`text("name", "...")` remains literal text, including double curly braces.
 
-Макрос выносит описание в статическую функцию без captures. Она сериализует
-внутренний RML **только при mount или смене модели**. Файла на диске и отдельной
-аннотации нет. Тело — статическая схема: имена, captions, свойства и строки
-expressions должны быть константами. Изменяемые значения читаются через `data_*`.
-Произвольные script-вызовы, `when`, `each_keyed`, component callbacks и вложенные
-`native_data` внутри схемы отклоняются при компиляции. Их можно использовать
-**снаружи** области. Native expressions разбирает RmlUi во время mount, не компилятор daScript.
-Host также не должен наследовать `data-model` от внешнего RML-предка:
-вложение независимых native scopes в такую область отклоняется при mount.
+The macro moves the description into a static function without captures. It serializes
+the internal RML **only on mount or when the model is replaced**. There is no file on
+disk and no separate annotation. The body is a static schema: names, captions,
+properties and expression strings must be constants. Mutable values are read through
+`data_*`. Arbitrary script calls, `when`, `each_keyed`, component callbacks and nested
+`native_data` inside the schema are rejected at compile time. They can be used
+**outside** the scope. Native expressions are parsed by RmlUi during mount, not by the
+daScript compiler.
+The host also must not inherit `data-model` from an external RML ancestor:
+nesting independent native scopes in such a scope is rejected at mount.
 
-Runtime учитывает только host области. Внутри него находится отдельный native
-model root; его потомки не участвуют в reconciliation. Изменение native поля
-не вызывает пересчёт компонента. Перестановка host через `each_keyed` сохраняет
-native input handles, focus/selection и aliases списка. `data_for` располагает
-привязки строки глубже структурного view, чтобы сокращение массива удаляло строку
-до вычисления её прежнего индекса. Это native список, не наш `each_keyed`.
+The runtime takes into account only the host of the scope. Inside it there is a
+separate native model root; its descendants do not take part in reconciliation.
+A change of a native field does not cause the component to be recomputed. Reordering
+the host through `each_keyed` preserves native input handles, focus/selection and list
+aliases. `data_for` places the row bindings deeper than the structural view, so that
+shrinking the array removes the row before its former index is evaluated. This is a
+native list, not our `each_keyed`.
 
-Имена дочерних элементов становятся scoped classes и part-маркерами, не DOM ID.
-Их можно повторять в строках и разных экземплярах компонента. Для доступа:
+The names of child elements become scoped classes and part markers, not DOM IDs.
+They can be repeated in rows and in different component instances. For access:
 
 ```dascript
 let scope = ui_find("form")
@@ -87,17 +91,18 @@ let captain = ui_data_find(scope, "captain")
 let second_row = ui_data_find(scope, "cargo_row", 1)
 ```
 
-`ui_data_find` исключает скрытые шаблоны `data-for`, но может вернуть скрытый
-`data_if` элемент. Возвращает 0 при отсутствии part/occurrence. Прямое назначение
-`id`, `class`, `style`, `data-model` и part-маркера через `attribute`/`data_attribute`
-запрещено: идентичность задаёт builder, стили — properties и scoped classes.
-Unmount уничтожает native subtree, сохраняя публичную модель. Закрытие модели
-отсоединяет привязки; существующая область остаётся безопасной для повторного
-посещения. Новый mount требует живой модели.
+`ui_data_find` excludes hidden `data-for` templates, but can return a hidden
+`data_if` element. It returns 0 when the part/occurrence is absent. Directly assigning
+`id`, `class`, `style`, `data-model` and the part marker through
+`attribute`/`data_attribute` is forbidden: identity is set by the builder, styles by
+properties and scoped classes.
+Unmount destroys the native subtree and keeps the public model. Closing the model
+detaches the bindings; the existing scope remains safe to visit again. A new mount
+requires a live model.
 
-## Создание и привязка
+## Creation and binding
 
-После `rui_init` или `rui_init_gl`, до загрузки RML:
+After `rui_init` or `rui_init_gl`, before loading RML:
 
 ```dascript
 struct Person { name:string; ready:bool }
@@ -109,7 +114,7 @@ ui_data_on(model, "confirm")
 let document = ui_load_rml("dispatch.rml")
 ```
 
-Содержимое `dispatch.rml`:
+Contents of `dispatch.rml`:
 
 ```html
 <rml>
@@ -124,7 +129,7 @@ let document = ui_load_rml("dispatch.rml")
 </rml>
 ```
 
-В цикле приложения, после передачи SDL-событий в `rui_event`:
+In the application loop, after SDL events are passed to `rui_event`:
 
 ```dascript
 ui_data_events(model) $(event:UiDataEvent) {
@@ -136,23 +141,24 @@ rui_update()
 rui_render()
 ```
 
-`ui_load_rml` использует native `Context::LoadDocument`, сохраняет source URL для
-относительных ресурсов и возвращает обычный document handle. Для строк остаётся
-`rui_document`. Документу доступны `close_document`, `show_document`, остальные
-операции над документами и штатные native views/controllers RmlUi.
+`ui_load_rml` uses native `Context::LoadDocument`, keeps the source URL for
+relative resources and returns a regular document handle. For strings,
+`rui_document` remains. The document supports `close_document`, `show_document`, the
+other document operations and the stock native RmlUi views/controllers.
 
-## Значения и владение
+## Values and ownership
 
-`ui_data_bind(model, name, value, writable=false)` глубоко копирует значение в
-native-хранилище моста. Поддерживаются строки, bool, целые, float/double, enum
-(как целое), структуры и массивы этих типов. `uint64` ограничен диапазоном int64;
-нечисловые и бесконечные float-значения отклоняются. Указатели и closures не
-поддерживаются. GC daScript не влияет на существование привязанных значений.
+`ui_data_bind(model, name, value, writable=false)` deep-copies the value into the
+native storage of the bridge. Strings, bool, integers, float/double, enum
+(as an integer), structures and arrays of these types are supported. `uint64` is
+limited to the int64 range; NaN and infinite float values are rejected. Pointers and
+closures are not supported. The daScript GC does not affect the existence of bound
+values.
 
-`writable=true` разрешает native input-контроллерам и RML expressions менять
-значения. Исходная daScript-структура при этом не изменяется. Для чтения native
-значения используйте `ui_data_text`, `ui_data_int`, `ui_data_number`, `ui_data_bool`;
-для длины массива — `ui_data_size`.
+`writable=true` allows native input controllers and RML expressions to change
+values. The source daScript structure is not changed by this. To read a native
+value use `ui_data_text`, `ui_data_int`, `ui_data_number`, `ui_data_bool`;
+for the array length use `ui_data_size`.
 
 ```dascript
 ui_data_set(model, "person.name", "Grace")
@@ -161,73 +167,77 @@ ui_data_set(model, "cargo[0].crates", 12)
 ui_data_set(model, "cargo", new_manifest)
 ```
 
-`ui_data_set` доступен и для readonly bindings: флаг writable ограничивает native
-контроллеры, а не приложение. Запись проверяет тип до замены и автоматически
-помечает корневую переменную dirty. Вложенная запись `cargo[0].crates` помечает
-`cargo`. Native `Context::Update` выполняет обновление views. В отличие от нашего
-`each_keyed`, native `data-for` использует собственный алгоритм RmlUi.
+`ui_data_set` is also available for readonly bindings: the writable flag restricts
+native controllers, not the application. A write checks the type before the
+replacement and automatically marks the root variable dirty. The nested write
+`cargo[0].crates` marks `cargo`. Native `Context::Update` updates the views. Unlike our
+`each_keyed`, native `data-for` uses RmlUi's own algorithm.
 
-Схема структуры и тип значения после привязки сохраняются. Тип элемента пустого
-массива определяется при первом непустом значении и сохраняется после очистки.
-`ui_data_dirty(model, "cargo")`, `ui_data_dirty_all` и `ui_data_is_dirty` доступны
-для явной инвалидизации/диагностики; при обычном `ui_data_set` дополнительный dirty
-не нужен. Dirty принимает только имя корневой переменной.
+The structure schema and the value type are preserved after binding. The element type
+of an empty array is determined by the first non-empty value and is preserved after
+clearing.
+`ui_data_dirty(model, "cargo")`, `ui_data_dirty_all` and `ui_data_is_dirty` are
+available for explicit invalidation/diagnostics; with a regular `ui_data_set` no extra
+dirty is needed. Dirty accepts only the name of a root variable.
 
-## События
+## Events
 
-`ui_data_on(model, "confirm")` регистрирует native `BindEventCallback`. Вызов из
-RML expressions ставит событие в очередь модели; обработка daScript отложена до
-`ui_data_events`. Имена регистрируются до загрузки документа.
+`ui_data_on(model, "confirm")` registers a native `BindEventCallback`. A call from
+RML expressions puts the event into the queue of the model; daScript processing is
+deferred until `ui_data_events`. Names are registered before the document is loaded.
 
-`UiDataEvent` содержит `name` (имя callback), `kind` (например, `click`), `target`
-(observer handle элемента) и `arguments`. Для scalar-аргументов доступны проекции
-`.text`, `.integer`, `.number`, `.boolean` с преобразованиями RmlUi Variant.
-Аргументы копируются в момент события; к моменту обработки target может быть
-удалён, поэтому перед операциями с ним проверяйте `rui_alive(event.target)`.
+`UiDataEvent` contains `name` (the callback name), `kind` (for example, `click`),
+`target` (an observer handle of the element) and `arguments`. For scalar arguments the
+projections `.text`, `.integer`, `.number`, `.boolean` are available, with RmlUi
+Variant conversions.
+Arguments are copied at the moment of the event; by the time of processing the target
+may have been removed, so check `rui_alive(event.target)` before operating on it.
 
-Блок и его captures используются только во время вызова `ui_data_events` и не
-сохраняются в C++. Обрабатывается очередь на начало вызова: события, созданные
-обработчиком, остаются до следующего вызова. Рекурсивный drain той же модели
-запрещён. При исключении текущее событие считается обработанным, остальные
-сохраняются; следующий drain разрешён. Обработчик может закрыть свою модель.
-Этот отложенный API не предназначен для синхронной отмены native события.
+The block and its captures are used only during the `ui_data_events` call and are not
+stored in C++. The queue as it was at the start of the call is processed: events
+created by the handler remain until the next call. A recursive drain of the same model
+is forbidden. On an exception the current event counts as processed and the rest are
+kept; the next drain is allowed. A handler may close its own model.
+This deferred API is not intended for synchronous cancellation of a native event.
 
-## Context, Debugger и lifetime
+## Context, Debugger and lifetime
 
-- `ui_data_exists(name)` и `ui_data_model_count()` смотрят модели текущего Context.
-- `ui_data_debugger()` открывает штатный Debugger сразу на панели Data Models;
-  повторный вызов оставляет её открытой. Структуры и массивы отражаются native API.
-- Гибридная модель компонентов также зарегистрирована в Context под резервным
-  именем `dasrmlui`. Debugger показывает её scalar slots `v0`, `v1`, …, а не всю
-  daScript-структуру. Произвольные script-переменные туда не попадают.
-- `ui_data_close(model)` удаляет модель, очереди и незавершённые записи, сначала
-  отсоединяя native views/controllers. Живые документы остаются; для подключения
-  новой модели с тем же именем документ следует загрузить заново.
-- `ui_data_alive(model)` проверяет handle. Повторный close возвращает false;
-  операции записи/чтения с устаревшим handle вызывают script exception.
-- `ui_reset` удаляет гибридную модель, сохраняя внешние. `rui_shutdown` удаляет
-  все модели до уничтожения Context. Handle не переиспользуется при restart.
+- `ui_data_exists(name)` and `ui_data_model_count()` look at the models of the current
+  Context.
+- `ui_data_debugger()` opens the stock Debugger directly on the Data Models panel;
+  a repeated call leaves it open. Structures and arrays are reflected by the native API.
+- The hybrid model of the components is also registered in the Context under the
+  reserved name `dasrmlui`. The Debugger shows its scalar slots `v0`, `v1`, …, not the
+  whole daScript structure. Arbitrary script variables do not get there.
+- `ui_data_close(model)` removes the model, the queues and unfinished writes, first
+  detaching the native views/controllers. Live documents remain; to connect a new
+  model with the same name, the document should be loaded again.
+- `ui_data_alive(model)` checks the handle. A repeated close returns false;
+  write/read operations with a stale handle raise a script exception.
+- `ui_reset` removes the hybrid model and keeps the external ones. `rui_shutdown`
+  removes all models before the Context is destroyed. A handle is not reused on restart.
 
-Bridge обслуживает один Context. API не является полной копией C++ конструктора:
-пользовательские синхронные `BindFunc` getters/setters и transform callbacks из
-daScript пока не экспортированы. Встроенные transforms RmlUi доступны в RML.
+The bridge serves one Context. The API is not a full copy of the C++ constructor:
+user-defined synchronous `BindFunc` getters/setters and transform callbacks from
+daScript are not exported yet. The built-in RmlUi transforms are available in RML.
 
-## Пример и проверки
+## Example and checks
 
-**Harbour / Cargo manifest**: `[ui_component]` + `native_data` и `[ui_style]`,
-массив грузов, формы с вложенной структурой, native expressions, смена списка,
-callbacks и кнопка инспектора. Весь пример находится в `.das`, без внешних RML/RCSS.
+**Harbour / Cargo manifest**: `[ui_component]` + `native_data` and `[ui_style]`,
+a cargo array, forms with a nested structure, native expressions, list replacement,
+callbacks and an inspector button. The whole example is in `.das`, without external
+RML/RCSS.
 
 ```powershell
 ./build/bin/dasrmlui.exe examples/data_models.das
 ctest --test-dir build -R '^(native_data.*|data_models|demo_data_models|data_model_type_error)$' --output-on-failure
 ```
 
-Тесты проверяют native bindings и формы, атомарный отказ записи неверного типа,
-массивы после очистки, callbacks/исключения/GC, изоляцию моделей, reflection в
-реальной панели Debugger, hybrid Context integration, remove и shutdown/restart.
-`native_data_dsl` дополнительно проверяет scoped styles, экранирование, вложенные
-списки, отсутствие component updates при native записи, соседние managed-элементы,
-перестановку keyed-областей с сохранением input/focus/selection, смену модели и
-unmount/remount. Отрицательные тесты проверяют границы владения и captures.
-Runtime package запускает Harbour из установленной папки.
+The tests check native bindings and forms, atomic rejection of a write of the wrong
+type, arrays after clearing, callbacks/exceptions/GC, model isolation, reflection in
+the real Debugger panel, hybrid Context integration, remove and shutdown/restart.
+`native_data_dsl` additionally checks scoped styles, escaping, nested lists, the
+absence of component updates on a native write, neighboring managed elements,
+reordering of keyed scopes with input/focus/selection preserved, model replacement and
+unmount/remount. Negative tests check the boundaries of ownership and captures.
+The runtime package runs Harbour from the installed folder.

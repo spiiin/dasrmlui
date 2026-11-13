@@ -1,8 +1,8 @@
 # Inline rich text
 
-`[ui_component]` и `[ui_template]` описывают форматированный текст обычными блоками
-daScript. Макрос создаёт native inline-дерево RmlUi; переносы, шрифтовые метрики,
-baseline, наследование и изображения раскладывает сам RmlUi. Строка RML не нужна.
+`[ui_component]` and `[ui_template]` describe formatted text with regular daScript
+blocks. The macro creates a native RmlUi inline tree; line wrapping, font metrics,
+baseline, inheritance and images are laid out by RmlUi itself. No RML string is needed.
 
 ```dascript
 [ui_component]
@@ -31,85 +31,89 @@ def message(var model:Model) {
 }
 ```
 
-Модель для этого фрагмента содержит `name`, `image`, `target` типа string и `opened`
-типа bool. `image` — путь к PNG, `target` — адрес или прикладной идентификатор.
+The model for this fragment contains `name`, `image`, `target` of type string and
+`opened` of type bool. `image` is a path to a PNG, `target` is an address or an
+application identifier.
 
-## Элементы
+## Elements
 
-| Вызов | Native-представление и поведение |
+| Call | Native representation and behavior |
 |---|---|
-| `rich_text(name) { ... }` | `div`, `display: block`; обычный текстовый поток, без flex |
-| `span(name) { ... }` | `span`, `display: inline`; вложенные стили и содержимое |
-| `strong(name) { ... }` | Inline span с `font-weight: bold` |
-| `emphasis(name) { ... }` | Inline span с `font-style: italic` |
-| `underline(name) { ... }` | Inline span с `text-decoration: underline` |
-| `strike(name) { ... }` | Inline span с `text-decoration: line-through` |
-| `link(name, target) { ... }` | Inline `a`, reactive `href`, underline, focus и tab-index auto |
-| `inline_image(name, source) { ... }` | Inline `img`, reactive `src`; блок стилей/атрибутов необязателен |
-| `inline_sprite(name, sprite_id) { ... }` | Inline `img`, `sprite` из текущего scoped spritesheet; блок необязателен |
-| `line_break(name)` | Native `br`; имя необязательно |
+| `rich_text(name) { ... }` | `div`, `display: block`; regular text flow, no flex |
+| `span(name) { ... }` | `span`, `display: inline`; nested styles and content |
+| `strong(name) { ... }` | Inline span with `font-weight: bold` |
+| `emphasis(name) { ... }` | Inline span with `font-style: italic` |
+| `underline(name) { ... }` | Inline span with `text-decoration: underline` |
+| `strike(name) { ... }` | Inline span with `text-decoration: line-through` |
+| `link(name, target) { ... }` | Inline `a`, reactive `href`, underline, focus and tab-index auto |
+| `inline_image(name, source) { ... }` | Inline `img`, reactive `src`; the style/attribute block is optional |
+| `inline_sprite(name, sprite_id) { ... }` | Inline `img`, `sprite` from the current scoped spritesheet; the block is optional |
+| `line_break(name)` | Native `br`; the name is optional |
 
-У `rich_text`, `span`, `strong`, `emphasis`, `underline`, `strike` имя можно опустить:
-`strong() { text("value", "Important") }`. Имена становятся обычными `part(name)`
-и доступны через `ui_find(name)`. Форматированные контейнеры вкладываются друг в
-друга; `text(name, value)` и getter-вариант остаются привычными текстовыми листьями.
+For `rich_text`, `span`, `strong`, `emphasis`, `underline`, `strike` the name can be
+omitted: `strong() { text("value", "Important") }`. Names become regular `part(name)`
+and are accessible through `ui_find(name)`. Formatting containers nest inside each
+other; `text(name, value)` and the getter variant remain the usual text leaves.
 
-Пробелы не добавляются автоматически: указывайте их в тексте между фрагментами.
-`white-space: normal` схлопывает пробелы по правилам RmlUi; `white_space("pre-wrap")`
-сохраняет их и переводы строк. `line_break()` создаёт явный разрыв независимо от
-разбиения исходного daScript на строки.
+Spaces are not added automatically: put them in the text between fragments.
+`white-space: normal` collapses spaces by the RmlUi rules; `white_space("pre-wrap")`
+preserves them and line breaks. `line_break()` creates an explicit break regardless of
+how the daScript source is split into lines.
 
-## Стили и шрифты
+## Styles and fonts
 
-Добавлены helpers, работающие в компонентах, `[ui_style]`, шаблонах и keyframes:
+The text helpers work in components, `[ui_style]`, templates and keyframes:
 
 - `font_weight(string)`, `font_style(string)`, `text_decoration(string)`;
-- `line_height(float)` — множитель; `line_height(UiLength)` — px/em/% и другие единицы;
-- `vertical_align(string)` или `vertical_align(UiLength)`;
+- `line_height(float)` — a multiplier; `line_height(UiLength)` — px/em/% and other units;
+- `vertical_align(string)` or `vertical_align(UiLength)`;
 - `white_space(string)`, `word_break(string)`, `text_align(string)`.
 
-`vertical_align("baseline")` — стандартное положение inline-изображения;
-`"middle"`, `"super"`, `"sub"`, `"top"` и прочие native значения передаются в RCSS.
-Не используйте `row()` для абзаца: flex не выполняет перенос единого текстового потока.
-Свойства `width`/`height` задаются абзацу и изображениям; обычный inline span имеет
-размер содержимого. Для независимого прямоугольного блока есть `display("inline-block")`.
+`vertical_align("baseline")` is the standard position of an inline image;
+`"middle"`, `"super"`, `"sub"`, `"top"` and other native values are passed to RCSS.
+Do not use `row()` for a paragraph: flex does not wrap a single text flow.
+The `width`/`height` properties are set on the paragraph and on images; a regular
+inline span has the size of its content. For an independent rectangular block there is
+`display("inline-block")`.
 
-Семантические helpers задают свойства непосредственно на элементе. Внутри блока
-можно переопределить их, например `strong() { font_weight("normal"); ... }`.
-Остальные стили задаются обычными scoped `rule(part(...))`, включая `:hover` и `:focus`.
-Область наследования заканчивается при выходе из span; форматирование соседних
-фрагментов не меняется. Допустимые значения и особенности text-decoration определяет RCSS.
+The semantic helpers set properties directly on the element. Inside the block you can
+override them, for example `strong() { font_weight("normal"); ... }`.
+Other styles are set with regular scoped `rule(part(...))`, including `:hover` and
+`:focus`. The inheritance scope ends on leaving the span; the formatting of neighboring
+fragments does not change. Allowed values and the specifics of text-decoration are
+defined by RCSS.
 
-Для настоящих начертаний нужно загрузить соответствующие font faces. Встроенный
-`rui_default_font_styles()` загружает LatoLatin Regular, Bold, Italic, BoldItalic.
-Все четыре файла и лицензия включены в runtime package; обычный `rui_default_font()`
-по-прежнему загружает только Regular. Для своего шрифта используйте `rui_font(...)`
-для каждого начертания. Для других алфавитов загрузите подходящий шрифт/fallback.
+Real font styles require the corresponding font faces to be loaded. The built-in
+`rui_default_font_styles()` loads LatoLatin Regular, Bold, Italic, BoldItalic.
+All four files and the license are included in the runtime package; the regular
+`rui_default_font()` still loads only Regular. For your own font, use `rui_font(...)`
+for each font style. For other alphabets, load a suitable font/fallback.
 
-## Ссылки и изображения
+## Links and images
 
-`on_activate() { ... }` получает click, включая native click от Enter/Space на
-сфокусированной ссылке. Отдельного повторного key-handler нет. Tab работает благодаря
-`tab-index: auto`. Событие от дочернего текста всплывает к ссылке. Можно использовать
-обычные `on_click`/`on_event` для более специального поведения.
+`on_activate() { ... }` receives click, including the native click from Enter/Space on
+a focused link. There is no separate repeated key handler. Tab works thanks to
+`tab-index: auto`. An event from the child text bubbles up to the link. You can use
+regular `on_click`/`on_event` for more specialized behavior.
 
-`href` — данные приложения. Ни helper, ни RmlUi-мост не запускают браузер и не
-переходят по URL автоматически; обработчик решает, открыть панель или вызвать
-разрешённое приложением действие. `href(value)` и `image_source(value)` — сокращения
-для reactive `attribute("href", value)` и `attribute("src", value)`.
+`href` is application data. Neither the helper nor the RmlUi bridge launches a browser
+or follows a URL automatically; the handler decides whether to open a panel or call an
+action allowed by the application. `href(value)` and `image_source(value)` are
+shorthand for reactive `attribute("href", value)` and `attribute("src", value)`.
 
-`inline_image` использует существующий native PNG loader; путь разрешается как у
-обычных RmlUi-изображений. Для атласа применяйте `inline_sprite` и `spritesheet`.
-`width`, `height`, `vertical_align`, `image_color`, margins и остальные свойства
-можно задавать внутри блока. Нового image loader и отдельного layout для картинок нет.
+`inline_image` uses the existing native PNG loader; the path is resolved as for
+regular RmlUi images. For an atlas use `inline_sprite` and `spritesheet`.
+`width`, `height`, `vertical_align`, `image_color`, margins and other properties
+can be set inside the block. There is no new image loader and no separate layout for
+images.
 
-## Динамика и разворачивание макроса
+## Dynamics and macro expansion
 
-Концептуально:
+Conceptually:
 
 ```dascript
 strong("name") { text("value", model.name) }
-// -> перед обычной генерацией site IDs и bindings:
+// -> before the regular generation of site IDs and bindings:
 element("name", "span") {
     display("inline")
     font_weight("bold")
@@ -118,19 +122,19 @@ element("name", "span") {
 
 link("details", model.target) { text("caption", "Read"); on_activate() { open_panel() } }
 // -> inline a + attribute("href", model.target) + focus/tab-index/cursor/underline
-//    + независимые bindings дочерних узлов + обычный обработчик события.
+//    + independent bindings of the child nodes + a regular event handler.
 ```
 
-Контейнер ссылки не заворачивается в binding её `href`: дочерний текст, свойства и
-обработчики имеют собственные зависимости. Изменение текста, адреса или изображения
-сохраняет узлы; RmlUi заново раскладывает затронутый текстовый поток. `when` и
-`each_keyed` внутри абзаца используют обычные правила lifetime и identity.
+The link container is not wrapped in the binding of its `href`: the child text,
+properties and handlers have their own dependencies. A change of the text, address or
+image preserves the nodes; RmlUi lays out the affected text flow again. `when` and
+`each_keyed` inside a paragraph use the regular lifetime and identity rules.
 
-`[ui_component]` по умолчанию использует native DataViews для прямых полей
-`text`, `href`, `src`. Создайте `state = ui_state(initial)` один раз и вызывайте
-`ui_frame(state) $(model:Model) { message(model) }` в цикле приложения.
-Обработчик `on_activate` в примере автоматически отслеживает запись opened.
-Для внешнего изменения используйте edit:
+`[ui_component]` uses native DataViews by default for the direct fields
+`text`, `href`, `src`. Create `state = ui_state(initial)` once and call
+`ui_frame(state) $(model:Model) { message(model) }` in the application loop.
+The `on_activate` handler in the example automatically tracks the write to opened.
+For an external change use edit:
 
 ```dascript
 ui_edit(state) $(var model:Model) {
@@ -139,22 +143,22 @@ ui_edit(state) $(var model:Model) {
 }
 ```
 
-`ui_read(state) $(model:Model) { ... }` предоставляет readonly доступ. State глубоко
-копирует initial, поэтому изменение исходной структуры не обновляет UI. Модель
-нельзя сохранять за пределами borrow scope. [Полный контракт](hybrid.md).
-Старый путь сравнения значений доступен явно через `[ui_component(legacy=true)]`
-и `ui_legacy_frame()`.
+`ui_read(state) $(model:Model) { ... }` provides readonly access. The state deep-copies
+initial, so changing the source structure does not update the UI. The model must not be
+stored outside the borrow scope. [Full contract](hybrid.md).
+The old value-comparison path is available explicitly through
+`[ui_component(legacy=true)]` and `ui_legacy_frame()`.
 
-В hybrid прямые изменения этих трёх полей не требуют обхода форматированного дерева.
-Вычисляемые выражения и структурные изменения сохраняют обычный fallback.
-Значения `text` остаются текстом: `<tag>` не создаёт элемент. RmlUi обрабатывает свои
-text entities и whitespace; Markdown/HTML-парсер и редактор форматированного текста
-в этот API не входят. Статическое содержимое работает и в `[ui_template]`, события
-и динамику следует размещать в компонентах, заполняющих slot.
+In hybrid, direct changes of these three fields do not require a traversal of the
+formatted tree. Computed expressions and structural changes keep the regular fallback.
+`text` values remain text: `<tag>` does not create an element. RmlUi processes its own
+text entities and whitespace; a Markdown/HTML parser and a formatted-text editor are
+not part of this API. Static content also works in `[ui_template]`; events and
+dynamics should be placed in the components that fill the slot.
 
-## Пример и проверки
+## Example and checks
 
-Из корня проекта:
+From the project root:
 
 ```powershell
 ./tools/build.ps1
@@ -162,18 +166,20 @@ text entities и whitespace; Markdown/HTML-парсер и редактор фо
 ctest --test-dir build -R 'rich_text' --output-on-failure
 ```
 
-The Field Notes показывает вложенные начертания, размер и ширину текста, ссылки,
-надстрочную сноску, PNG и спрайты внутри предложений. Снимок: `logs/rich_text_lab.png`.
+The Field Notes shows nested font styles, text size and width, links, a superscript
+footnote, PNG and sprites inside sentences. A `--smoke-test` run saves a screenshot to
+`logs/rich_text_lab.png`.
 
-`tests/rich_text.das` проверяет native line count/positions при изменении ширины,
-baseline текста 16/32 px и изображения, superscript, inherited bold/italic/color,
-br, nowrap, pre-wrap, пробелы между фрагментами, сохранение handles, reactive
-text/href/src, mouse/Enter/Space без двойной активации, условный unmount, шаблоны,
-GC и отсутствие пересчёта hybrid-компонента. Отдельный отрицательный тест проверяет
-диагностику неправильного вызова `link`. Runtime package запускает пример со своими
-шрифтами. Read-only probes `rui_text_line_count`, `rui_text_line_position`,
-`rui_text_line` читают первый текстовый потомок указанного узла; позиция — абсолютные
-x/baseline-y после Update. `rui_computed_property` позволяет проверить наследование.
+`tests/rich_text.das` checks the native line count/positions when the width changes,
+the baseline of 16/32 px text and of an image, superscript, inherited
+bold/italic/color, br, nowrap, pre-wrap, spaces between fragments, preservation of
+handles, reactive text/href/src, mouse/Enter/Space without double activation,
+conditional unmount, templates, GC and the absence of recomputation of the hybrid
+component. A separate negative test checks the diagnostics of an incorrect `link` call.
+The runtime package runs the example with its own fonts. The read-only probes
+`rui_text_line_count`, `rui_text_line_position`, `rui_text_line` read the first text
+descendant of the given node; the position is absolute x/baseline-y after Update.
+`rui_computed_property` lets you check inheritance.
 
-Native-семантика: [inline layout и baseline](https://mikke89.github.io/RmlUiDoc/pages/rcss/visual_formatting_model_details.html),
+Native semantics: [inline layout and baseline](https://mikke89.github.io/RmlUiDoc/pages/rcss/visual_formatting_model_details.html),
 [text/whitespace](https://mikke89.github.io/RmlUiDoc/pages/rcss/text.html).

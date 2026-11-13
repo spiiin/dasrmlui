@@ -1,9 +1,0 @@
-GL vendor: Intel
-GL renderer: Intel(R) RaptorLake-S Mobile Graphics Controller
-GL version: 3.3.0 - Build 32.0.101.6881
-benchmark: round 1/5, rows=1000, samples=120
-benchmark: round 2/5, rows=1000, samples=120
-benchmark: round 3/5, rows=1000, samples=120
-benchmark: round 4/5, rows=1000, samples=120
-benchmark: round 5/5, rows=1000, samples=120
-PASS: binding benchmark, DOM equality, reorder identity, separated stages and memory pass

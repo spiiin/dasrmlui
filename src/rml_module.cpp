@@ -1,4 +1,4 @@
-// SDL_Renderer bridge adapted from the local dascript_sdl_gui prototype.
+// RmlUi bindings for daScript: the SDL_Renderer bridge, element handles and the event queue.
 #include "daScript/daScript.h"
 #include "dasLiveHost.h"
 #include "daScript/ast/ast_interop.h"

@@ -6,10 +6,17 @@
 #   DASRMLUI_DASCRIPT_LIBRARIES   daScript static libraries, in link order
 #   DASRMLUI_SYSTEM_LIBRARIES     what daScript itself needs from the system
 #   SDL3::SDL3-static             SDL3, with its own system libraries attached
-set(DASSDL3_DIR "C:/src/dasSDL3" CACHE PATH "dasSDL3 checkout")
+# By default both checkouts are expected beside this one. Anywhere else:
+#   cmake -DDASSDL3_DIR=<dasSDL3> -DRMLUI_DIR=<RmlUi> ...
+get_filename_component(DASRMLUI_NEIGHBOURS "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(DASSDL3_DIR "${DASRMLUI_NEIGHBOURS}/dasSDL3" CACHE PATH "dasSDL3 checkout")
 set(DASSDL3_BUILD "${DASSDL3_DIR}/build/ninja" CACHE PATH "dasSDL3 build made with this toolchain")
-set(RMLUI_DIR "C:/src/dascript_sdl_gui/third_party/RmlUi" CACHE PATH "RmlUi source checkout")
+set(RMLUI_DIR "${DASRMLUI_NEIGHBOURS}/RmlUi" CACHE PATH "RmlUi source checkout")
 set(DAS "${DASSDL3_DIR}/third_party/daScript")
+if(NOT EXISTS "${RMLUI_DIR}/CMakeLists.txt")
+  message(FATAL_ERROR "RMLUI_DIR=${RMLUI_DIR} is not an RmlUi source checkout. "
+    "Clone RmlUi at the revision named in README.md and set RMLUI_DIR.")
+endif()
 if(NOT EXISTS "${DASSDL3_BUILD}/CMakeCache.txt")
   message(FATAL_ERROR "DASSDL3_BUILD=${DASSDL3_BUILD} is not a configured dasSDL3 build. "
     "Build dasSDL3 with this toolchain first, then set DASSDL3_DIR and DASSDL3_BUILD.")
