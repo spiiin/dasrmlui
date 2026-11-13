@@ -120,7 +120,12 @@ static uint64_t rui_gpu_register(const char* name,bool filter,const char* source
         if(!value->Configure(names,parsers,defaults)) { gpu_error="Invalid GPU parameter default"; return 0; }
         type=std::move(value);
     }
-    std::string fragment="#version 330\nuniform float u_time;\nuniform vec2 u_size;\nuniform vec2 u_texel;\n";
+    #ifdef __EMSCRIPTEN__
+    std::string fragment="#version 300 es\nprecision highp float;\n";
+#else
+    std::string fragment="#version 330\n";
+#endif
+    fragment+="uniform float u_time;\nuniform vec2 u_size;\nuniform vec2 u_texel;\n";
     for(const auto& p:type->parameters) {
         auto uniform=p.name; std::replace(uniform.begin(),uniform.end(),'-','_');
         fragment+="uniform "+std::string(p.parser=="color" ? "vec4" : "float")+" p_"+uniform+";\n";

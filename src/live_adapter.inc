@@ -25,8 +25,14 @@ static bool rui_live_open(const char* title,int width,int height,bool advanced) 
         SDL_WindowFlags flags=SDL_WINDOW_RESIZABLE | (live_hidden ? SDL_WINDOW_HIDDEN : 0);
         if(advanced) {
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,3);
+#ifdef __EMSCRIPTEN__
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,0);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_ES);
+#else
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,3);
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE);
+#endif
+            SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE,8);
             SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER,1);
             flags |= SDL_WINDOW_OPENGL;
         }

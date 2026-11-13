@@ -1,0 +1,267 @@
+[
+  {
+    "id": "dashboard",
+    "title": "Operations dashboard",
+    "description": "Показатели, фильтры и обновление отдельных привязок.",
+    "category": "Приложения",
+    "tags": [
+      "bindings",
+      "metrics"
+    ],
+    "image": "assets/screenshots/dashboard.png"
+  },
+  {
+    "id": "settings",
+    "title": "Settings studio",
+    "description": "Настройки приложения, формы и валидация значений.",
+    "category": "Приложения",
+    "tags": [
+      "forms",
+      "state"
+    ],
+    "image": "assets/screenshots/settings.png"
+  },
+  {
+    "id": "kanban",
+    "title": "Release board",
+    "description": "Карточки задач, инспектор и статусы выполнения.",
+    "category": "Приложения",
+    "tags": [
+      "keyed",
+      "components"
+    ],
+    "image": "assets/screenshots/kanban.png"
+  },
+  {
+    "id": "catalog",
+    "title": "Asset library",
+    "description": "Поиск, виртуализированный каталог и редактор ресурсов.",
+    "category": "Приложения",
+    "tags": [
+      "virtualization",
+      "forms"
+    ],
+    "image": "assets/screenshots/catalog.png"
+  },
+  {
+    "id": "component_lab",
+    "title": "Quote builder",
+    "description": "Составные компоненты, локальное состояние и расчёт заказа.",
+    "category": "Приложения",
+    "tags": [
+      "components",
+      "local state"
+    ],
+    "image": "assets/screenshots/component_lab.png"
+  },
+  {
+    "id": "inventory",
+    "title": "Inventory",
+    "description": "Редактирование предметов, добавление, удаление и перестановка списка.",
+    "category": "Приложения",
+    "tags": [
+      "bindings",
+      "lists"
+    ],
+    "image": "assets/screenshots/inventory.png"
+  },
+  {
+    "id": "expedition",
+    "title": "Expedition console",
+    "description": "Нативные контролы: range, radio, select, tabset и progress.",
+    "category": "Контролы",
+    "tags": [
+      "controls",
+      "sprites"
+    ],
+    "image": "assets/screenshots/expedition.png"
+  },
+  {
+    "id": "drag_drop",
+    "title": "Field logistics",
+    "description": "Перетаскивание грузов и приём данных в drop targets.",
+    "category": "Контролы",
+    "tags": [
+      "drag & drop",
+      "events"
+    ],
+    "image": "assets/screenshots/drag_drop.png"
+  },
+  {
+    "id": "templates",
+    "title": "Field office",
+    "description": "Оконные шаблоны, именованные слоты и перемещение окон.",
+    "category": "Контролы",
+    "tags": [
+      "templates",
+      "slots"
+    ],
+    "image": "assets/screenshots/templates.png"
+  },
+  {
+    "id": "localization",
+    "title": "Explorer passport",
+    "description": "Переключение языка, UTF-8 и локализованные подписи.",
+    "category": "Контролы",
+    "tags": [
+      "localization",
+      "UTF-8"
+    ],
+    "image": "assets/screenshots/localization.png"
+  },
+  {
+    "id": "event_studio",
+    "title": "Signal desk",
+    "description": "События, popup, модальные и скрытые документы.",
+    "category": "Контролы",
+    "tags": [
+      "events",
+      "popup"
+    ],
+    "image": "assets/screenshots/event_studio.png"
+  },
+  {
+    "id": "navigation_lab",
+    "title": "Vector deck",
+    "description": "Клавиатурная навигация, фокус и штатный Debugger RmlUi.",
+    "category": "Контролы",
+    "tags": [
+      "navigation",
+      "debugger"
+    ],
+    "image": "assets/screenshots/navigation_lab.png"
+  },
+  {
+    "id": "rich_text_lab",
+    "title": "The Field Notes",
+    "description": "Текст с вложенным форматированием, ссылками и изображениями.",
+    "category": "Контролы",
+    "tags": [
+      "rich text",
+      "baseline"
+    ],
+    "image": "assets/screenshots/rich_text_lab.png"
+  },
+  {
+    "id": "data_models",
+    "title": "Harbour",
+    "description": "Публичная DataModel: формы, выражения и native bindings.",
+    "category": "Контролы",
+    "tags": [
+      "DataModel",
+      "forms"
+    ],
+    "image": "assets/screenshots/data_models.png"
+  },
+  {
+    "id": "effects",
+    "title": "Effects atelier",
+    "description": "Фильтры, backdrop blur, тени и трансформации.",
+    "category": "Графика",
+    "tags": [
+      "filters",
+      "transforms"
+    ],
+    "image": "assets/screenshots/effects.png"
+  },
+  {
+    "id": "progress_lab",
+    "title": "Follow the signal",
+    "description": "Заполнение по кривой и круговой индикатор со спрайтами.",
+    "category": "Графика",
+    "tags": [
+      "progress",
+      "sprites"
+    ],
+    "image": "assets/screenshots/progress_lab.png"
+  },
+  {
+    "id": "animations",
+    "title": "Orbital",
+    "description": "Keyframes, переходы появления и удаления, управление анимацией.",
+    "category": "Графика",
+    "tags": [
+      "animation",
+      "lifecycle"
+    ],
+    "image": "assets/screenshots/animations.png"
+  },
+  {
+    "id": "style_lab",
+    "title": "Relay station",
+    "description": "Media queries, темы, масштабирование и ninepatch.",
+    "category": "Графика",
+    "tags": [
+      "themes",
+      "DPI",
+      "ninepatch"
+    ],
+    "image": "assets/screenshots/style_lab.png"
+  },
+  {
+    "id": "vector_lab",
+    "title": "Vector atelier",
+    "description": "Векторные изображения SVG и анимации Lottie.",
+    "category": "Графика",
+    "tags": [
+      "SVG",
+      "Lottie"
+    ],
+    "image": "assets/screenshots/vector_lab.png"
+  },
+  {
+    "id": "native_lab",
+    "title": "Signal foundry",
+    "description": "Пользовательские native-элементы с отрисовкой из daScript.",
+    "category": "Расширения",
+    "tags": [
+      "native elements",
+      "geometry"
+    ],
+    "image": "assets/screenshots/native_lab.png"
+  },
+  {
+    "id": "mesh_lab",
+    "title": "Mesh workshop",
+    "description": "Геометрия, UV, цвета вершин и текстуры.",
+    "category": "Расширения",
+    "tags": [
+      "mesh",
+      "textures"
+    ],
+    "image": "assets/screenshots/mesh_lab.png"
+  },
+  {
+    "id": "decorator_lab",
+    "title": "Decorator studio",
+    "description": "Пользовательские decorators и параметры фигурных рамок.",
+    "category": "Расширения",
+    "tags": [
+      "decorators",
+      "parameters"
+    ],
+    "image": "assets/screenshots/decorator_lab.png"
+  },
+  {
+    "id": "shader_lab",
+    "title": "Light studies",
+    "description": "Шейдеры и фильтры на daScript через dasGlsl.",
+    "category": "Расширения",
+    "tags": [
+      "shaders",
+      "dasGlsl"
+    ],
+    "image": "assets/screenshots/shader_lab.png"
+  },
+  {
+    "id": "live_lab",
+    "title": "Live workbench",
+    "description": "Состояние карточек и перезагрузка текущей программы в LiveHost.",
+    "category": "Расширения",
+    "tags": [
+      "LiveHost",
+      "state"
+    ],
+    "image": "assets/screenshots/live_lab.png"
+  }
+]

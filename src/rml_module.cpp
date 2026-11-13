@@ -23,7 +23,11 @@
 #include <algorithm>
 #include "RmlUi_Platform_SDL.h"
 #include "gl3/RmlUi_Renderer_GL3.h"
+#ifdef __EMSCRIPTEN__
+#include <GLES3/gl3.h>
+#else
 #include "RmlUi_Include_GL3.h"
+#endif
 #include <SDL3/SDL.h>
 #include <deque>
 #include <unordered_map>
@@ -1382,6 +1386,7 @@ static bool rui_default_font_styles() {
     return true;
 }
 #include "live_adapter.inc"
+#include "web_adapter.inc"
 namespace das {
 // RmlUi virtual callbacks can re-enter daScript and collect its heap. Preserve the
 // source position of the suspended caller, also across nested calls and longjmp.
@@ -1441,6 +1446,9 @@ public:
         B(bench_config); B(bench_info); B(bench_begin); B(bench_end); B(bench_case); B(bench_save);
         B(bench_native_setup); B(bench_native_set); B(bench_native_rotate); B(bench_native_bind); B(bench_native_close);
         B(bench_update); B(bench_finish); B(bench_css); B(bench_verify); B(bench_identity);
+#endif
+#ifdef __EMSCRIPTEN__
+        B(rui_web_run);
 #endif
         B(rui_live_open); B(rui_live_window_id); B(rui_init); B(rui_init_gl); B(rui_root); B(rui_font); B(rui_css);
         addExtern<DAS_BIND_FUN(rui_shutdown_checked),RuiCallNode>(*this,lib,"rui_shutdown",SideEffects::worstDefault,"rui_shutdown_checked")->needCallerStackFrame=true;

@@ -34,6 +34,15 @@ build script creates the `logs` folder. Most tests run with the SDL dummy video 
 the examples that need filters, shaders or meshes use a real OpenGL context, and the
 pixel tests for ninepatch, SVG/Lottie and native elements use a real SDL renderer.
 
+## Web gallery
+
+All 24 examples also have a browser gallery with screenshot links, search and
+category filters. Build and serve `build/web/site`; see [Web build and tests](docs/web.md)
+for dependencies and commands. The runtime uses WebGL 2 and WebAssembly JSPI.
+[GitHub Actions](https://github.com/spiiin/dasrmlui/actions/workflows/web.yml) builds
+and tests the gallery on each push; download the `dasrmlui-web` artifact from a
+successful run.
+
 ## Application examples
 
 ```powershell

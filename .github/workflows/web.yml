@@ -1,0 +1,80 @@
+name: Web gallery
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Fetch pinned sources
+        run: python tools/fetch_web_deps.py --destination build/web-deps
+      - name: Cache Emscripten SDK
+        uses: actions/cache@v4
+        with:
+          path: build/emsdk
+          key: emsdk-${{ runner.os }}-5.0.3-v1
+      - name: Install Emscripten 5.0.3
+        run: |
+          if [ ! -d build/emsdk/.git ]; then
+            git clone --depth 1 --branch 5.0.3 https://github.com/emscripten-core/emsdk.git build/emsdk
+          fi
+          build/emsdk/emsdk install 5.0.3
+          build/emsdk/emsdk activate 5.0.3
+      - name: Configure WebAssembly build
+        run: |
+          source build/emsdk/emsdk_env.sh
+          emcmake cmake -S web -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DDASSDL3_DIR="$PWD/build/web-deps/dasSDL3" \
+            -DRMLUI_DIR="$PWD/build/web-deps/RmlUi" \
+            -DSDL3_SOURCE="$PWD/build/web-deps/SDL" \
+            -DFREETYPE_SOURCE="$PWD/build/web-deps/freetype"
+          python tools/prepare_web.py --build build/web --sdl build/web-deps/dasSDL3 --rml build/web-deps/RmlUi
+      - name: Build WebAssembly and gallery
+        run: |
+          source build/emsdk/emsdk_env.sh
+          cmake --build build/web --parallel 2
+      - name: Install browser test dependencies
+        run: |
+          python -m pip install -r tests/web/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Test all examples in Chromium
+        run: |
+          mkdir -p logs
+          python -m http.server 8766 --bind 127.0.0.1 --directory build/web/site >logs/web-server.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          python tests/web/test_browser.py --browser chromium --software-gl
+      - name: Upload ready-to-host website
+        uses: actions/upload-artifact@v4
+        with:
+          name: dasrmlui-web
+          path: build/web/site/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload browser screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-results
+          path: |
+            logs/
+            build/web/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore
+          retention-days: 14

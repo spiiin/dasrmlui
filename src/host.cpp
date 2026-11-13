@@ -13,6 +13,7 @@ DECLARE_MODULE(Module_dasSDL3);
 DECLARE_MODULE(Module_dasRmlUi);
 DECLARE_MODULE(Module_LiveHost);
 void rui_shutdown();
+void rui_live_close();
 const char* rui_last_native_error();
 void rui_set_default_font(const char* path);
 // The build records its own tree only when DASRMLUI_DEV_PATHS is on. A packaged
@@ -82,7 +83,7 @@ static int run(const char* path, bool smoke, const Roots& roots) {
     access->addFsRoot("glsl", roots.das.path + "/modules/dasGlsl/glsl");
     if (!roots.examples.path.empty()) access->addFsRoot("examples", roots.examples.path);
     auto program = compileDaScript(path, access, out, modules);
-    auto errors = [&] { for (auto& e : program->errors) out << reportError(e.at,e.what,e.extra,e.fixme,e.cerr); };
+    auto errors = [&] { for (auto& e : program->errors) out << reportError(e.at,e.what,e.extra,e.fixme,e.cerr); out.output(); std::fflush(stdout); };
     if (program->failed()) { errors(); return 1; }
     Context context(program->getContextStackSize());
     // Native registrations may retain this Context's static dispatcher. Tear
@@ -101,6 +102,9 @@ static int run(const char* path, bool smoke, const Roots& roots) {
     return cast<int32_t>::to(result);
 }
 int main(int argc, char** argv) {
+#ifdef __EMSCRIPTEN__
+    std::setvbuf(stdout,nullptr,_IONBF,0); std::setvbuf(stderr,nullptr,_IONBF,0);
+#endif
     if (argc < 2) {
         std::printf("usage: dasrmlui <script.das> [--smoke-test] [--watch [--styles styles.das] [--frames N]]\n       dasrmlui --roots   show where the runtime folders were found\n");
         return 2;
@@ -127,5 +131,5 @@ int main(int argc, char** argv) {
     }
     int code = watch ? run_ui_live(argv[1],styles,roots.das.path,roots.sdl.path,roots.ui.path,roots.examples.path,smoke,frames)
                      : run(argv[1],smoke,roots);
-    rui_shutdown(); SDL_Quit(); das::Module::Shutdown(); return code;
+    rui_shutdown(); rui_live_close(); SDL_Quit(); das::Module::Shutdown(); return code;
 }
