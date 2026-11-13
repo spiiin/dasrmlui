@@ -20,7 +20,7 @@ def vector_style() {
     rule(part("decorated")) { property("left","380px"); svg_decorator("examples/assets/vector_probe.svg",true) }
     rule(part("motion")) { property("left","20px"); property("top","160px"); width(px(200)); height(px(100)) }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def scene(var frame:Frame) {
     use_style(@@vector_style)
     svg_image("file",frame.alternate ? "examples/assets/vector_probe_alt.svg" : "examples/assets/vector_probe.svg")
@@ -39,20 +39,20 @@ def main(smoke:bool):int {
         verify(rui_init(window,renderer,520,300)); verify(rui_default_font())
         rui_test_display_scale(1.); rui_test_advance_time(0.0lf)
         rui_property(rui_root(),"background-color","#000000")
-        ui_frame() { scene(frame) }
+        ui_legacy_frame() { scene(frame) }
         verify(rui_bounds(ui_find("file"))==float4(20.,20.,100.,100.))
         verify(rui_bounds(ui_find("motion"))==float4(20.,160.,200.,100.))
         snapshot(renderer,"0")
-        ui_clear_stats(); rui_test_advance_time(0.5lf); ui_frame() { scene(frame) }
+        ui_clear_stats(); rui_test_advance_time(0.5lf); ui_legacy_frame() { scene(frame) }
         verify(ui_stats().binding_updates==0,"Lottie must animate without evaluating bindings")
         snapshot(renderer,"half")
-        rui_test_advance_time(0.5lf); ui_frame() { scene(frame) }
+        rui_test_advance_time(0.5lf); ui_legacy_frame() { scene(frame) }
         snapshot(renderer,"1")
-        rui_test_advance_time(1.0lf); ui_frame() { scene(frame) }
+        rui_test_advance_time(1.0lf); ui_legacy_frame() { scene(frame) }
         snapshot(renderer,"loop")
-        set_ui_scale(2.); ui_frame() { scene(frame) }
+        set_ui_scale(2.); ui_legacy_frame() { scene(frame) }
         snapshot(renderer,"dpi")
-        frame.alternate=true; ui_frame() { scene(frame) }
+        frame.alternate=true; ui_legacy_frame() { scene(frame) }
         snapshot(renderer,"changed")
         rui_property(ui_find("crop"),"width","200px")
         rui_property(ui_find("motion"),"width","300px"); rui_property(ui_find("motion"),"height","150px")

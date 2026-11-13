@@ -22,6 +22,7 @@ def completed(items:array<WorkItem>):int {
 def matches(item:WorkItem; query:string; filter:int):bool {
     return (empty(query) || find(item.title,query) >= 0) && (filter == 0 || (filter == 1 && !item.done) || (filter == 2 && item.done))
 }
+[ui_action]
 def set_done(var model:Dashboard; id:int) {
     for (item in model.items) { if (item.id == id) { item.done = !item.done } }
 }
@@ -108,18 +109,21 @@ def dashboard(var model:Dashboard) {
 }
 [export]
 def main(smoke:bool):int {
-    var model = Dashboard()
-    model.items |> push <| WorkItem(id=1,title="Review the November release",owner="Maya Chen")
-    model.items |> push <| WorkItem(id=2,title="Investigate API latency",owner="Alex Morgan",urgent=true)
-    model.items |> push <| WorkItem(id=3,title="Publish component guidelines",owner="Sam Rivera",done=true)
-    model.items |> push <| WorkItem(id=4,title="Prepare customer handoff",owner="Jordan Lee")
-    return run_demo("dasrmlui - Operations dashboard","logs/dashboard.png",smoke,$() { dashboard(model) }) $(frame:int) {
-        if (frame == 0) { rui_test_click(ui_find("toggle",1)) }
-        elif (frame == 1) { verify(model.items[0].done); rui_test_event(ui_find("edit_title",2),"change","API latency: resolved") }
-        elif (frame == 2) { verify(model.items[1].title == "API latency: resolved"); rui_test_click(ui_find("done")) }
-        elif (frame == 3) { verify(ui_find("toggle",2) == 0ul); rui_test_click(ui_find("all")) }
-        elif (frame == 4) { verify(ui_find("toggle",2) != 0ul); rui_test_click(ui_find("primary")) }
-        elif (frame == 5) { verify(length(model.items) == 5 && model.selected == 5); rui_test_click(ui_find("inspect",2)) }
-        elif (frame == 6) { verify(model.selected == 2 && rui_get_value(ui_find("edit_title",2)) == "API latency: resolved") }
+    var initial = Dashboard()
+    initial.items |> push <| WorkItem(id=1,title="Review the November release",owner="Maya Chen")
+    initial.items |> push <| WorkItem(id=2,title="Investigate API latency",owner="Alex Morgan",urgent=true)
+    initial.items |> push <| WorkItem(id=3,title="Publish component guidelines",owner="Sam Rivera",done=true)
+    initial.items |> push <| WorkItem(id=4,title="Prepare customer handoff",owner="Jordan Lee")
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Operations dashboard","logs/dashboard.png",smoke,$() { ui_frame(state) $(model:Dashboard) { dashboard(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Dashboard) {
+            if (frame == 0) { rui_test_click(ui_find("toggle",1)) }
+            elif (frame == 1) { verify(model.items[0].done); rui_test_event(ui_find("edit_title",2),"change","API latency: resolved") }
+            elif (frame == 2) { verify(model.items[1].title == "API latency: resolved"); rui_test_click(ui_find("done")) }
+            elif (frame == 3) { verify(ui_find("toggle",2) == 0ul); rui_test_click(ui_find("all")) }
+            elif (frame == 4) { verify(ui_find("toggle",2) != 0ul); rui_test_click(ui_find("primary")) }
+            elif (frame == 5) { verify(length(model.items) == 5 && model.selected == 5); rui_test_click(ui_find("inspect",2)) }
+            elif (frame == 6) { verify(model.selected == 2 && rui_get_value(ui_find("edit_title",2)) == "API latency: resolved") }
+        }
     }
 }

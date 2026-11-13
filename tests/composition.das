@@ -10,7 +10,7 @@ require dassdl3/sdl3_scope
 struct Model { a:int = 2; caption:string = "first" }
 var computations, slot_reads : int
 def expensive(value:int):int { computations += 1; return value*2 }
-[ui_component]
+[ui_component(legacy=true)]
 def panel(title:string; changed:block<(value:int):void>; content:block) {
     column() {
         text("title",title)
@@ -18,7 +18,7 @@ def panel(title:string; changed:block<(value:int):void>; content:block) {
         button("add","Add") { on_click() { emit(changed,1) } }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     computed(expensive(model.a)) $(value:int) {
         panel("{value}",$(change:int) { model.a += change }) {
@@ -35,16 +35,16 @@ def main(smoke:bool):int {
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480)); verify(rui_default_font())
         ui_trace(true)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(computations == 1 && slot_reads == 1 && ui_trace_count() > 0)
         let slot_node = ui_find("slot")
-        for (i in range(10)) { ui_frame() { screen(model) } }
+        for (i in range(10)) { ui_legacy_frame() { screen(model) } }
         verify(computations == 1 && slot_reads == 1)
         model.caption = "second"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(computations == 1 && slot_reads == 2 && ui_find("slot") == slot_node)
         rui_test_click(ui_find("add"))
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(model.a == 3 && computations == 2 && slot_reads == 2)
         var saw_field=false
         for (i in range(ui_trace_count())) {
@@ -54,10 +54,10 @@ def main(smoke:bool):int {
         verify(saw_field,"Trace must identify the changed computed field")
         verify(find(rui_markup(),">6<") >= 0)
         unsafe { heap_collect(true,false) }
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(computations == 2)
         ui_reset()
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(computations == 3)
         ui_reset(); rui_shutdown()
         print("PASS: computed dependency caching, slots, synchronous component events and trace\n")

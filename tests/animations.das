@@ -37,7 +37,7 @@ def test_style() {
     rule(part("trigger")) { background(rgb(10,20,30)); property("transition","background-color 0.2s") }
     rule(part("trigger")+":focus") { background(rgb(200,210,220)) }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def child(var model:Model) {
     state(Local()) $(var local:Local) {
         on_mount() { mounts+=1 }
@@ -48,7 +48,7 @@ def child(var model:Model) {
         }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     runs+=1
     use_style(@@test_style)
@@ -78,7 +78,7 @@ def main(smoke:bool):int {
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480)); verify(rui_default_font())
         rui_test_advance_time(double(0.))
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         let actor=ui_find("actor")
         let trigger=ui_find("trigger")
         verify(rui_bounds(actor).z==20.,"initial key applied before first render")
@@ -86,83 +86,83 @@ def main(smoke:bool):int {
         let idle_runs=runs
         ui_clear_stats()
         advance(0.2)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_bounds(actor).z>21. && rui_bounds(actor).z<80.,"native interpolation")
         verify(runs==idle_runs && ui_stats().updates==0,"native animation must not rerun components")
         advance(0.5)
-        ui_frame() { screen(model) }; ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }; ui_legacy_frame() { screen(model) }
         verify(model.completions==1,"one completion for both width and opacity")
         rui_focus(trigger)
         model.visible=true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         let panel=ui_find("panel")
         let field=ui_find("field")
         verify(mounts==1 && panel!=0ul)
         rui_focus(field); rui_test_event(field,"change","preserved!")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_get_value(field)=="preserved!")
         advance(0.5)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         model.visible=false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_alive(panel) && unmounts==0 && !rui_enabled(field),"retain but disable exiting subtree")
         verify(rui_focused(trigger),"return focus at exit start")
         rui_test_event(ui_find("hit"),"click","")
         advance(0.15)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(model.clicks==0 && rui_alive(panel))
         model.visible=true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_find("panel")==panel && ui_find("field")==field && mounts==1,"cancel exit without remount")
         unsafe { heap_collect(true,false) }
         advance(0.5)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_alive(panel) && rui_get_value(field)=="preserved!" && rui_enabled(field))
         model.visible=false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         advance(0.5)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(!rui_alive(panel) && !rui_alive(field) && unmounts==1,"unmount after native exit completion")
 
         // Native completion is queued after click, then frozen by ui_frame.
         // Replaying in the click handler must invalidate that old completion.
         model.revision+=1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         rui_test_event(trigger,"click","")
         advance(0.7); rui_update()
         let completions=model.completions
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(model.completions==completions && rui_animation_status(actor)==2,"discard stale completion after replay")
         advance(0.7)
-        ui_frame() { screen(model) }; ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }; ui_legacy_frame() { screen(model) }
         verify(model.completions==completions+1)
 
         model.iterations=2
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         advance(0.7)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_animation_status(actor)==2,"second iteration still running")
         advance(0.7)
-        ui_frame() { screen(model) }; ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }; ui_legacy_frame() { screen(model) }
         verify(model.completions==completions+2)
         model.iterations=-1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         advance(5.)
-        ui_frame() { screen(model) }; ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }; ui_legacy_frame() { screen(model) }
         verify(rui_animation_status(actor)==2 && model.completions==completions+2,"infinite animation")
         model.playing=false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_animation_status(actor)==0 && rui_bounds(actor).z==80.,"stop restores base style")
 
         rui_focus(trigger); model.visible=true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mounts==2 && ui_find("panel")!=panel)
         rui_focus(ui_find("field")); rui_test_event(ui_find("field"),"change","preserved!")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         model.visible=false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         model.parent=false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(unmounts==2,"removing parent immediately cancels exiting subtree")
         verify(model.transition_property=="background-color","native transition completion reports the property")
         let invalid=rui_animation_start(actor,"missing_keyframes",0.2,"linear-in-out",1,false)

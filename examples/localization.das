@@ -79,34 +79,37 @@ def passport(var model:Passport) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Passport()
+    var initial=Passport()
     var field=0ul
-    return run_demo("dasrmlui - Explorer passport","logs/localization.png",smoke,$() { passport(model) }) $(frame:int) {
-        if (frame==0) {
-            field=ui_find("name"); rui_focus(field); rui_test_text(" Li")
-            // External locale change must invalidate bindings even without model changes.
-            set_locale("ru")
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Explorer passport","logs/localization.png",smoke,$() { ui_frame(state) $(model:Passport) { passport(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Passport) {
+            if (frame==0) {
+                field=ui_find("name"); rui_focus(field); rui_test_text(" Li")
+                // External locale change must invalidate bindings even without model changes.
+                set_locale("ru")
+            }
+            elif (frame==1) {
+                verify(ui_find("name")==field && rui_focused(field) && find(model.name,"Li")>=0)
+                verify(find(rui_markup(),"Паспорт исследователя")>=0)
+                verify(sample_phrase(1,"ru")=="1 образец" && sample_phrase(2,"ru")=="2 образца" && sample_phrase(5,"ru")=="5 образцов")
+                verify(sample_phrase(11,"ru")=="11 образцов" && sample_phrase(21,"ru")=="21 образец")
+                verify(tr("unknown")=="[unknown]" && tr("fallback")=="English fallback / missing translation")
+                rui_test_click(ui_find("add"))
+            }
+            elif (frame==2) { verify(model.samples==3); rui_test_click(ui_find("german")) }
+            elif (frame==3) { verify(ui_locale()=="de" && find(rui_markup(),"Ein Pass zur Entdeckung")>=0 && ui_find("name")==field); verify(sample_phrase(2,"de")=="2 Proben"); rui_test_click(ui_find("reset")) }
+            elif (frame==4) { verify(model.samples==0); rui_test_click(ui_find("english")) }
+            elif (frame==5) {
+                verify(ui_locale()=="en" && find(rui_markup(),"A passport to discovery")>=0)
+                // Also exercise the actual native RML parser translation hook.
+                // Raw RML is laid out while it loads, before DSL styles reach it, so it names its own font.
+                let doc=rui_document("<rml><head/><body style=\"font-family: LatoLatin;\"><div id=\"translated\">[title]</div></body></rml>","translation-test.rml")
+                verify(doc!=0ul && rui_inner_markup(rui_document_element(doc,"translated"))=="A passport to discovery","native TranslateString during RML parse")
+                rui_close_document(doc)
+            }
+            elif (frame==6) { rui_focus(field); set_locale("ru") }
+            elif (frame==7) { verify(ui_find("name")==field && model.name==rui_get_value(field) && rui_focused(field)); verify(find(rui_markup(),"Паспорт исследователя")>=0,"external locale change without model mutation"); print("PASS: locale invalidation, UTF-8, plurals, fallback, stable input\n") }
         }
-        elif (frame==1) {
-            verify(ui_find("name")==field && rui_focused(field) && find(model.name,"Li")>=0)
-            verify(find(rui_markup(),"Паспорт исследователя")>=0)
-            verify(sample_phrase(1,"ru")=="1 образец" && sample_phrase(2,"ru")=="2 образца" && sample_phrase(5,"ru")=="5 образцов")
-            verify(sample_phrase(11,"ru")=="11 образцов" && sample_phrase(21,"ru")=="21 образец")
-            verify(tr("unknown")=="[unknown]" && tr("fallback")=="English fallback / missing translation")
-            rui_test_click(ui_find("add"))
-        }
-        elif (frame==2) { verify(model.samples==3); rui_test_click(ui_find("german")) }
-        elif (frame==3) { verify(ui_locale()=="de" && find(rui_markup(),"Ein Pass zur Entdeckung")>=0 && ui_find("name")==field); verify(sample_phrase(2,"de")=="2 Proben"); rui_test_click(ui_find("reset")) }
-        elif (frame==4) { verify(model.samples==0); rui_test_click(ui_find("english")) }
-        elif (frame==5) {
-            verify(ui_locale()=="en" && find(rui_markup(),"A passport to discovery")>=0)
-            // Also exercise the actual native RML parser translation hook.
-            // Raw RML is laid out while it loads, before DSL styles reach it, so it names its own font.
-            let doc=rui_document("<rml><head/><body style=\"font-family: LatoLatin;\"><div id=\"translated\">[title]</div></body></rml>","translation-test.rml")
-            verify(doc!=0ul && rui_inner_markup(rui_document_element(doc,"translated"))=="A passport to discovery","native TranslateString during RML parse")
-            rui_close_document(doc)
-        }
-        elif (frame==6) { rui_focus(field); set_locale("ru") }
-        elif (frame==7) { verify(ui_find("name")==field && model.name==rui_get_value(field) && rui_focused(field)); verify(find(rui_markup(),"Паспорт исследователя")>=0,"external locale change without model mutation"); print("PASS: locale invalidation, UTF-8, plurals, fallback, stable input\n") }
     }
 }

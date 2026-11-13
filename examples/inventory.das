@@ -7,7 +7,8 @@ require dassdl3/sdl3_scope
 
 [export]
 def main(smoke:bool) : int {
-    var model <- initial_inventory()
+    var initial <- initial_inventory()
+    var state=ui_state(initial)
     let result = sdl_scope() {
         with_sdl() |> sdl_use
         let flags = smoke ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE
@@ -23,7 +24,7 @@ def main(smoke:bool) : int {
                 if (should_close(event)) { running = false }
                 rui_event(event)
             }
-            ui_frame() { inventory_panel(model) }
+            ui_frame(state) $(model:InventoryUi) { inventory_panel(model) }
             renderer |> set_color(uint4(19u,25u,38u,255u)) |> sdl_try
             renderer |> clear() |> sdl_try
             rui_render()

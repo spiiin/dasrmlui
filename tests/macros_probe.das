@@ -4,6 +4,7 @@ require dasrmlui/macros
 var phase, dependency_checks, bodies, texts, retained : int
 def rt_dependency(value:int) { dependency_checks += 1 }
 def rt_named_dependency(name:string; value:int) { rt_dependency(value) }
+def rt_hybrid_fallback() {}
 def rt_binding(site:string; deps:block; volatile_read,input:bool; body:block) { invoke(body) }
 def rt_component(name:string; deps, mount_body, update_body, dispatch_body:block) {
     invoke(deps)
@@ -14,7 +15,7 @@ def rt_component(name:string; deps, mount_body, update_body, dispatch_body:block
 def text(site,name,value:string) { texts += 1 }
 def rt_static_text(site,name,value:string) { retained += 1 }
 def record(value:int) { bodies += value }
-[ui_component(dump=true)]
+[ui_component(legacy=true,dump=true)]
 def probe(value:int) { record(value); text("hello","macro works") }
 [export]
 def main(smoke:bool):int {

@@ -76,6 +76,7 @@ static int run(const char* path, bool smoke, const Roots& roots) {
     auto access = make_smart<FsFileAccess>();
     access->addFsRoot("dassdl3", roots.sdl.path);
     access->addFsRoot("dasrmlui", roots.ui.path);
+    access->addFsRoot("glsl", roots.das.path + "/modules/dasGlsl/glsl");
     if (!roots.examples.path.empty()) access->addFsRoot("examples", roots.examples.path);
     auto program = compileDaScript(path, access, out, modules);
     auto errors = [&] { for (auto& e : program->errors) out << reportError(e.at,e.what,e.extra,e.fixme,e.cerr); };

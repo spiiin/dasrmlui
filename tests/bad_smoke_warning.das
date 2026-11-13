@@ -6,7 +6,7 @@ require examples/demo_host
 
 // Guards the guard: the demo host must fail a smoke run in which RmlUi
 // reported a warning. Here the cause is a mistyped property name.
-[ui_component]
+[ui_component(legacy=true)]
 def screen() {
     column("screen") {
         property("widht","10px")
@@ -16,5 +16,5 @@ def screen() {
 
 [export]
 def main(smoke:bool):int {
-    return run_demo("dasrmlui - smoke warning","logs/bad_smoke_warning.png",smoke,$() { screen() }) $(frame:int) {}
+    return run_demo("dasrmlui - smoke warning","logs/bad_smoke_warning.png",smoke,$() { ui_legacy_frame() { screen() } }) $(frame:int) {}
 }

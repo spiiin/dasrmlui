@@ -8,7 +8,7 @@ require dassdl3/sdl3_scope
 def slot_test_frame() {
     window_frame("frame") { box("decoration") {}; slot("actual_slot") }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def invalid_slot_content(document:uint64; target:string) {
     document_content(document,target) { text("message","Invalid destination") }
 }
@@ -19,7 +19,7 @@ def check_invalid_slot(target:string):int {
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,320,240)); verify(rui_default_font())
         let document=open_template(@@slot_test_frame,"Invalid slot",float2(0.))
-        ui_frame() { invalid_slot_content(document,target) }
+        ui_legacy_frame() { invalid_slot_content(document,target) }
         ui_reset(); rui_close_document(document); rui_shutdown()
         return sdl_ok()
     }

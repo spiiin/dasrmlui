@@ -26,7 +26,7 @@ def frame() {
         slot("body")
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     use_style(@@vectors)
     svg_image("file",svg_source(model.svg_version),model.crop)
@@ -43,27 +43,27 @@ def main(smoke:bool):int {
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,800,600)); verify(rui_default_font())
         rui_test_display_scale(1.); rui_test_advance_time(0.0lf)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         let svg=ui_find("file"); let inline_svg=ui_find("inline"); let anim=ui_find("motion")
         verify(rui_vector_kind(svg)==1 && rui_vector_kind(inline_svg)==1 && rui_vector_kind(anim)==2,"official native factories")
         verify(rui_intrinsic_size(svg)==float2(100.,100.) && rui_intrinsic_size(anim)==float2(200.,100.))
         verify(find(rui_inner_markup(inline_svg),"#e8505b")>=0)
         verify(svg_reads==1 && lottie_reads==1 && inline_reads==1)
-        ui_clear_stats(); rui_test_advance_time(0.5lf); ui_frame() { screen(model) }; rui_render()
+        ui_clear_stats(); rui_test_advance_time(0.5lf); ui_legacy_frame() { screen(model) }; rui_render()
         verify(ui_stats().binding_updates==0 && svg_reads==1 && lottie_reads==1 && inline_reads==1,"native animation requires no component updates")
-        model.svg_version=1; ui_frame() { screen(model) }
+        model.svg_version=1; ui_legacy_frame() { screen(model) }
         verify(ui_find("file")==svg && rui_intrinsic_size(svg)==float2(100.,50.))
         verify(svg_reads==2 && lottie_reads==1 && inline_reads==1,"source dependencies are independent")
-        model.ink=1; ui_frame() { screen(model) }
+        model.ink=1; ui_legacy_frame() { screen(model) }
         verify(inline_reads==2 && svg_reads==2 && lottie_reads==1)
         verify(ui_find("inline")==inline_svg && find(rui_inner_markup(inline_svg),"#18aa88")>=0)
-        model.viewport=float2(120.,80.); ui_frame() { screen(model) }
+        model.viewport=float2(120.,80.); ui_legacy_frame() { screen(model) }
         verify(rui_intrinsic_size(inline_svg)==float2(120.,80.))
-        model.lottie_version=1; ui_frame() { screen(model) }
+        model.lottie_version=1; ui_legacy_frame() { screen(model) }
         verify(ui_find("motion")==anim && rui_intrinsic_size(anim)==float2(100.,100.))
-        model.crop=true; ui_frame() { screen(model) }; verify(rui_has_attr(svg,"crop-to-content"))
-        model.crop=false; ui_frame() { screen(model) }; verify(!rui_has_attr(svg,"crop-to-content"))
-        set_ui_scale(2.); ui_frame() { screen(model) }
+        model.crop=true; ui_legacy_frame() { screen(model) }; verify(rui_has_attr(svg,"crop-to-content"))
+        model.crop=false; ui_legacy_frame() { screen(model) }; verify(!rui_has_attr(svg,"crop-to-content"))
+        set_ui_scale(2.); ui_legacy_frame() { screen(model) }
         verify(rui_intrinsic_size(svg)==float2(200.,100.) && rui_intrinsic_size(anim)==float2(200.,200.),"native intrinsic dimensions respect density")
         set_ui_scale(1.)
         let doc=open_template(@@frame,"Vectors",float2(0.,0.))
@@ -73,9 +73,9 @@ def main(smoke:bool):int {
         verify(rui_intrinsic_size(rui_document_element(doc,"inline"))==float2(20.,20.))
         verify(rui_vector_kind(rui_document_element(doc,"motion"))==2)
         close_document(doc)
-        model.visible=false; ui_frame() { screen(model) }; verify(!rui_alive(anim))
+        model.visible=false; ui_legacy_frame() { screen(model) }; verify(!rui_alive(anim))
         unsafe { heap_collect(true,false) }
-        model.visible=true; ui_frame() { screen(model) }; verify(rui_vector_kind(ui_find("motion"))==2)
+        model.visible=true; ui_legacy_frame() { screen(model) }; verify(rui_vector_kind(ui_find("motion"))==2)
         rui_render(); verify(rui_warning_count()==0,"valid vector sources and decorator must load without warnings")
         // The same native FileInterface also supports all-in-daScript resources.
         rui_resource("memory/vector.svg","<svg xmlns='http://www.w3.org/2000/svg' width='64' height='32'><rect width='64' height='32' fill='#18aa88'/></svg>")
@@ -100,7 +100,7 @@ def main(smoke:bool):int {
         verify(rui_intrinsic_size(svg)==float2(100.,100.) && rui_intrinsic_size(ui_find("motion"))==float2(200.,100.))
         ui_reset(); rui_shutdown()
         verify(rui_init(window,renderer,800,600)); verify(rui_default_font())
-        ui_frame() { screen(model) }; rui_render()
+        ui_legacy_frame() { screen(model) }; rui_render()
         verify(rui_vector_kind(ui_find("file"))==1 && rui_vector_kind(ui_find("motion"))==2,"plugins re-register after restart")
         ui_reset(); rui_shutdown()
         return sdl_ok()

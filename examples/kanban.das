@@ -13,9 +13,11 @@ def stage_count(cards:array<Card>; stage:int):int {
     for (card in cards) { if (card.stage == stage) { count += 1 } }
     return count
 }
+[ui_action]
 def move_card(var board:Board; id:int) {
     for (card in board.cards) { if (card.id == id) { card.stage = (card.stage+1)%3 } }
 }
+[ui_action]
 def delete_card(var board:Board; id:int) {
     for (i in range(length(board.cards))) {
         if (board.cards[i].id == id) { board.cards |> erase(i); board.selected = -1; return }
@@ -109,20 +111,23 @@ def kanban(var board:Board) {
 }
 [export]
 def main(smoke:bool):int {
-    var board = Board()
-    board.cards |> push <| Card(id=1,title="Keyboard navigation audit",owner="Maya",urgent=true)
-    board.cards |> push <| Card(id=2,title="Add workspace templates",owner="Alex")
-    board.cards |> push <| Card(id=3,title="Build notification center",owner="Sam",stage=1)
-    board.cards |> push <| Card(id=4,title="Improve onboarding flow",owner="Jordan",stage=1,urgent=true)
-    board.cards |> push <| Card(id=5,title="Ship account settings",owner="Maya",stage=2)
-    board.cards |> push <| Card(id=6,title="Update status indicators",owner="Alex",stage=2)
-    return run_demo("dasrmlui - Release board","logs/kanban.png",smoke,$() { kanban(board) }) $(frame:int) {
-        if (frame == 0) { rui_test_click(ui_find("move_card",1)) }
-        elif (frame == 1) { verify(board.cards[0].stage == 1); rui_test_click(ui_find("select_card",1)) }
-        elif (frame == 2) { verify(board.selected == 1); rui_test_event(ui_find("card_title",1),"change","Keyboard audit complete") }
-        elif (frame == 3) { verify(board.cards[0].title == "Keyboard audit complete"); rui_test_click(ui_find("delete_card",1)) }
-        elif (frame == 4) { verify(length(board.cards) == 5 && board.selected == -1); rui_test_event(ui_find("draft_field"),"change","Write migration guide") }
-        elif (frame == 5) { rui_test_click(ui_find("add_card")) }
-        elif (frame == 6) { verify(length(board.cards) == 6 && empty(board.draft) && ui_find("select_card",7) != 0ul) }
+    var initial = Board()
+    initial.cards |> push <| Card(id=1,title="Keyboard navigation audit",owner="Maya",urgent=true)
+    initial.cards |> push <| Card(id=2,title="Add workspace templates",owner="Alex")
+    initial.cards |> push <| Card(id=3,title="Build notification center",owner="Sam",stage=1)
+    initial.cards |> push <| Card(id=4,title="Improve onboarding flow",owner="Jordan",stage=1,urgent=true)
+    initial.cards |> push <| Card(id=5,title="Ship account settings",owner="Maya",stage=2)
+    initial.cards |> push <| Card(id=6,title="Update status indicators",owner="Alex",stage=2)
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Release board","logs/kanban.png",smoke,$() { ui_frame(state) $(board:Board) { kanban(board) } }) $(frame:int) {
+        ui_edit(state) $(var board:Board) {
+            if (frame == 0) { rui_test_click(ui_find("move_card",1)) }
+            elif (frame == 1) { verify(board.cards[0].stage == 1); rui_test_click(ui_find("select_card",1)) }
+            elif (frame == 2) { verify(board.selected == 1); rui_test_event(ui_find("card_title",1),"change","Keyboard audit complete") }
+            elif (frame == 3) { verify(board.cards[0].title == "Keyboard audit complete"); rui_test_click(ui_find("delete_card",1)) }
+            elif (frame == 4) { verify(length(board.cards) == 5 && board.selected == -1); rui_test_event(ui_find("draft_field"),"change","Write migration guide") }
+            elif (frame == 5) { rui_test_click(ui_find("add_card")) }
+            elif (frame == 6) { verify(length(board.cards) == 6 && empty(board.draft) && ui_find("select_card",7) != 0ul) }
+        }
     }
 }

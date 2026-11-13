@@ -15,8 +15,9 @@ set(RMLUI_THIRDPARTY_CONTAINERS OFF CACHE BOOL "" FORCE)
 include(cmake/vector_plugins.cmake)
 add_subdirectory(${RMLUI_DIR} ${CMAKE_BINARY_DIR}/rmlui EXCLUDE_FROM_ALL)
 add_executable(dasrmlui src/host.cpp src/rml_module.cpp ${RMLUI_DIR}/Backends/RmlUi_Platform_SDL.cpp
-  ${RMLUI_DIR}/Backends/RmlUi_Renderer_GL3.cpp)
+  src/gl3/RmlUi_Renderer_GL3.cpp)
 target_include_directories(dasrmlui PRIVATE
+  ${RMLUI_DIR}/Source/Core
   ${DASSDL3_DIR}/src ${DAS}/include ${DAS}/3rdparty/fmt/include
   ${DAS}/3rdparty/uriparser/include ${DASSDL3_BUILD}/third_party/daScript/include
   ${DS_FETCHCONTENT_SOURCE_DIR_SDL3}/include ${DASSDL3_BUILD}/_deps/sdl3-build/include-revision
@@ -42,7 +43,29 @@ target_link_libraries(dasrmlui PRIVATE RmlUi::RmlUi RmlUi::Debugger
   ${DASRMLUI_DASSDL3_LIBRARY} ${DASRMLUI_DASCRIPT_LIBRARIES} SDL3::SDL3-static ${DASRMLUI_SYSTEM_LIBRARIES})
 set_target_properties(dasrmlui PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 include(cmake/package.cmake)
+
+# Isolated measurement runner: the normal application has no allocation interposer
+# and no benchmark-only APIs. The hybrid adapter uses pinned RmlUi internals.
+option(DASRMLUI_BUILD_BENCHMARKS "Build DSL/native data binding benchmark" OFF)
+if(DASRMLUI_BUILD_BENCHMARKS)
+  add_executable(dasrmlui_bench src/host.cpp src/rml_module.cpp src/benchmark_alloc.cpp
+    ${RMLUI_DIR}/Backends/RmlUi_Platform_SDL.cpp src/gl3/RmlUi_Renderer_GL3.cpp)
+  foreach(prop INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS LINK_LIBRARIES)
+    get_target_property(value dasrmlui ${prop})
+    if(value)
+      set_property(TARGET dasrmlui_bench PROPERTY ${prop} "${value}")
+    endif()
+  endforeach()
+  target_include_directories(dasrmlui_bench PRIVATE ${RMLUI_DIR}/Source/Core ${DAS}/src/misc)
+  target_compile_definitions(dasrmlui_bench PRIVATE DASRMLUI_BENCHMARK=1)
+  set_target_properties(dasrmlui_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 enable_testing()
+if(DASRMLUI_BUILD_BENCHMARKS)
+  add_test(NAME binding_benchmark_smoke COMMAND dasrmlui_bench ${CMAKE_SOURCE_DIR}/benchmarks/bindings.das --smoke-test)
+  set_tests_properties(binding_benchmark_smoke PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "benchmark;graphics;opengl" RUN_SERIAL TRUE TIMEOUT 120)
+endif()
 add_test(NAME runtime COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/runtime.das --smoke-test)
 set_tests_properties(runtime PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 add_test(NAME component_macro COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/macros_probe.das --smoke-test)
@@ -50,15 +73,15 @@ add_test(NAME incremental COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/incremental
 set_tests_properties(incremental PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 add_test(NAME bindings COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/bindings.das --smoke-test)
 set_tests_properties(bindings PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
-foreach(feature lifecycle composition viewport forms templates template_slots animations style_environment events documents regressions navigation debugger vector_plugins native_elements native_safety)
+foreach(feature lifecycle composition viewport forms templates template_slots animations style_environment events documents regressions navigation debugger vector_plugins native_elements native_safety gpu_backend hybrid hybrid_lifecycle rich_text state_api data_models native_data_dsl)
   add_test(NAME ${feature} COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/${feature}.das --smoke-test)
   set_tests_properties(${feature} PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 endforeach()
-foreach(demo dashboard settings kanban catalog component_lab expedition drag_drop templates localization event_studio navigation_lab)
+foreach(demo dashboard settings kanban catalog component_lab expedition drag_drop templates localization event_studio navigation_lab rich_text_lab data_models)
   add_test(NAME demo_${demo} COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/examples/${demo}.das --smoke-test)
   set_tests_properties(demo_${demo} PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 endforeach()
-foreach(demo effects progress_lab animations style_lab vector_lab native_lab mesh_lab)
+foreach(demo effects progress_lab animations style_lab vector_lab native_lab mesh_lab decorator_lab shader_lab)
   add_test(NAME demo_${demo} COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/examples/${demo}.das --smoke-test)
   # SDL dummy has no OpenGL context. These tests need the Windows desktop driver
   # and a real GL3 renderer, even though their windows are hidden.
@@ -66,6 +89,30 @@ foreach(demo effects progress_lab animations style_lab vector_lab native_lab mes
     ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;opengl" RUN_SERIAL TRUE TIMEOUT 60)
 endforeach()
 find_program(DASRML_POWERSHELL NAMES pwsh powershell REQUIRED)
+add_test(NAME data_model_type_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_data_model_type.das -Expected "DataModel supports scalar values, structs and arrays")
+set_tests_properties(data_model_type_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+function(native_data_failure name expected)
+  add_test(NAME native_data_${name}_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+    -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_native_data_${name}.das -Expected "${expected}")
+  set_tests_properties(native_data_${name}_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endfunction()
+native_data_failure(capture "native_data arguments must be constant")
+native_data_failure(managed "native_data does not support when")
+native_data_failure(nested "native_data scopes cannot be nested")
+native_data_failure(scope "data_* bindings require native_data")
+function(state_failure name expected)
+  add_test(NAME state_${name}_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+    -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_state_${name}.das -Expected "${expected}")
+  set_tests_properties(state_${name}_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endfunction()
+state_failure(read "can't write to a constant value")
+state_failure(private "can't access private field 'data'")
+state_failure(pointer "ui_state cannot own borrowed pointers or closures")
+state_failure(frame "ui_frame/ui_edit require ui_state and a model block")
+state_failure(scalar "ui_state requires a model struct")
+add_test(NAME rich_text_syntax_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_rich_text.das -Expected "link requires name, target")
 add_test(NAME duplicate_keys COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/duplicate_keys.das -Expected "each_keyed: duplicate key")
 add_test(NAME style_type_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
@@ -104,10 +151,20 @@ set_tests_properties(smoke_warning_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SO
 # Installs the runtime component into <build>/package and runs it from there.
 add_test(NAME runtime_package COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_package.ps1
   -Build ${CMAKE_BINARY_DIR} -Config $<CONFIG>)
-set_tests_properties(runtime_package PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
+set_tests_properties(runtime_package PROPERTIES RUN_SERIAL TRUE TIMEOUT 180 LABELS "graphics;opengl")
 # State classes, pseudo-classes and arbitrary tags.
 add_test(NAME elements COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/elements.das --smoke-test)
 set_tests_properties(elements PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+# The typed style helpers: what they write, a wrong argument type, a wrong keyword.
+add_test(NAME style_helpers COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/style_helpers.das --smoke-test)
+set_tests_properties(style_helpers PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+add_test(NAME style_helper_type_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_style_helper.das -Expected "no matching functions or generics: border_radius(ui::UiColor)")
+add_test(NAME style_keyword_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_position.das -Expected "position: use static, relative, absolute or fixed")
+# Fast-path coverage: by-value component arguments and computed primitive arguments.
+add_test(NAME hybrid_arguments COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/hybrid_arguments.das --smoke-test)
+set_tests_properties(hybrid_arguments PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
 add_test(NAME ninepatch_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_ninepatch.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/ninepatch_render.das)
 set_tests_properties(ninepatch_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -130,11 +187,30 @@ set_tests_properties(native_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_D
 add_test(NAME native_mesh_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_native_mesh.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/native_mesh.das)
 set_tests_properties(native_mesh_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# The typed style helpers: what they write, a wrong argument type, a wrong keyword.
-add_test(NAME style_helpers COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/style_helpers.das --smoke-test)
-set_tests_properties(style_helpers PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
-add_test(NAME style_helper_type_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
-  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_style_helper.das -Expected "no matching functions or generics: border_radius(ui::UiColor)")
-add_test(NAME style_keyword_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
-  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_position.das -Expected "position: use static, relative, absolute or fixed")
   ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;sdl;opengl" RUN_SERIAL TRUE TIMEOUT 60)
+add_test(NAME decorator_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_decorators.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/decorators.das)
+set_tests_properties(decorator_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;sdl;opengl" RUN_SERIAL TRUE TIMEOUT 60)
+add_test(NAME decorator_host_lifetime COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_decorator_host.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/decorator_host_lifetime.das)
+set_tests_properties(decorator_host_lifetime PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+add_test(NAME gpu_effect_pixels COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_gpu_effects.ps1
+  -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/gpu_effects.das)
+set_tests_properties(gpu_effect_pixels PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  ENVIRONMENT "SDL_VIDEODRIVER=windows" LABELS "graphics;opengl" RUN_SERIAL TRUE TIMEOUT 60)
+add_test(NAME shader_dsl_compiler COMMAND dasrmlui ${CMAKE_SOURCE_DIR}/tests/shader_dsl_probe.das --smoke-test)
+set_tests_properties(shader_dsl_compiler PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+function(shader_dsl_failure name expected)
+  add_test(NAME shader_dsl_${name}_error COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/expect_failure.ps1
+    -Runner $<TARGET_FILE:dasrmlui> -Script ${CMAKE_SOURCE_DIR}/tests/bad_shader_${name}.das -Expected "${expected}")
+  set_tests_properties(shader_dsl_${name}_error PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endfunction()
+shader_dsl_failure(return "must return float4")
+shader_dsl_failure(param "parameters must be float")
+shader_dsl_failure(builtin "uv/size/texel must be float2")
+shader_dsl_failure(capture "cannot capture mutable CPU globals")
+shader_dsl_failure(sampling "sample_source is only available in [ui_filter]")
+shader_dsl_failure(cpu "dasGlsl:")
+shader_dsl_failure(mutable "must be read-only, without defaults")
+shader_dsl_failure(default "must be read-only, without defaults")

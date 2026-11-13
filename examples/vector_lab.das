@@ -86,17 +86,20 @@ def atelier(var model:Atelier) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Atelier()
-    return run_gl_demo("Vector atelier - SVG and Lottie","logs/vector_lab.png",smoke,$(dt:float) {},$() { atelier(model) },$(frame:int) {
-        if (frame==0) { verify(rui_warning_count()==0); verify(rui_bounds(ui_find("page")).z==ui_width()); rui_test_click(ui_find("recolor")) }
-        elif (frame==1) { verify(model.blue); rui_test_click(ui_find("crop")); rui_test_click(ui_find("resize")) }
-        elif (frame==2) { verify(model.crop && model.large); rui_test_click(ui_find("switch_svg")) }
-        elif (frame==3) { verify(model.alternate); rui_test_click(ui_find("visibility")) }
-        elif (frame==4) { verify(!model.visible); rui_test_click(ui_find("visibility")) }
-        elif (frame==5) { verify(model.visible); unsafe { heap_collect(true,false) } }
-        elif (frame==6) { ui_clear_stats() }
-        elif (frame==7) { verify(ui_stats().binding_updates==0); verify(rui_warning_count()==0) }
-        elif (frame==11) { print("PASS: vector atelier sources, crop, inline, resize, remount and idle components\n") }
-        rui_test_advance_time(0.2lf)
+    var initial=Atelier()
+    var state=ui_state(initial)
+    return run_gl_demo("Vector atelier - SVG and Lottie","logs/vector_lab.png",smoke,$(dt:float) {},$() { ui_frame(state) $(model:Atelier) { atelier(model) } },$(frame:int) {
+        ui_edit(state) $(var model:Atelier) {
+            if (frame==0) { verify(rui_warning_count()==0); verify(rui_bounds(ui_find("page")).z==ui_width()); rui_test_click(ui_find("recolor")) }
+            elif (frame==1) { verify(model.blue); rui_test_click(ui_find("crop")); rui_test_click(ui_find("resize")) }
+            elif (frame==2) { verify(model.crop && model.large); rui_test_click(ui_find("switch_svg")) }
+            elif (frame==3) { verify(model.alternate); rui_test_click(ui_find("visibility")) }
+            elif (frame==4) { verify(!model.visible); rui_test_click(ui_find("visibility")) }
+            elif (frame==5) { verify(model.visible); unsafe { heap_collect(true,false) } }
+            elif (frame==6) { ui_clear_stats() }
+            elif (frame==7) { verify(ui_stats().binding_updates==0); verify(rui_warning_count()==0) }
+            elif (frame==11) { print("PASS: vector atelier sources, crop, inline, resize, remount and idle components\n") }
+            rui_test_advance_time(0.2lf)
+        }
     })
 }

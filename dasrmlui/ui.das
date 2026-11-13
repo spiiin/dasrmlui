@@ -2,6 +2,8 @@ options gen2
 module ui public
 require rml_native public
 require dasrmlui/macros public
+require dasrmlui/state_types public
+require dasrmlui/data_models public
 require strings
 require daslib/apply
 require math
@@ -50,6 +52,52 @@ def native_set_intrinsic(element:uint64; size:float2) {
     if (!rui_native_intrinsic(element,size)) { panic("Native intrinsic size requires a live native element and finite positive dimensions") }
 }
 
+enum UiDecoratorKind {
+    Create
+    Paint
+    Destroy
+}
+struct UiDecoratorEvent {
+    canvas,element:uint64
+    kind:UiDecoratorKind
+    size:float2
+    dpi:float
+    paint_area:string
+}
+struct UiDecoratorParam { name,parser,default_value:string }
+struct UiDecoratorArg { name,value:string }
+typedef UiDecoratorHandler = lambda<(event:UiDecoratorEvent):void>
+var private decorator_handlers:table<uint64;UiDecoratorHandler>
+def private decorator_dispatch(registration,canvas,element:uint64; phase:int; size:float2; dpi:float; area:string) {
+    if (phase==7) { decorator_handlers |> erase(registration); return }
+    if (key_exists(decorator_handlers,registration)) {
+        let kind=phase==0 ? UiDecoratorKind.Create : phase==5 ? UiDecoratorKind.Paint : UiDecoratorKind.Destroy
+        invoke(decorator_handlers[registration],UiDecoratorEvent(canvas=canvas,element=element,kind=kind,size=size,dpi=dpi,paint_area=area))
+    }
+}
+def register_decorator(name:string; parameters:array<UiDecoratorParam>; handler:UiDecoratorHandler):uint64 {
+    if (handler==null) { panic("Decorator requires a handler") }
+    var inscope names,parsers,defaults:array<string>
+    for (parameter in parameters) {
+        names |> push(parameter.name); parsers |> push(parameter.parser); defaults |> push(parameter.default_value)
+    }
+    let registration=rui_decorator_register(name,names,parsers,defaults,@@decorator_dispatch)
+    if (registration==0ul) { panic("Decorator registration requires an initialized context, unique namespaced type, unique parameters and valid defaults") }
+    decorator_handlers[registration]=handler
+    return registration
+}
+def register_decorator(name:string; parameters:array<UiDecoratorParam>; handler:function<(event:UiDecoratorEvent):void>):uint64 {
+    if (handler==null) { panic("Decorator requires a handler") }
+    return register_decorator(name,parameters,@(event:UiDecoratorEvent) { invoke(handler,event) })
+}
+def decorator_registered(name:string):bool { return rui_decorator_registration(name)!=0ul }
+def unregister_decorator(name:string):bool { return rui_decorator_unregister(name) }
+def decorator_instance_count(name:string):int { return rui_decorator_live(name) }
+def decorator_handler_count():int { return length(decorator_handlers) }
+def decorator_number(canvas:uint64; name:string):float { return rui_decorator_number(canvas,name) }
+def decorator_length(canvas:uint64; name:string; percentage_base:float=0.):float { return rui_decorator_length(canvas,name,percentage_base) }
+def decorator_string(canvas:uint64; name:string):string { return rui_decorator_string(canvas,name) }
+
 struct private UiComponentState {
     seen : int
     dirty : bool
@@ -70,6 +118,9 @@ var private bindings : table<string;UiBindingState>
 var private conditions : table<string;bool>
 var private visited_bindings : array<string>
 var private force_bindings = false
+var private hybrid_active=false
+var private hybrid_width,hybrid_height:float
+var private hybrid_locale,hybrid_style,hybrid_debug:uint64
 var private stats = UiStats()
 var private components : table<string; UiComponentState>
 var private visited_nodes : array<string>
@@ -169,6 +220,7 @@ def rt_local_state(var storage:table<string;array<auto(T)>>; site:string;
         static_if (typeinfo can_delete(initial)) { delete initial }
         state_leases |> push <| UiTeardown(owner=active_component,key=key,cleanup=cleanup)
     }
+    if (hybrid_active && !dispatching) { rt_hybrid_sources(storage[key][0]) }
     invoke(body,storage[key][0])
 }
 def rt_computed(var storage:table<string;array<auto(T)>>; site:string; dependencies:block;
@@ -191,6 +243,7 @@ def rt_computed(var storage:table<string;array<auto(T)>>; site:string; dependenc
             trace_update(site,trace_reason(key,mounted ? "computed dependency changed" : "computed mount"))
         } else { stats.computed_skips += 1 }
     }
+    if (hybrid_active && !dispatching) { rt_hybrid_sources(storage[key][0]) }
     invoke(body,storage[key][0])
 }
 def rt_on_mount(site:string; body:block) {
@@ -261,6 +314,7 @@ def rt_watch_environment() { rt_watch(environment_signal) }
 // Use explicitly when an ordinary helper hides reads from the AST annotation.
 def watch_style_environment() { rt_watch_environment() }
 def ui_touch(signal : UiSignal) {
+    rui_hybrid_invalidate()
     for (subscription in subscriptions) {
         if (subscription.signal == signal.id && key_exists(components,subscription.ancestor)) {
             components[subscription.ancestor].dirty = true
@@ -292,6 +346,7 @@ def private dependency_snapshot(dependencies:block) : string {
 // A binding owns only its leaf nodes, never borrowed closures. Structural
 // traversal still runs, but unchanged expressions are not evaluated.
 def rt_binding(site:string; dependencies:block; volatile_read, input:bool; body:block) {
+    if (hybrid_active && volatile_read) { rui_hybrid_invalidate() }
     if (dispatching) { invoke(body); return }
     let key = "{path}/binding:{site}"
     let snapshot = dependency_snapshot(dependencies)
@@ -365,6 +420,7 @@ def rt_dependency(value : auto(T)) {
 
 struct UiNode {
     handle, parent : uint64
+    native_model : uint64
     seen : int
     tag, name : string
 }
@@ -425,6 +481,8 @@ var private keyframe_count:int
 var private keyframe_properties=""
 var private rule_selector = ""
 var private rule_build = ""
+var private native_building=false
+var private native_stack:array<UiTemplateNode>
 
 def rt_component(name : string; dependencies, mount_body, update_body, dispatch_body : block) {
     verify(!unmounting, "Unmount hooks cannot create UI components")
@@ -435,6 +493,10 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
     let old_force = force_bindings
     let old_component = active_component
     let old_first_mount = first_mount
+    // Only the call statement right before this component can vouch for its arguments.
+    let old_covered = hybrid_covered
+    hybrid_covered = hybrid_cover_next
+    hybrid_cover_next = false
     let counter_key = "{path}/component:{name}"
     let index = calls?[counter_key] ?? 0
     calls[counter_key] = index + 1
@@ -473,7 +535,8 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
             let i = subscription_count-offset-1
             if (subscriptions[i].owner == component_path) { subscriptions |> erase(i) }
         }
-        let snapshot = dependency_snapshot($() {
+        if (hybrid_active) { clear(dependency_parts); invoke(dependencies) }
+        let snapshot = hybrid_active ? "hybrid:{rui_hybrid_epoch()}" : dependency_snapshot($() {
             rt_named_dependency("viewport.width",rui_width())
             rt_named_dependency("viewport.height",rui_height())
             rt_named_dependency("locale.revision",rui_locale_revision())
@@ -534,6 +597,7 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
     force_bindings = old_force
     active_component = old_component
     first_mount = old_first_mount
+    hybrid_covered = old_covered
 }
 
 def private node_begin(site, tag, part_name, extra_class : string; input_type:string = "text") : uint64 {
@@ -610,6 +674,106 @@ def element(site,name,tag:string; body:block) {
     container(site,tag,name,"",body)
 }
 def element(site,name,tag:string) { element(site,name,tag) {} }
+// A single reconciled host; all descendants belong exclusively to RmlUi.
+def rt_native_data(site,name:string; model:UiDataModel; builder:function<():void>) {
+    if (dispatching) { return }
+    let key="{path}/{site}"
+    let previous=nodes?[key] ?? UiNode()
+    let host=node_begin(site,"div",name,"ru-box")
+    if (previous.handle==host && previous.native_model==model.handle) { return }
+    verify(ui_data_alive(model),"native_data requires a live public DataModel")
+    verify(!native_building,"native_data scopes cannot be nested")
+    native_building=true
+    clear(native_stack); native_stack |> push(UiTemplateNode())
+    try {
+        invoke(builder)
+        verify(length(native_stack)==1,"Incomplete native_data description")
+        rui_data_mount(host,model.handle,native_stack[0].children)
+        nodes[key].native_model=model.handle
+    } recover {
+        let message=string(this_context().last_exception)
+        clear(native_stack); native_building=false
+        panic(message)
+    }
+    clear(native_stack); native_building=false
+}
+// Repeated parts have classes and markers, never duplicate DOM IDs.
+def ui_data_find(scope:uint64; part_name:string; occurrence:int=0):uint64 {
+    return rui_data_find(scope,part_name,occurrence)
+}
+def private native_node(tag,name,classes:string; body:block) {
+    verify(native_building && !empty(native_stack),"Native data nodes require native_data")
+    verify(plain_name(tag) && (empty(name) || plain_name(name)),"Invalid native_data tag or part name")
+    let part_class=empty(name) ? "" : "{style}__{name}"
+    native_stack |> push(UiTemplateNode(tag=tag,id=name,classes="{classes} {part_class}"))
+    invoke(body)
+    let item=native_stack[length(native_stack)-1]
+    pop(native_stack)
+    let marker=empty(name) ? "" : " data-rui-part=\"{template_escape(name)}\""
+    let markup="<{tag}{marker} class=\"{template_escape(item.classes)}\" style=\"{template_escape(item.properties)}\"{item.attributes}>{item.children}</{tag}>"
+    native_stack[length(native_stack)-1].children+=markup
+}
+def rt_native_column(name:string; body:block) { native_node("div",name,"ru-column",body) }
+def rt_native_column(body:block) { rt_native_column("",body) }
+def rt_native_row(name:string; body:block) { native_node("div",name,"ru-row",body) }
+def rt_native_row(body:block) { rt_native_row("",body) }
+def rt_native_box(name:string; body:block) { native_node("div",name,"ru-box",body) }
+def rt_native_box(body:block) { rt_native_box("",body) }
+def rt_native_element(name,tag:string; body:block) { native_node(tag,name,"",body) }
+def rt_native_element(name,tag:string) { rt_native_element(name,tag) {} }
+def rt_native_text(name,value:string) {
+    native_node("span",name,"") { native_stack[length(native_stack)-1].children=native_literal(value) }
+}
+def private native_literal(value:string):string {
+    // Factory detects data brackets before decoding entities. Literal text must
+    // not acquire a data-text view just because it contains {{ or }}.
+    return replace(replace(template_escape(value),"\{","&#123;"),"\}","&#125;")
+}
+def rt_native_text(name:string; body:block) { native_node("span",name,"",body) }
+def rt_native_button(name,caption:string; body:block) {
+    native_node("button",name,"") { property("tab-index","auto"); native_stack[length(native_stack)-1].children=native_literal(caption); invoke(body) }
+}
+def rt_native_button(name:string; body:block) { native_node("button",name,"") { property("tab-index","auto"); invoke(body) } }
+def rt_native_text_input(name:string; body:block) { native_node("input",name,"") { attribute("type","text"); invoke(body) } }
+def rt_native_checkbox(name:string; body:block) { native_node("input",name,"checkbox") { attribute("type","checkbox"); invoke(body) } }
+def rt_native_select_input(name:string; body:block) { native_node("select",name,"",body) }
+def rt_native_text_area(name:string; body:block) { native_node("textarea",name,"",body) }
+def rt_native_attribute(name,value:string) {
+    verify(native_building && length(native_stack)>1,"Native data attributes need a node")
+    verify(plain_name(name) && name!="id" && name!="class" && name!="style" && name!="data-model" && name!="data-rui-part",
+        "Native data identity and scope attributes are managed by the builder")
+    native_stack[length(native_stack)-1].attributes+=" {name}=\"{template_escape(value)}\""
+}
+def rt_native_property(name,value:string) {
+    verify(native_building && length(native_stack)>1,"Native data properties need a node")
+    native_stack[length(native_stack)-1].properties+="{name}: {value}; "
+}
+def rt_native_data_text(expression:string) {
+    verify(native_building && length(native_stack)>1 && !empty(expression),"data_text requires a node and expression")
+    native_stack[length(native_stack)-1].children+="\{\{{template_escape(expression)}\}\}"
+}
+def rt_native_data_value(expression:string) { attribute("data-value",expression) }
+def rt_native_data_checked(expression:string) { attribute("data-checked",expression) }
+def rt_native_data_disabled(expression:string) { attribute("data-attr-disabled",expression) }
+def rt_native_data_attribute(name,expression:string) {
+    verify(name!="id" && name!="class" && name!="style" && name!="data-model" && name!="data-rui-part","Native data identity and scope attributes are managed by the builder")
+    attribute("data-attr-{name}",expression)
+}
+def rt_native_data_class(name,expression:string) { attribute("data-class-{state_class(name)}",expression) }
+def rt_native_data_style(name,expression:string) { attribute("data-style-{name}",expression) }
+def rt_native_data_event(kind,expression:string) { attribute("data-event-{kind}",expression) }
+def rt_native_data_if(name,expression:string; body:block) {
+    native_node("div",name,"ru-box") { attribute("data-if",expression); invoke(body) }
+}
+def rt_native_data_for(name,item,expression:string; body:block) {
+    verify(plain_name(item) && find(item,"-")<0,"data_for requires an alias name")
+    // Put row bindings one level below the structural view. Native views sort
+    // by depth: shrinking must remove rows before evaluating their old indices.
+    native_node("div","","ru-box") {
+        attribute("data-for","{item} : {expression}")
+        native_node("div",name,"ru-box",body)
+    }
+}
 // The document/template owns the target; reconciliation owns only our children.
 // Attach listeners to the document itself, including native show/hide and custom events.
 def document_events(site:string; document:uint64; body:block) {
@@ -775,6 +939,11 @@ def on_click(body : block) {
         if (event.listener == 0ul && event.handle == current && event.kind == "click" && rui_alive(current)) { invoke(body) }
     }
 }
+// Links stay application-owned: no automatic browser navigation. Native focus
+// maps Enter/Space to click for tab-index:auto; do not dispatch a second key action.
+def on_activate(body:block) { on_click(body) }
+def href(target:string) { attribute("href",target) }
+def image_source(source:string) { attribute("src",source) }
 def draggable(payload:string) {
     if (!dispatching) { rui_property(current,"drag","clone"); rui_attr(current,"data-rui-payload",payload) }
 }
@@ -1003,6 +1172,20 @@ def animated_when(site,name:string; visible:bool; enter,leave:UiAnimation; body:
 }
 def each_keyed(site : string; items : array<auto(T)>;
                key_of : block<(item:T):int>; body : block<(item:T):void>) {
+    if (hybrid_active && !dispatching) {
+        // Render is read-only with respect to this collection; daScript's array
+        // iteration lock rejects structural mutation. Events use the snapshot path.
+        var inscope unique:table<int;bool>
+        let old=path
+        for (item in items) {
+            let key=invoke(key_of,item)
+            verify(!key_exists(unique,key),"each_keyed: duplicate key")
+            unique[key]=true
+            path="{old}/{site}:key:{key}"
+            invoke(body,item)
+        }
+        path=old; return
+    }
     var inscope snapshot := items
     var inscope unique : table<int; bool>
     for (item in snapshot) {
@@ -1117,10 +1300,13 @@ def private begin_pass() {
     style = ""
     mounting = true
     force_bindings = false
+    hybrid_cover_next = false
+    hybrid_covered = false
     clear(component_stack)
     clear(calls)
 }
 def private reconcile(body : block) {
+    if (hybrid_active) { rui_hybrid_begin() }
     if (debugger_revision!=rui_debugger_revision()) {
         debugger_revision=rui_debugger_revision()
         ui_touch(debugger_signal)
@@ -1202,6 +1388,7 @@ def private reconcile(body : block) {
         rui_css(css)
         css_dirty = false
     }
+    if (hybrid_active) { rui_hybrid_end(); rui_hybrid_flush() }
     rui_update()
     if (rui_enabled(restore_focus)) { rui_focus(restore_focus) }
     for (request in focus_requests) {
@@ -1215,7 +1402,7 @@ def private reconcile(body : block) {
     }
     clear(focus_requests)
 }
-def ui_frame(body : block) {
+def ui_legacy_frame(body : block) {
     for (handle,view in keys(virtuals),values(virtuals)) {
         if (rui_alive(handle) && rui_scroll_top(handle) != view.scroll) { invalidate_owner(view.owner) }
     }
@@ -1249,6 +1436,178 @@ def ui_frame(body : block) {
     if (wake_animation_exits()) { reconcile(body) }
     rui_native_check()
 }
+// Hybrid values are native-owned copies. Addresses below are subscription keys,
+// never retained script references to be dereferenced by native Update/Render.
+def private hybrid_kind(value:string):int { return 1 }
+def private hybrid_kind(value:int):int { return 2 }
+def private hybrid_kind(value:float):int { return 3 }
+def private hybrid_kind(value:bool):int { return 4 }
+def private hybrid_kind(value:double):int { return 5 }
+def private hybrid_kind(value:auto(T)):int { return 0 }
+def ui_changed(value:auto(T)&) { unsafe { rui_hybrid_written(addr(value),hybrid_kind(value)) } }
+def rt_ui_write(var target:auto(T)&; body:block<(var value:T&):void>) {
+    invoke(body,target)
+    unsafe { rui_hybrid_tracked(addr(target),hybrid_kind(target)) }
+}
+// A component argument belongs to the caller. An analysed call site watches
+// what the argument was computed from, so the copy inside the component cannot
+// change unless the caller runs again, and every component runs in a pass.
+// `covered` says that about a value rooted in an argument: outside the model it
+// is then such a copy, not a reason to run the next frame as a full pass.
+var private hybrid_cover_next=false
+var private hybrid_covered=false
+def rt_hybrid_covered():bool { return hybrid_covered }
+def rt_hybrid_watch(value:auto(T)&; covered:bool=false) {
+    unsafe { rui_hybrid_watch_as(addr(value),covered ? 1 : 0) }
+    static_if (typeinfo is_array(value)) {
+        for (item in value) { _::rt_hybrid_watch(item,covered) }
+    } static_elif (typeinfo is_struct(value) || typeinfo is_tuple(value)) {
+        apply(value) $(name,field) { _::rt_hybrid_watch(field,covered) }
+    }
+}
+def rt_hybrid_dependency(name:string; value:auto(T)&; covered:bool=false) {
+    if (hybrid_active) { rt_hybrid_watch(value,covered) }
+    rt_named_dependency(name,value)
+}
+// One argument handed to a callee as it stands. A value type is copied, so its
+// source is watched here. A reference type is the same storage in the callee,
+// which subscribes to the fields it reads: watching them here as well would
+// turn every precise update of a row into a full pass.
+def rt_hybrid_argument(value:auto(T)&; covered:bool=false) {
+    static_if (typeinfo is_ref_type(type<T>)) {
+        unsafe { rui_hybrid_watch_as(addr(value),(covered ? 1 : 0) | 2) }
+    } else {
+        unsafe { rui_hybrid_watch_as(addr(value),covered ? 1 : 0) }
+    }
+}
+// Generated before a component call: `dependencies` watch its arguments.
+// `opaque` is an argument that cannot be followed, for example a call that
+// reads nothing the component owns; it keeps the pass on every frame.
+def rt_hybrid_cover(dependencies:block; opaque:bool) {
+    if (!hybrid_active || dispatching) { return }
+    invoke(dependencies)
+    if (opaque) { rui_hybrid_invalidate() }
+    hybrid_cover_next=true
+}
+// The same for a primitive with computed arguments: a part name, a document.
+def rt_hybrid_arguments(dependencies:block) {
+    if (hybrid_active && !dispatching) { invoke(dependencies) }
+}
+def rt_hybrid_fallback() { if (hybrid_active) { rui_hybrid_invalidate() } }
+def rt_hybrid_control(dependencies:block; opaque:bool; predicate:block<():bool>):bool {
+    if (hybrid_active && !dispatching) {
+        invoke(dependencies)
+        if (opaque) { rui_hybrid_invalidate() }
+    }
+    return invoke(predicate)
+}
+def rt_hybrid_sources(value:auto(T)&) {
+    unsafe { rui_hybrid_source(addr(value)) }
+    static_if (typeinfo is_array(value)) {
+        for (item in value) { _::rt_hybrid_sources(item) }
+    } static_elif (typeinfo is_struct(value) || typeinfo is_tuple(value)) {
+        apply(value) $(name,field) { _::rt_hybrid_sources(field) }
+    }
+}
+def rt_hybrid_text(site,name:string; value:auto(T)&; covered:bool=false) {
+    let handle=node_begin(site,"span",name,"")
+    if (!dispatching) {
+        verify(hybrid_active,"hybrid component requires rt_hybrid_frame")
+        verify(hybrid_kind(value)!=0,"native binding requires string/int/float/bool/double")
+        unsafe { rui_hybrid_bind_as(handle,"text",addr(value),hybrid_kind(value),covered) }
+    }
+}
+def rt_hybrid_value(target:string; value:auto(T)&; covered:bool=false) {
+    if (!dispatching) {
+        verify(hybrid_active && hybrid_kind(value)!=0,"unsupported hybrid binding")
+        unsafe { rui_hybrid_bind_as(current,target,addr(value),hybrid_kind(value),covered) }
+    }
+}
+def rt_hybrid_input(value:string&; setter:block<(value:string):void>) {
+    if (dispatching) { bind_value($()=>value,setter) }
+    else { rui_watch(current,"change"); rt_hybrid_value("value",value) }
+}
+def rt_hybrid_checked(value:bool&; setter:block<(value:bool):void>) {
+    if (dispatching) { bind_checked($()=>value,setter) }
+    else { rui_watch(current,"change"); rt_hybrid_value("checked",value) }
+}
+def rt_hybrid_frame(model:auto(T)&; body:block) {
+    verify(!hybrid_active,"rt_hybrid_frame cannot be nested")
+    unsafe { rui_hybrid_start(addr(model)) }
+    let w=rui_width(); let h=rui_height(); let locale=rui_locale_revision(); let sheet=rui_style_revision(); let debug=rui_debugger_revision()
+    if (w!=hybrid_width || h!=hybrid_height || locale!=hybrid_locale || sheet!=hybrid_style || debug!=hybrid_debug) {
+        rui_hybrid_invalidate(); hybrid_width=w; hybrid_height=h; hybrid_locale=locale; hybrid_style=sheet; hybrid_debug=debug
+    }
+    // Features with external clocks/scroll/focus retain the normal frame path.
+    let dynamic=!empty(virtuals) || !empty(presences) || !empty(focus_requests) || css_dirty
+    hybrid_active=true
+    if (rui_hybrid_pending() || dynamic) {
+        ui_legacy_frame() {
+            if (!dispatching) { rt_hybrid_sources(model) }
+            invoke(body)
+        }
+    } else { rui_hybrid_flush(); rui_update() }
+    hybrid_active=false
+    rui_native_check()
+}
+
+var private state_serial:uint64
+var private mounted_state:uint64
+var private editing_state:uint64
+def rt_state_validate(value:auto(T)&) {
+    static_assert(!typeinfo is_pointer(value) && !typeinfo is_lambda(value),
+        "ui_state cannot own borrowed pointers or closures; keep external resources outside the model")
+    static_if (typeinfo is_array(value)) {
+        for (item in value) { _::rt_state_validate(item) }
+    } static_elif (typeinfo is_struct(value) || typeinfo is_tuple(value)) {
+        apply(value) $(name,field) { _::rt_state_validate(field) }
+    }
+}
+def rt_state_id():uint64 {
+    state_serial+=1ul
+    return state_serial
+}
+def ui_read(state:$UiState<auto(T)>?; body:block<(value:T):void>) {
+    verify(state!=null,"ui_read requires a live ui_state")
+    state->read(body)
+}
+// Only generated code may obtain a scoped mutable borrow. Direct calls require
+// an explicit unsafe block, just like casting away constness by hand.
+[unsafe_operation]
+def rt_ui_edit(state:$UiState<auto(T)>?; body:block<(var value:T):void>; opaque:bool) {
+    verify(state!=null,"ui_edit requires a live ui_state")
+    verify(editing_state==0ul || editing_state==state->id(),"cannot edit a different state in a nested transaction")
+    let previous=editing_state
+    editing_state=state->id()
+    try {
+        state->read() $(value:T) {
+            unsafe { invoke(body,*reinterpret<T?>(addr(value))) }
+            if (opaque) { ui_changed(value) }
+        }
+    } recover {
+        // A failed edit is not a rollback: publish partial writes on the next
+        // frame, restore the transaction guard, then preserve the exception.
+        let message=string(this_context().last_exception)
+        editing_state=previous
+        rui_hybrid_invalidate()
+        panic(message)
+    }
+    editing_state=previous
+}
+[unsafe_operation]
+def rt_ui_frame(state:$UiState<auto(T)>?; body:block<(var value:T):void>; opaque:bool) {
+    verify(state!=null,"ui_frame requires a live ui_state")
+    verify(editing_state==0ul,"finish ui_edit before ui_frame")
+    if (mounted_state!=0ul && mounted_state!=state->id()) { ui_reset() }
+    mounted_state=state->id()
+    if (opaque) { rui_hybrid_invalidate() }
+    state->read() $(value:T) {
+        rt_hybrid_frame(value) {
+            unsafe { invoke(body,*reinterpret<T?>(addr(value))) }
+        }
+    }
+}
+
 def ui_reset() {
     verify(empty(active_component) && !unmounting, "ui_reset must run outside component rendering and teardown")
     var inscope dead : array<string>
@@ -1259,6 +1618,7 @@ def ui_reset() {
     for (value in values(nodes)) { rui_remove(value.handle) }
     clear(nodes); clear(order); clear(parents); clear(calls); clear(events); clear(styles); clear(style_order)
     clear(templates); clear(template_stack); clear(template_ids); clear(template_sheets)
+    clear(native_stack); native_building=false
     template_selected=""; template_building=false; template_definition=UiTemplateDefinition()
     clear(components); clear(visited_nodes); clear(visited_components)
     clear(bindings); clear(conditions); clear(visited_bindings)
@@ -1269,6 +1629,7 @@ def ui_reset() {
     clear(virtuals); clear(focus_requests); clear(focus_returns)
     clear(drafts); clear(option_snapshots)
     clear(presences); clear(animation_bindings)
+    rui_hybrid_reset(); hybrid_active=false; mounted_state=0ul
     style_defining=false; keyframes_building=false; keyframe_building=false; in_media=false; in_spritesheet=false
     ui_clear_stats()
     epoch = 0; css_dirty = true; dispatching = false
@@ -1286,6 +1647,91 @@ def ui_find(part_name : string; item_key : int = -1) : uint64 {
 // Style declarations are ordinary typed calls, evaluated once per sheet.
 struct UiLength { value : float; unit : string }
 struct UiColor { r,g,b : int }
+struct UiDecoratorColor { ink:UiColor; alpha:float }
+def decorator_color(canvas:uint64; name:string):UiDecoratorColor {
+    let color=rui_decorator_color(canvas,name)
+    return UiDecoratorColor(ink=UiColor(r=int(color.x),g=int(color.y),b=int(color.z)),alpha=float(color.w)/255.)
+}
+def decorator_number_param(name:string; value:float):UiDecoratorParam { return UiDecoratorParam(name=name,parser="number",default_value="{value}") }
+def decorator_length_param(name:string; value:UiLength):UiDecoratorParam { return UiDecoratorParam(name=name,parser="length_percent",default_value="{value.value}{value.unit}") }
+def decorator_color_param(name:string; value:UiColor; alpha:float=1.):UiDecoratorParam {
+    return UiDecoratorParam(name=name,parser="color",default_value="rgba({value.r},{value.g},{value.b},{int(clamp(alpha,0.,1.)*255.)})")
+}
+def decorator_string_param(name,value:string):UiDecoratorParam { return UiDecoratorParam(name=name,parser="string",default_value=value) }
+def decorator_arg(name:string; value:float):UiDecoratorArg { return UiDecoratorArg(name=name,value="{value}") }
+def decorator_arg(name:string; value:int):UiDecoratorArg { return decorator_arg(name,float(value)) }
+def decorator_arg(name:string; value:UiLength):UiDecoratorArg { return UiDecoratorArg(name=name,value="{value.value}{value.unit}") }
+def decorator_arg(name:string; value:UiColor; alpha:float=1.):UiDecoratorArg {
+    return UiDecoratorArg(name=name,value="rgba({value.r},{value.g},{value.b},{int(clamp(alpha,0.,1.)*255.)})")
+}
+def decorator_arg(name,value:string):UiDecoratorArg { return UiDecoratorArg(name=name,value="\"{value}\"") }
+def custom_decorator(name:string; args:array<UiDecoratorArg>; paint_area:string="padding-box") {
+    if (paint_area!="padding-box" && paint_area!="border-box" && paint_area!="content-box") { panic("Invalid custom decorator paint area") }
+    var inscope names,values:array<string>
+    for (arg in args) { names |> push(arg.name); values |> push(arg.value) }
+    let declaration=rui_decorator_value(name,names,values)
+    if (empty(declaration)) { panic("Invalid custom decorator argument value") }
+    property("decorator","{declaration} {paint_area}")
+}
+def custom_decorator(name:string; paint_area:string="padding-box") {
+    var inscope args:array<UiDecoratorArg>
+    custom_decorator(name,args,paint_area)
+}
+// GPU effects share the typed RCSS parameter schema with script decorators.
+typedef UiEffectParam = UiDecoratorParam
+typedef UiEffectArg = UiDecoratorArg
+struct UiFilterEffect { value:string }
+def effect_number_param(name:string; value:float):UiEffectParam { return decorator_number_param(name,value) }
+def effect_length_param(name:string; value:UiLength):UiEffectParam { return decorator_length_param(name,value) }
+def effect_color_param(name:string; value:UiColor; alpha:float=1.):UiEffectParam { return decorator_color_param(name,value,alpha) }
+def effect_arg(name:string; value:float):UiEffectArg { return decorator_arg(name,value) }
+def effect_arg(name:string; value:int):UiEffectArg { return decorator_arg(name,value) }
+def effect_arg(name:string; value:UiLength):UiEffectArg { return decorator_arg(name,value) }
+def effect_arg(name:string; value:UiColor; alpha:float=1.):UiEffectArg { return decorator_arg(name,value,alpha) }
+def gpu_effects_available():bool { return rui_gpu_available() }
+// X: registered GL programs. Y: compiled native shader/filter instances.
+def gpu_effect_counts():int2 { return rui_gpu_counts() }
+def private install_gpu_effect(name,source:string; params:array<UiEffectParam>; filter:bool; overflow:float):uint64 {
+    var inscope names,parsers,defaults:array<string>
+    for (param in params) { names |> push(param.name); parsers |> push(param.parser); defaults |> push(param.default_value) }
+    let id=rui_gpu_register(name,filter,source,names,parsers,defaults,overflow)
+    if (id==0ul) { panic(rui_gpu_error()) }
+    return id
+}
+def register_shader(name,source:string; params:array<UiEffectParam>):uint64 { return install_gpu_effect(name,source,params,false,0.) }
+def register_shader(name,source:string):uint64 { var inscope params:array<UiEffectParam>; return register_shader(name,source,params) }
+def register_filter(name,source:string; params:array<UiEffectParam>; overflow:float=0.):uint64 { return install_gpu_effect(name,source,params,true,overflow) }
+def register_filter(name,source:string; overflow:float=0.):uint64 { var inscope params:array<UiEffectParam>; return register_filter(name,source,params,overflow) }
+def shader_registered(name:string):bool { return rui_gpu_registered(name,false) }
+def filter_registered(name:string):bool { return rui_gpu_registered(name,true) }
+def unregister_shader(name:string):bool { return rui_gpu_unregister(name,false) }
+def unregister_filter(name:string):bool { return rui_gpu_unregister(name,true) }
+def private gpu_declaration(name:string; filter:bool; args:array<UiEffectArg>):string {
+    var inscope names,values:array<string>
+    for (arg in args) { names |> push(arg.name); values |> push(arg.value) }
+    let declaration=rui_gpu_value(name,filter,names,values)
+    if (empty(declaration)) { panic("Invalid GPU effect argument value") }
+    return declaration
+}
+def custom_shader(name:string; args:array<UiEffectArg>; paint_area:string="padding-box") {
+    if (paint_area!="padding-box" && paint_area!="border-box" && paint_area!="content-box") { panic("Invalid custom shader paint area") }
+    property("decorator","{gpu_declaration(name,false,args)} {paint_area}")
+}
+def custom_shader(name:string; paint_area:string="padding-box") { var inscope args:array<UiEffectArg>; custom_shader(name,args,paint_area) }
+def filter_effect(name:string; args:array<UiEffectArg>):UiFilterEffect { return UiFilterEffect(value=gpu_declaration(name,true,args)) }
+def filter_effect(name:string):UiFilterEffect { var inscope args:array<UiEffectArg>; return filter_effect(name,args) }
+def custom_filter(name:string; args:array<UiEffectArg>) { property("filter",gpu_declaration(name,true,args)) }
+def custom_filter(name:string) { var inscope args:array<UiEffectArg>; custom_filter(name,args) }
+def custom_backdrop_filter(name:string; args:array<UiEffectArg>) { property("backdrop-filter",gpu_declaration(name,true,args)) }
+def custom_backdrop_filter(name:string) { var inscope args:array<UiEffectArg>; custom_backdrop_filter(name,args) }
+def private filter_chain(effects:array<UiFilterEffect>):string {
+    var result=""
+    for (effect in effects) { result="{result}{empty(result) ? "" : " "}{effect.value}" }
+    return empty(result) ? "none" : result
+}
+def custom_filters(effects:array<UiFilterEffect>) { property("filter",filter_chain(effects)) }
+def custom_backdrop_filters(effects:array<UiFilterEffect>) { property("backdrop-filter",filter_chain(effects)) }
+
 def private native_rgba(ink:UiColor; alpha:float):uint4 {
     return uint4(uint(clamp(ink.r,0,255)),uint(clamp(ink.g,0,255)),uint(clamp(ink.b,0,255)),uint(clamp(alpha,0.,1.)*255.))
 }
@@ -1456,10 +1902,12 @@ def property(name,value:string) {
     if (keyframe_building) { keyframe_properties += "{name}: {value}; " }
     elif (!empty(rule_selector)) { rule_build += "{name}: {value}; " }
     elif (template_building) { rt_template_property(name,value) }
+    elif (native_building) { rt_native_property(name,value) }
     elif (!dispatching) { rui_property(current,name,value) }
 }
 def attribute(name,value:string) {
     if (template_building) { rt_template_attribute(name,value) }
+    elif (native_building) { rt_native_attribute(name,value) }
     elif (!dispatching) { rui_attr(current,name,value) }
 }
 
@@ -1508,6 +1956,16 @@ def padding_y(value:UiLength) { property("padding-top","{value.value}{value.unit
 def margin_top(value:UiLength) { property("margin-top","{value.value}{value.unit}") }
 def margin_bottom(value:UiLength) { property("margin-bottom","{value.value}{value.unit}") }
 def font_size(value:UiLength) { property("font-size","{value.value}{value.unit}") }
+def font_weight(value:string) { property("font-weight",value) }
+def font_style(value:string) { property("font-style",value) }
+def text_decoration(value:string) { property("text-decoration",value) }
+def white_space(value:string) { property("white-space",value) }
+def word_break(value:string) { property("word-break",value) }
+def text_align(value:string) { property("text-align",value) }
+def line_height(value:float) { property("line-height","{value}") }
+def line_height(value:UiLength) { property("line-height",css_length(value)) }
+def vertical_align(value:string) { property("vertical-align",value) }
+def vertical_align(value:UiLength) { property("vertical-align",css_length(value)) }
 def background(value:UiColor) { property("background-color","rgb({value.r},{value.g},{value.b})") }
 def color(value:UiColor) { property("color","rgb({value.r},{value.g},{value.b})") }
 def image_color(value:UiColor) { property("image-color","rgb({value.r},{value.g},{value.b})") }
@@ -1519,6 +1977,77 @@ def svg_decorator(source:string; crop:bool=false; paint_area:string="padding-box
     property("decorator","svg(\"{source}\" {crop ? "crop-to-content" : "crop-none"}) {paint_area}")
 }
 def opacity(value:float) { property("opacity","{value}") }
+
+// The rest of the typed style API. Each helper only forwards to property(), so
+// it works wherever property() does: rules, keyframes, templates, components.
+// A length and a colour are different types, and a keyword is checked against
+// the values RmlUi accepts, so a slip fails at compile time or on first use
+// instead of surfacing as a parser warning.
+def em(value:float):UiLength { return UiLength(value=value,unit="em") }
+def em(value:int):UiLength { return em(float(value)) }
+def rem(value:float):UiLength { return UiLength(value=value,unit="rem") }
+def rem(value:int):UiLength { return rem(float(value)) }
+def vw(value:float):UiLength { return UiLength(value=value,unit="vw") }
+def vw(value:int):UiLength { return vw(float(value)) }
+def vh(value:float):UiLength { return UiLength(value=value,unit="vh") }
+def vh(value:int):UiLength { return vh(float(value)) }
+def private css_length(value:UiLength):string { return "{value.value}{value.unit}" }
+// RCSS takes alpha as 0..255; the API takes 0..1 like the other colour helpers.
+def private css_color(value:UiColor; alpha:float=1.):string {
+    if (alpha >= 1.) { return "rgb({value.r},{value.g},{value.b})" }
+    return "rgba({value.r},{value.g},{value.b},{int(clamp(alpha,0.,1.)*255.)})"
+}
+def background(value:UiColor; alpha:float) { property("background-color",css_color(value,alpha)) }
+def color(value:UiColor; alpha:float) { property("color",css_color(value,alpha)) }
+
+def min_width(value:UiLength) { property("min-width",css_length(value)) }
+def min_height(value:UiLength) { property("min-height",css_length(value)) }
+def max_width(value:UiLength) { property("max-width",css_length(value)) }
+def max_height(value:UiLength) { property("max-height",css_length(value)) }
+
+def margin(value:UiLength) { property("margin",css_length(value)) }
+def margin_left(value:UiLength) { property("margin-left",css_length(value)) }
+def margin_right(value:UiLength) { property("margin-right",css_length(value)) }
+def margin_x(value:UiLength) { property("margin-left",css_length(value)); property("margin-right",css_length(value)) }
+def margin_y(value:UiLength) { property("margin-top",css_length(value)); property("margin-bottom",css_length(value)) }
+def padding_left(value:UiLength) { property("padding-left",css_length(value)) }
+def padding_right(value:UiLength) { property("padding-right",css_length(value)) }
+def padding_top(value:UiLength) { property("padding-top",css_length(value)) }
+def padding_bottom(value:UiLength) { property("padding-bottom",css_length(value)) }
+def gap(value:UiLength) { property("gap",css_length(value)) }
+def letter_spacing(value:UiLength) { property("letter-spacing",css_length(value)) }
+
+def border_radius(value:UiLength) { property("border-radius",css_length(value)) }
+def border_width(value:UiLength) { property("border-width",css_length(value)) }
+def border_color(value:UiColor; alpha:float=1.) { property("border-color",css_color(value,alpha)) }
+def private border_side(side:string; thickness:UiLength; ink:UiColor; alpha:float) {
+    property(side,"{css_length(thickness)} {css_color(ink,alpha)}")
+}
+def border(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border",thickness,ink,alpha) }
+def border_top(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-top",thickness,ink,alpha) }
+def border_right(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-right",thickness,ink,alpha) }
+def border_bottom(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-bottom",thickness,ink,alpha) }
+def border_left(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-left",thickness,ink,alpha) }
+
+def position(kind:string) {
+    verify(kind == "static" || kind == "relative" || kind == "absolute" || kind == "fixed",
+        "position: use static, relative, absolute or fixed")
+    property("position",kind)
+}
+def left(value:UiLength) { property("left",css_length(value)) }
+def top(value:UiLength) { property("top",css_length(value)) }
+def right(value:UiLength) { property("right",css_length(value)) }
+def bottom(value:UiLength) { property("bottom",css_length(value)) }
+def z_index(value:int) { property("z-index","{value}") }
+def display(kind:string) {
+    verify(kind == "none" || kind == "block" || kind == "inline" || kind == "inline-block" || kind == "flow-root" ||
+        kind == "flex" || kind == "inline-flex" || kind == "table" || kind == "inline-table" || kind == "table-row" ||
+        kind == "table-row-group" || kind == "table-column" || kind == "table-column-group" || kind == "table-cell",
+        "display: not a display value RmlUi knows")
+    property("display",kind)
+}
+def flex_grow(value:float) { property("flex-grow","{value}") }
+def flex_shrink(value:float) { property("flex-shrink","{value}") }
 def disabled(getter:block<():bool>) { if (!dispatching) { rui_attr_if(current,"disabled",invoke(getter)) } }
 // A class or pseudo-class that follows a condition. Unlike an inline property,
 // a change of either makes RmlUi run the element's transitions. The class is
@@ -1650,77 +2179,6 @@ def rt_template_column(body:block) { rt_template_column("",body) }
 def rt_template_row(name:string; body:block) { template_node("div",name,"ru-row",body) }
 def rt_template_row(body:block) { rt_template_row("",body) }
 def rt_template_box(name:string; body:block) { template_node("div",name,"ru-box",body) }
-
-// The rest of the typed style API. Each helper only forwards to property(), so
-// it works wherever property() does: rules, keyframes, templates, components.
-// A length and a colour are different types, and a keyword is checked against
-// the values RmlUi accepts, so a slip fails at compile time or on first use
-// instead of surfacing as a parser warning.
-def em(value:float):UiLength { return UiLength(value=value,unit="em") }
-def em(value:int):UiLength { return em(float(value)) }
-def rem(value:float):UiLength { return UiLength(value=value,unit="rem") }
-def rem(value:int):UiLength { return rem(float(value)) }
-def vw(value:float):UiLength { return UiLength(value=value,unit="vw") }
-def vw(value:int):UiLength { return vw(float(value)) }
-def vh(value:float):UiLength { return UiLength(value=value,unit="vh") }
-def vh(value:int):UiLength { return vh(float(value)) }
-def private css_length(value:UiLength):string { return "{value.value}{value.unit}" }
-// RCSS takes alpha as 0..255; the API takes 0..1 like the other colour helpers.
-def private css_color(value:UiColor; alpha:float=1.):string {
-    if (alpha >= 1.) { return "rgb({value.r},{value.g},{value.b})" }
-    return "rgba({value.r},{value.g},{value.b},{int(clamp(alpha,0.,1.)*255.)})"
-}
-def background(value:UiColor; alpha:float) { property("background-color",css_color(value,alpha)) }
-def color(value:UiColor; alpha:float) { property("color",css_color(value,alpha)) }
-
-def min_width(value:UiLength) { property("min-width",css_length(value)) }
-def min_height(value:UiLength) { property("min-height",css_length(value)) }
-def max_width(value:UiLength) { property("max-width",css_length(value)) }
-def max_height(value:UiLength) { property("max-height",css_length(value)) }
-
-def margin(value:UiLength) { property("margin",css_length(value)) }
-def margin_left(value:UiLength) { property("margin-left",css_length(value)) }
-def margin_right(value:UiLength) { property("margin-right",css_length(value)) }
-def margin_x(value:UiLength) { property("margin-left",css_length(value)); property("margin-right",css_length(value)) }
-def margin_y(value:UiLength) { property("margin-top",css_length(value)); property("margin-bottom",css_length(value)) }
-def padding_left(value:UiLength) { property("padding-left",css_length(value)) }
-def padding_right(value:UiLength) { property("padding-right",css_length(value)) }
-def padding_top(value:UiLength) { property("padding-top",css_length(value)) }
-def padding_bottom(value:UiLength) { property("padding-bottom",css_length(value)) }
-def gap(value:UiLength) { property("gap",css_length(value)) }
-def letter_spacing(value:UiLength) { property("letter-spacing",css_length(value)) }
-
-def border_radius(value:UiLength) { property("border-radius",css_length(value)) }
-def border_width(value:UiLength) { property("border-width",css_length(value)) }
-def border_color(value:UiColor; alpha:float=1.) { property("border-color",css_color(value,alpha)) }
-def private border_side(side:string; thickness:UiLength; ink:UiColor; alpha:float) {
-    property(side,"{css_length(thickness)} {css_color(ink,alpha)}")
-}
-def border(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border",thickness,ink,alpha) }
-def border_top(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-top",thickness,ink,alpha) }
-def border_right(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-right",thickness,ink,alpha) }
-def border_bottom(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-bottom",thickness,ink,alpha) }
-def border_left(thickness:UiLength; ink:UiColor; alpha:float=1.) { border_side("border-left",thickness,ink,alpha) }
-
-def position(kind:string) {
-    verify(kind == "static" || kind == "relative" || kind == "absolute" || kind == "fixed",
-        "position: use static, relative, absolute or fixed")
-    property("position",kind)
-}
-def left(value:UiLength) { property("left",css_length(value)) }
-def top(value:UiLength) { property("top",css_length(value)) }
-def right(value:UiLength) { property("right",css_length(value)) }
-def bottom(value:UiLength) { property("bottom",css_length(value)) }
-def z_index(value:int) { property("z-index","{value}") }
-def display(kind:string) {
-    verify(kind == "none" || kind == "block" || kind == "inline" || kind == "inline-block" || kind == "flow-root" ||
-        kind == "flex" || kind == "inline-flex" || kind == "table" || kind == "inline-table" || kind == "table-row" ||
-        kind == "table-row-group" || kind == "table-column" || kind == "table-column-group" || kind == "table-cell",
-        "display: not a display value RmlUi knows")
-    property("display",kind)
-}
-def flex_grow(value:float) { property("flex-grow","{value}") }
-def flex_shrink(value:float) { property("flex-shrink","{value}") }
 def rt_template_box(body:block) { rt_template_box("",body) }
 def rt_template_native_element(name,tag:string; body:block) {
     if (!native_registered(tag)) { panic("native_element: tag is not registered") }

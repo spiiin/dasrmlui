@@ -79,7 +79,7 @@ def paint(event:UiNativeEvent) {
 }
 [ui_style]
 def fixture_style() { rule("body") { background(rgb(0,0,0)); width(px(320)); height(px(200)) } }
-[ui_component]
+[ui_component(legacy=true)]
 def view() {
     use_style(@@fixture_style)
     box("clip") {
@@ -98,7 +98,7 @@ def exercise(renderer:SDL_Renderer?; prefix:string) {
     generated=0ul; file_texture=0ul; foreign=0ul; paints=0; creates=0; destroys=0; rejections=0; cleared=false
     register_native_element("test-mesh",@@paint,float2(260.,140.))
     register_native_element("test-other",@(event:UiNativeEvent) {})
-    ui_frame() { view() }
+    ui_legacy_frame() { view() }
     let id=ui_find("mesh"); let other=ui_find("other")
     verify(rui_is_native(id) && rui_is_native(other),"both native elements mounted")
     var pixel=array<uint4>(uint4(255u))
@@ -112,7 +112,7 @@ def exercise(renderer:SDL_Renderer?; prefix:string) {
     verify(!native_texture_release(id,old) && native_texture_size(id,old)==int2(0))
     verify(native_texture_resources()==3,"cached batches retain released textures")
     unsafe { heap_collect(true,false) }
-    ui_clear_stats(); ui_frame() { view() }; snapshot(renderer,prefix,"cached")
+    ui_clear_stats(); ui_legacy_frame() { view() }; snapshot(renderer,prefix,"cached")
     verify(paints==1 && ui_stats().binding_updates==0)
     cleared=true; native_invalidate(id); snapshot(renderer,prefix,"cleared")
     verify(paints==2 && native_texture_resources()==1,"repaint releases textures retained by old batches")
@@ -140,7 +140,7 @@ def exercise(renderer:SDL_Renderer?; prefix:string) {
     verify(native_texture_resources()==0 && unregister_native_element("test-failed-mesh"),"failed Paint still releases all owned textures")
     // Remount allocates fresh resources; shutdown also destroys unreleased handles.
     cleared=false; foreign=old
-    ui_frame() { view() }; snapshot(renderer,prefix,"remount")
+    ui_legacy_frame() { view() }; snapshot(renderer,prefix,"remount")
     verify(ui_find("mesh")!=id && generated!=old && native_texture_resources()==2)
     verify(!native_texture_release(id,generated))
     verify(rui_warning_count()==0)

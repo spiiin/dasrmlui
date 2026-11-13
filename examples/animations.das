@@ -148,23 +148,26 @@ def orbital_menu(var model:Menu) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Menu()
-    model.notices |> push(Notice(id=0,heading="Welcome aboard",detail="Your crew is waiting at the landing pad."))
+    var initial=Menu()
+    initial.notices |> push(Notice(id=0,heading="Welcome aboard",detail="Your crew is waiting at the landing pad."))
     var panel,toast=0ul
+    var state=ui_state(initial)
     let result=run_gl_demo("dasrmlui - Orbital / animations","logs/animations.png",smoke,
         $(delta:float) { if (smoke) { rui_test_advance_time(double(0.08)) } },
-        $() { orbital_menu(model) }) $(frame:int) {
-        if (frame==0) { panel=ui_find("briefing"); toast=ui_find("toast",0); rui_test_click(ui_find("toggle_panel")) }
-        elif (frame==1) { verify(rui_alive(panel) && panel_unmounts==0); rui_test_click(ui_find("toggle_panel")) }
-        elif (frame==2) { verify(ui_find("briefing")==panel && panel_mounts==1,"reopen while exiting preserves component"); rui_test_event(ui_find("callsign"),"change","KESTREL / TEST"); rui_test_click(ui_find("dismiss",0)) }
-        elif (frame==3) { verify(rui_alive(toast),"notification retained during exit"); rui_test_click(ui_find("launch_button")) }
-        elif (frame==4) { verify(model.launching && model.launches==1) }
-        elif (frame==7) { verify(!rui_alive(toast),"notification exit completed"); rui_test_click(ui_find("ambient")) }
-        elif (frame==8) { verify(!model.ambient && rui_animation_status(ui_find("vehicle"))==0) }
-        elif (frame==11) {
-            verify(model.completed==1 && !model.launching && ui_find("toast",0)!=toast && ui_find("toast",0)!=0ul)
-            verify(rui_get_value(ui_find("callsign"))=="KESTREL / TEST" && panel_mounts==1)
-            print("PASS: GL transforms, panel exit cancellation, local state, notification unmount, launch completion, stop ambient\n")
+        $() { ui_frame(state) $(model:Menu) { orbital_menu(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Menu) {
+            if (frame==0) { panel=ui_find("briefing"); toast=ui_find("toast",0); rui_test_click(ui_find("toggle_panel")) }
+            elif (frame==1) { verify(rui_alive(panel) && panel_unmounts==0); rui_test_click(ui_find("toggle_panel")) }
+            elif (frame==2) { verify(ui_find("briefing")==panel && panel_mounts==1,"reopen while exiting preserves component"); rui_test_event(ui_find("callsign"),"change","KESTREL / TEST"); rui_test_click(ui_find("dismiss",0)) }
+            elif (frame==3) { verify(rui_alive(toast),"notification retained during exit"); rui_test_click(ui_find("launch_button")) }
+            elif (frame==4) { verify(model.launching && model.launches==1) }
+            elif (frame==7) { verify(!rui_alive(toast),"notification exit completed"); rui_test_click(ui_find("ambient")) }
+            elif (frame==8) { verify(!model.ambient && rui_animation_status(ui_find("vehicle"))==0) }
+            elif (frame==11) {
+                verify(model.completed==1 && !model.launching && ui_find("toast",0)!=toast && ui_find("toast",0)!=0ul)
+                verify(rui_get_value(ui_find("callsign"))=="KESTREL / TEST" && panel_mounts==1)
+                print("PASS: GL transforms, panel exit cancellation, local state, notification unmount, launch completion, stop ambient\n")
+            }
         }
     }
     if (smoke) { verify(panel_unmounts==1,"reset cleans retained panel") }

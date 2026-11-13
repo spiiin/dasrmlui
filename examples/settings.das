@@ -143,15 +143,18 @@ def settings(var model:Settings) {
 }
 [export]
 def main(smoke:bool):int {
-    var model = Settings()
-    return run_demo("dasrmlui - Settings studio","logs/settings.png",smoke,$() { settings(model) }) $(frame:int) {
-        if (frame == 0) { rui_test_event(ui_find("email_field"),"change","invalid") }
-        elif (frame == 1) { verify(ui_find("error") != 0ul); rui_test_click(ui_find("reset")) }
-        elif (frame == 2) { verify(valid_email(model.draft.email)); rui_test_click(ui_find("appearance_tab")) }
-        elif (frame == 3) { verify(ui_find("name_field") == 0ul); rui_test_click(ui_find("indigo")) }
-        elif (frame == 4) { verify(!model.draft.mint); rui_test_click(ui_find("save")) }
-        elif (frame == 5) { verify(model.saves == 1 && !model.saved.mint); rui_test_click(ui_find("network_tab")) }
-        elif (frame == 6) { rui_test_click(ui_find("advanced")) }
-        elif (frame == 7) { verify(ui_find("endpoint_field") != 0ul) }
+    var initial = Settings()
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Settings studio","logs/settings.png",smoke,$() { ui_frame(state) $(model:Settings) { settings(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Settings) {
+            if (frame == 0) { rui_test_event(ui_find("email_field"),"change","invalid") }
+            elif (frame == 1) { verify(ui_find("error") != 0ul); rui_test_click(ui_find("reset")) }
+            elif (frame == 2) { verify(valid_email(model.draft.email)); rui_test_click(ui_find("appearance_tab")) }
+            elif (frame == 3) { verify(ui_find("name_field") == 0ul); rui_test_click(ui_find("indigo")) }
+            elif (frame == 4) { verify(!model.draft.mint); rui_test_click(ui_find("save")) }
+            elif (frame == 5) { verify(model.saves == 1 && !model.saved.mint); rui_test_click(ui_find("network_tab")) }
+            elif (frame == 6) { rui_test_click(ui_find("advanced")) }
+            elif (frame == 7) { verify(ui_find("endpoint_field") != 0ul) }
+        }
     }
 }

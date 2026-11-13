@@ -5,6 +5,8 @@ enum NativePhase { NativeCreate, NativeAttribute, NativeProperty, NativeResize,
     NativeUpdate, NativePaint, NativeDestroy, NativeRelease };
 using NativeDispatch = das::TFunc<void,uint64_t,uint64_t,int32_t,const char*>;
 das::Context* native_callback_context=nullptr;
+// Real interpreter call-site position, required for GC to trace suspended callers.
+das::LineInfo* native_entry_line=nullptr;
 uint64_t native_callback_element=0;
 int native_callback_phase=-1;
 std::string native_error;
@@ -22,6 +24,19 @@ struct NativeBatch {
     Rml::Mesh mesh;
     Rml::Geometry geometry;
 };
+// Shared drawing storage for native elements and per-element decorator data.
+struct NativeCanvas {
+    Rml::Element* owner;
+    std::unordered_map<uint64_t,std::shared_ptr<NativeTexture>> textures;
+    std::vector<NativeBatch> batches;
+    size_t paint_vertices=0,paint_indices=0;
+    bool paint_dirty=true;
+    explicit NativeCanvas(Rml::Element* element):owner(element) {}
+    void BeginPaint() { paint_dirty=false; batches.clear(); paint_vertices=paint_indices=0; }
+    void Compile() { for(auto& batch:batches) batch.geometry=owner->GetRenderManager()->MakeGeometry(std::move(batch.mesh)); }
+    void Render(Rml::Vector2f offset) { for(auto& batch:batches) batch.geometry.Render(offset,batch.texture ? batch.texture->view : Rml::Texture{}); }
+};
+std::unordered_map<uint64_t,NativeCanvas*> decorator_canvases;
 
 void native_guard() {
     if(native_callback_context)
@@ -44,7 +59,7 @@ public:
         const bool ok=context->runWithCatch([&] {
             vec4f args[]={das::cast<uint64_t>::from(id),das::cast<uint64_t>::from(element),
                 das::cast<int32_t>::from(phase),das::cast<char*>::from(context->allocateString(detail.c_str(),uint32_t(detail.size()),nullptr))};
-            context->call(dispatch.PTR,args,nullptr);
+            context->call(dispatch.PTR,args,native_entry_line);
         });
         if(!ok) {
             const auto error=context->getException();
@@ -57,17 +72,13 @@ public:
     Rml::ElementPtr InstanceElement(Rml::Element*,const Rml::String& tag,const Rml::XMLAttributes&) override;
     void ReleaseElement(Rml::Element* element) override { delete element; }
 };
-class ScriptElement final : public Rml::Element {
+class ScriptElement final : public Rml::Element, public NativeCanvas {
 public:
     ScriptInstancer& type;
     uint64_t id=0;
     Rml::Vector2f intrinsic;
-    // Batches keep released texture handles alive until their cached draw is replaced.
-    std::unordered_map<uint64_t,std::shared_ptr<NativeTexture>> textures;
-    std::vector<NativeBatch> batches;
-    size_t paint_vertices=0,paint_indices=0;
-    bool paint_dirty=true,failed=false;
-    ScriptElement(const Rml::String& tag,ScriptInstancer& instancer):Element(tag),type(instancer),intrinsic(type.intrinsic) { ++type.live; }
+    bool failed=false;
+    ScriptElement(const Rml::String& tag,ScriptInstancer& instancer):Element(tag),NativeCanvas(this),type(instancer),intrinsic(type.intrinsic) { ++type.live; }
     ~ScriptElement() override {
         // Invalidate the public handle before notifying script destruction.
         if(state) { state->native_nodes.erase(id); state->nodes.erase(id); state->ids.erase(this); state->properties.erase(id); }
@@ -98,12 +109,12 @@ public:
     void OnUpdate() override { if(type.continuous) Notify(NativeUpdate); }
     void OnRender() override {
         if(paint_dirty) {
-            paint_dirty=false; batches.clear(); paint_vertices=paint_indices=0;
+            BeginPaint();
             Notify(NativePaint);
             if(failed) batches.clear();
-            else for(auto& batch:batches) batch.geometry=GetRenderManager()->MakeGeometry(std::move(batch.mesh));
+            else Compile();
         }
-        for(auto& batch:batches) batch.geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content),batch.texture ? batch.texture->view : Rml::Texture{});
+        NativeCanvas::Render(GetAbsoluteOffset(Rml::BoxArea::Content));
     }
 };
 Rml::ElementPtr ScriptInstancer::InstanceElement(Rml::Element*,const Rml::String& tag,const Rml::XMLAttributes&) {
@@ -117,6 +128,10 @@ ScriptElement* native_element(uint64_t id) {
     if(!node(id)) return nullptr;
     auto found=state->native_nodes.find(id);
     return found==state->native_nodes.end() ? nullptr : found->second;
+}
+NativeCanvas* native_canvas(uint64_t id) {
+    if(auto element=native_element(id)) return element;
+    auto it=decorator_canvases.find(id); return it==decorator_canvases.end() ? nullptr : it->second;
 }
 static uint64_t rui_native_register(const char* tag,NativeDispatch dispatch,das::float2 intrinsic,bool continuous,das::Context* context) {
     native_guard();
@@ -157,7 +172,7 @@ static das::float2 rui_native_size(uint64_t id) {
     return {size.x,size.y};
 }
 static double rui_native_time() { return state ? state->system->GetElapsedTime() : 0.; }
-static void rui_native_invalidate(uint64_t id) { if(auto e=native_element(id)) e->paint_dirty=true; }
+static void rui_native_invalidate(uint64_t id) { if(auto e=native_canvas(id)) e->paint_dirty=true; }
 static bool rui_native_intrinsic(uint64_t id,das::float2 size) {
     if(native_callback_context && (native_callback_phase==NativePaint || native_callback_phase==NativeDestroy))
         native_callback_context->throw_error("Native intrinsic size cannot change during paint or destroy");
@@ -165,13 +180,13 @@ static bool rui_native_intrinsic(uint64_t id,das::float2 size) {
     if(!e || !std::isfinite(size.x) || !std::isfinite(size.y) || size.x<=0 || size.y<=0) return false;
     e->SetIntrinsic({size.x,size.y}); return true;
 }
-ScriptElement* native_painter(uint64_t id,das::Context* context) {
+NativeCanvas* native_painter(uint64_t id,das::Context* context) {
     if(native_callback_phase!=NativePaint || native_callback_element!=id || !native_callback_context)
         context->throw_error("Native drawing is only valid inside this element's Paint callback");
-    return native_element(id);
+    return native_canvas(id);
 }
-Rml::ColourbPremultiplied native_color(ScriptElement* e,das::uint4 color) {
-    const float alpha=std::min(color.w,255u)/255.f*e->GetComputedValues().opacity();
+Rml::ColourbPremultiplied native_color(NativeCanvas* e,das::uint4 color) {
+    const float alpha=std::min(color.w,255u)/255.f*e->owner->GetComputedValues().opacity();
     return {Rml::byte(std::min(color.x,255u)*alpha),Rml::byte(std::min(color.y,255u)*alpha),
         Rml::byte(std::min(color.z,255u)*alpha),Rml::byte(255*alpha)};
 }
@@ -202,17 +217,17 @@ static void rui_native_mesh(uint64_t id,const das::TArray<das::float4>& vertices
     for(uint32_t i=0;i<indices.size;++i) mesh.indices.push_back(offset+indices[i]);
     e->paint_vertices+=vertices.size; e->paint_indices+=indices.size;
 }
-ScriptElement* native_texture_owner(uint64_t id,das::Context* context) {
+NativeCanvas* native_texture_owner(uint64_t id,das::Context* context) {
     if(native_callback_context && (native_callback_element!=id || native_callback_phase==NativeDestroy))
         context->throw_error("Native texture access requires the current live element");
-    auto e=native_element(id);
-    if(!e || !e->GetRenderManager()) context->throw_error("Native textures require an attached element; initialize them in Paint");
+    auto e=native_canvas(id);
+    if(!e || !e->owner->GetRenderManager()) context->throw_error("Native textures require an attached element; initialize them in Paint");
     return e;
 }
 static uint64_t rui_native_texture_load(uint64_t id,const char* source,das::Context* context) {
     auto e=native_texture_owner(id,context);
     if(!source || !*source) return 0;
-    auto view=e->GetRenderManager()->LoadTexture(source,e->GetOwnerDocument()->GetSourceURL());
+    auto view=e->owner->GetRenderManager()->LoadTexture(source,e->owner->GetOwnerDocument()->GetSourceURL());
     auto size=view.GetDimensions();
     if(size.x<=0 || size.y<=0) return 0;
     auto resource=std::make_shared<NativeTexture>(); resource->view=view;
@@ -229,7 +244,7 @@ static uint64_t rui_native_texture_rgba(uint64_t id,das::int2 size,const das::TA
         bytes.push_back(Rml::byte(a));
     }
     auto resource=std::make_shared<NativeTexture>();
-    resource->owned=e->GetRenderManager()->MakeCallbackTexture([bytes=std::move(bytes),size](const Rml::CallbackTextureInterface& target) {
+    resource->owned=e->owner->GetRenderManager()->MakeCallbackTexture([bytes=std::move(bytes),size](const Rml::CallbackTextureInterface& target) {
         return target.GenerateTexture({bytes.data(),bytes.size()},{size.x,size.y});
     });
     resource->view=resource->owned;
@@ -238,13 +253,13 @@ static uint64_t rui_native_texture_rgba(uint64_t id,das::int2 size,const das::TA
     const auto handle=next_native_texture++; e->textures.emplace(handle,std::move(resource)); return handle;
 }
 static das::int2 rui_native_texture_size(uint64_t id,uint64_t texture) {
-    auto e=native_element(id);
+    auto e=native_canvas(id);
     if(!e || !e->textures.count(texture)) return {};
     auto size=e->textures.at(texture)->view.GetDimensions(); return {size.x,size.y};
 }
 static bool rui_native_texture_release(uint64_t id,uint64_t texture,das::Context* context) {
     if(native_callback_context && native_callback_element!=id) context->throw_error("Cannot release another element's texture inside a native callback");
-    auto e=native_element(id); return e && e->textures.erase(texture)!=0;
+    auto e=native_canvas(id); return e && e->textures.erase(texture)!=0;
 }
 static int rui_native_texture_resources() { return native_texture_resources; }
 static char* rui_native_error(das::Context* context,das::LineInfoArg* at) {

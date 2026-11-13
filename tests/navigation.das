@@ -22,9 +22,9 @@ def popup_frame() {
         slot("items")
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def stable() { text("stable") { reads+=1; return "unchanged" } }
-[ui_component]
+[ui_component(legacy=true)]
 def scene(var model:Model) {
     use_style(@@layout)
     document_nav(rui_root())
@@ -64,26 +64,26 @@ def main(smoke:bool):int {
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,800,600)); verify(rui_default_font())
         model.popup=open_template(@@popup_frame,"Popup",float2(400.,200.),UiDocumentOptions(visible=false))
-        ui_frame() { scene(model) }
+        ui_legacy_frame() { scene(model) }
         let one=by_id("one"); let two=by_id("two"); let six=by_id("six")
         rui_focus(one); key("Right"); verify(rui_focused(two),"native spatial right")
         key("Down"); verify(rui_focused(by_id("five")),"native spatial down")
         key("Left"); verify(rui_focused(by_id("four")),"native spatial left")
         key("Down"); verify(rui_focused(by_id("four")),"auto stays inside nearest scroll container")
-        model.blocked=true; model.hidden=true; ui_frame() { scene(model) }
+        model.blocked=true; model.hidden=true; ui_legacy_frame() { scene(model) }
         rui_focus(one); key("Right"); verify(rui_focused(by_id("three")),"auto skips disabled controls")
         rui_focus(by_id("five")); key("Left"); verify(!rui_focused(by_id("four")),"auto skips hidden controls")
         rui_focus(one); key("Up"); verify(rui_focused(six),"explicit ID overrides geometric direction")
-        model.target="five"; ui_frame() { scene(model) }
+        model.target="five"; ui_legacy_frame() { scene(model) }
         rui_focus(one); key("Up"); verify(rui_focused(by_id("five")),"reactive explicit target")
-        model.mode=UiNav.Horizontal; ui_frame() { scene(model) }
+        model.mode=UiNav.Horizontal; ui_legacy_frame() { scene(model) }
         rui_focus(one); key("Down"); verify(rui_focused(one),"horizontal prevents vertical navigation")
-        model.mode=UiNav.None; ui_frame() { scene(model) }
+        model.mode=UiNav.None; ui_legacy_frame() { scene(model) }
         rui_focus(one); key("Right"); verify(rui_focused(one),"none leaves focus")
-        model.mode=UiNav.TreeOrder; ui_frame() { scene(model) }
+        model.mode=UiNav.TreeOrder; ui_legacy_frame() { scene(model) }
         rui_focus(one); key("Down"); verify(rui_focused(by_id("three")),"tree-order follows DOM rather than geometry")
         rui_focus(six); key("Tab"); verify(rui_focused(one),"Tab remains trapped in focus_scope")
-        model.mode=UiNav.Auto; ui_frame() { scene(model) }
+        model.mode=UiNav.Auto; ui_legacy_frame() { scene(model) }
         rui_focus(ui_find("scroll_first")); key("Down")
         verify(rui_focused(ui_find("scroll_last")) && rui_scroll_top(ui_find("scroll"))>0.,"native navigation scrolls selected item into view")
         let input=ui_find("input"); rui_value(input,"abcd"); rui_focus(input); rui_select(input,4,4); key("Left")
@@ -92,12 +92,12 @@ def main(smoke:bool):int {
         verify(rui_focused(ui_find("popup_second")),"popup native navigation")
         key("Down"); verify(rui_contains(model.popup,rui_focus_node()),"popup cannot navigate to background document")
         hide_document(model.popup)
-        rui_focus(one); key("Return"); ui_frame() { scene(model) }
+        rui_focus(one); key("Return"); ui_legacy_frame() { scene(model) }
         verify(clicks==1,"Enter activates navigable control")
-        rui_focus(ui_find("custom")); key("Return"); ui_frame() { scene(model) }
+        rui_focus(ui_find("custom")); key("Return"); ui_legacy_frame() { scene(model) }
         verify(clicks==11,"tab_stop enables activation of a generic element")
         unsafe { heap_collect(true,false) }
-        ui_clear_stats(); ui_frame() { scene(model) }
+        ui_clear_stats(); ui_legacy_frame() { scene(model) }
         verify(reads==1 && ui_stats().updates==0 && by_id("one")==one,"navigation preserves handles and idle caching")
         verify(rui_warning_count()==0ul,"valid navigation produces no RCSS warnings")
         close_document(model.popup); ui_reset(); rui_shutdown()

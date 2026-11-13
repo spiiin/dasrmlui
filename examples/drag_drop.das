@@ -13,6 +13,7 @@ def bay_count(model:Manifest; zone:int):int {
     for (item in model.items) { if (item.zone==zone) { count+=1 } }
     return count
 }
+[ui_action]
 def drop_cargo(var model:Manifest; payload:string; zone,before:int) {
     let parsed=try_to_int(payload)
     if (!is_ok(parsed)) { return }
@@ -92,21 +93,24 @@ def cargo_screen(var model:Manifest) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Manifest()
-    model.items |> push <| Cargo(id=0,zone=0,title="Kestrel scout",sprite_id="scout")
-    model.items |> push <| Cargo(id=1,zone=0,title="Nomad rover",sprite_id="rover")
-    model.items |> push <| Cargo(id=2,zone=0,title="Echo probe",sprite_id="probe")
-    model.items |> push <| Cargo(id=3,zone=1,title="Atlas lander",sprite_id="cargo")
+    var initial=Manifest()
+    initial.items |> push <| Cargo(id=0,zone=0,title="Kestrel scout",sprite_id="scout")
+    initial.items |> push <| Cargo(id=1,zone=0,title="Nomad rover",sprite_id="rover")
+    initial.items |> push <| Cargo(id=2,zone=0,title="Echo probe",sprite_id="probe")
+    initial.items |> push <| Cargo(id=3,zone=1,title="Atlas lander",sprite_id="cargo")
     var original=0ul
-    return run_demo("dasrmlui - Field logistics","logs/drag_drop.png",smoke,$() { cargo_screen(model) }) $(frame:int) {
-        if (frame==0) {
-            rui_test_drag(ui_find("cargo",0),ui_find("flight_drop"))
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Field logistics","logs/drag_drop.png",smoke,$() { ui_frame(state) $(model:Manifest) { cargo_screen(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Manifest) {
+            if (frame==0) {
+                rui_test_drag(ui_find("cargo",0),ui_find("flight_drop"))
+            }
+            elif (frame==1) { verify(model.moves==1 && bay_count(model,1)==2,"drop into bay"); rui_test_drag(ui_find("cargo",1),ui_find("flight_drop")) }
+            elif (frame==2) { verify(model.moves==1 && bay_count(model,1)==2,"capacity rejects drop"); original=ui_find("cargo",2); rui_test_drag(original,ui_find("cargo",1)) }
+            elif (frame==3) { verify(model.moves==2 && model.items[0].id==2 && ui_find("cargo",2)==original,"reorder preserves key"); rui_test_drag(ui_find("cargo",0),ui_find("storage_drop")) }
+            elif (frame==4) { verify(model.moves==3 && bay_count(model,1)==1); rui_test_drag(ui_find("cargo",1),ui_find("outside")) }
+            elif (frame==5) { verify(model.moves==3,"outside drop must cancel"); drop_cargo(model,"invalid",0,-1); verify(model.moves==3) }
+            elif (frame==7) { print("PASS: native drag, reorder, capacity rejection, cancel\n") }
         }
-        elif (frame==1) { verify(model.moves==1 && bay_count(model,1)==2,"drop into bay"); rui_test_drag(ui_find("cargo",1),ui_find("flight_drop")) }
-        elif (frame==2) { verify(model.moves==1 && bay_count(model,1)==2,"capacity rejects drop"); original=ui_find("cargo",2); rui_test_drag(original,ui_find("cargo",1)) }
-        elif (frame==3) { verify(model.moves==2 && model.items[0].id==2 && ui_find("cargo",2)==original,"reorder preserves key"); rui_test_drag(ui_find("cargo",0),ui_find("storage_drop")) }
-        elif (frame==4) { verify(model.moves==3 && bay_count(model,1)==1); rui_test_drag(ui_find("cargo",1),ui_find("outside")) }
-        elif (frame==5) { verify(model.moves==3,"outside drop must cancel"); drop_cargo(model,"invalid",0,-1); verify(model.moves==3) }
-        elif (frame==7) { print("PASS: native drag, reorder, capacity rejection, cancel\n") }
     }
 }

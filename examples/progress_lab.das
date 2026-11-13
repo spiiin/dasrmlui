@@ -101,18 +101,23 @@ def journey(var model:Journey) {
 [export]
 def main(smoke:bool):int {
     sample_route()
-    var model=Journey()
+    var initial=Journey()
     var first=0ul
     var origin=float4(0.)
+    var state=ui_state(initial)
     return run_gl_demo("dasrmlui - Follow the signal","logs/progress_lab.png",smoke,$(dt:float) {
-        if (model.playing) { model.progress=min(1.,model.progress+(smoke ? .02 : dt*.12)); if (model.progress>=1.) { model.playing=false } }
-    },$() { journey(model) }) $(frame:int) {
-        if (frame==0) { first=ui_find("point",80); origin=rui_bounds(ui_find("traveller")); verify(rui_local_property(ui_find("light",0),"opacity")=="0"); verify(rui_bounds(ui_find("radial")).w==250.); rui_test_click(ui_find("half")) }
-        elif (frame==1) { verify(model.progress==.5 && ui_find("point",80)==first); verify(rui_get_attr(ui_find("radial"),"value")=="0.5"); verify(rui_bounds(ui_find("traveller")).x>origin.x+250.); verify(rui_local_property(ui_find("light",40),"opacity")=="1" && rui_local_property(ui_find("light",120),"opacity")=="0") }
-        elif (frame==4) { model.progress=1. }
-        elif (frame==7) { verify(rui_get_attr(ui_find("radial"),"value")=="1"); verify(route_position(1.).x==698. && rui_local_property(ui_find("light",160),"opacity")=="1"); rui_test_click(ui_find("reset")) }
-        elif (frame==8) { verify(model.progress==0. && rui_bounds(ui_find("traveller")).x==origin.x); rui_test_click(ui_find("play")) }
-        elif (frame==10) { verify(model.progress>0. && model.playing); rui_test_click(ui_find("play")) }
-        elif (frame==11) { verify(!model.playing); print("PASS: curved path, radial sprite, reset, playback\n") }
+        ui_edit(state) $(var model:Journey) {
+            if (model.playing) { model.progress=min(1.,model.progress+(smoke ? .02 : dt*.12)); if (model.progress>=1.) { model.playing=false } }
+        }
+    },$() { ui_frame(state) $(model:Journey) { journey(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Journey) {
+            if (frame==0) { first=ui_find("point",80); origin=rui_bounds(ui_find("traveller")); verify(rui_local_property(ui_find("light",0),"opacity")=="0"); verify(rui_bounds(ui_find("radial")).w==250.); rui_test_click(ui_find("half")) }
+            elif (frame==1) { verify(model.progress==.5 && ui_find("point",80)==first); verify(rui_get_attr(ui_find("radial"),"value")=="0.5"); verify(rui_bounds(ui_find("traveller")).x>origin.x+250.); verify(rui_local_property(ui_find("light",40),"opacity")=="1" && rui_local_property(ui_find("light",120),"opacity")=="0") }
+            elif (frame==4) { model.progress=1. }
+            elif (frame==7) { verify(rui_get_attr(ui_find("radial"),"value")=="1"); verify(route_position(1.).x==698. && rui_local_property(ui_find("light",160),"opacity")=="1"); rui_test_click(ui_find("reset")) }
+            elif (frame==8) { verify(model.progress==0. && rui_bounds(ui_find("traveller")).x==origin.x); rui_test_click(ui_find("play")) }
+            elif (frame==10) { verify(model.progress>0. && model.playing); rui_test_click(ui_find("play")) }
+            elif (frame==11) { verify(!model.playing); print("PASS: curved path, radial sprite, reset, playback\n") }
+        }
     }
 }

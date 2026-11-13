@@ -7,7 +7,7 @@ require strings
 require dassdl3/sdl3_window_boost
 require dassdl3/sdl3_scope
 var released:int
-[ui_component]
+[ui_component(legacy=true)]
 def view() { native_element("fault","test-fault") }
 [export]
 def main(smoke:bool):int {
@@ -24,7 +24,7 @@ def main(smoke:bool):int {
                 if (event.kind==UiNativeKind.Destroy) { released+=1; if (mode==3) { panic("destroy fault") } }
             },float2(40.,40.),true)
             var caught=0
-            try { ui_frame() { view() }; rui_render() } recover { caught+=1 }
+            try { ui_legacy_frame() { view() }; rui_render() } recover { caught+=1 }
             try { ui_reset() } recover { caught+=1 }
             verify(caught==1,"callback failure is caught inside native traversal, then reported outside it")
             verify(released==mode+1 && native_instance_count("test-fault")==0,"failed elements still release exactly once")
@@ -41,7 +41,7 @@ def main(smoke:bool):int {
         rejected=false
         try { native_rect(0ul,float4(0.,0.,10.,10.),rgb(255,0,0)) } recover { rejected=true }
         verify(rejected,"drawing outside Paint is rejected")
-        ui_frame() { view() }; rui_render()
+        ui_legacy_frame() { view() }; rui_render()
         verify(rui_is_native(ui_find("fault")) && empty(rui_native_error()),"context remains usable after recovered callback errors")
         ui_reset(); rui_shutdown(); verify(native_handler_count()==0)
         return sdl_ok()

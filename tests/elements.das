@@ -21,7 +21,7 @@ def card_style() {
     part("card") |> with_pseudo("flagged") |> rule() { height(px(60)) }
 }
 
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     use_style(@@card_style)
     column("screen") {
@@ -54,7 +54,7 @@ def tagged_window() {
 def frames(var model:Model; count:int) {
     for (i in range(count)) {
         rui_test_advance_time(double(0.05))
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
     }
 }
 
@@ -68,33 +68,33 @@ def main(smoke:bool):int {
         verify(rui_init(window,renderer,640,480))
         verify(rui_default_font())
         rui_test_advance_time(double(0.)) // from here on time moves only when the test says so
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
 
         // The condition is a dependency like any other: unrelated changes skip it.
         let card = ui_find("card")
         verify(rui_bounds(card).z == 40. && rui_bounds(card).w == 20. && selected_reads == 1)
         model.unrelated += 1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(selected_reads == 1,"class_if must not read an unchanged condition again")
 
         // A class change runs the transition; an inline property change would not.
         model.selected = 1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         frames(model,2)
         let midway = rui_bounds(card).z
         verify(midway > 40. && midway < 120.,"A class change must run the width transition")
         frames(model,6)
         verify(rui_bounds(card).z == 120. && ui_find("card") == card && selected_reads == 2)
         model.selected = 0
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         frames(model,8)
         verify(rui_bounds(card).z == 40.,"Removing the class must restore the base rule")
 
         model.flagged = true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_bounds(card).w == 60.,"pseudo_if must select the :flagged rule")
         model.flagged = false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_bounds(card).w == 20.)
 
         // Native behaviour of the tags themselves.
@@ -103,7 +103,7 @@ def main(smoke:bool):int {
         let field = ui_find("name")
         verify(!rui_focused(field))
         rui_test_click(ui_find("name_label"))
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_focused(field),"A label must hand its click to the field it names")
         verify(find(rui_markup(),"<p ") >= 0)
 

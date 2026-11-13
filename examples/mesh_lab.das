@@ -121,19 +121,22 @@ def mesh_view(var model:MeshLab) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=MeshLab(); var saved=0
+    var initial=MeshLab(); var saved=0
+    var state=ui_state(initial)
     let result=run_gl_demo("Mesh workshop - textures and geometry","logs/mesh_lab.png",smoke,$(dt:float) {
         if (!native_registered("lab-mesh")) { install_mesh_lab() }
-    },$() { mesh_view(model) },$(frame:int) {
-        if (frame==0) { verify(paints==1 && native_texture_resources()==2); saved=paints; ui_clear_stats() }
-        elif (frame==1) { verify(paints==saved && ui_stats().binding_updates==0); rui_test_click(ui_find("gc")) }
-        elif (frame==2) { verify(paints==saved); rui_test_event(ui_find("progress"),"change","0.4") }
-        elif (frame==3) { verify(model.progress==0.4 && paints>saved); rui_test_click(ui_find("texture")) }
-        elif (frame==4) { verify(!model.textured); rui_test_click(ui_find("tint")) }
-        elif (frame==5) { verify(model.alternate); rui_test_click(ui_find("mount")) }
-        elif (frame==6) { verify(destroyed==1 && native_texture_resources()==0); rui_test_click(ui_find("mount")) }
-        elif (frame==7) { verify(created==2 && native_texture_resources()==2) }
-        elif (frame==11) { verify(rui_warning_count()==0); print("PASS: mesh workshop, UV ribbon, ring, atlas, tint, cache, remount and GC\n") }
+    },$() { ui_frame(state) $(model:MeshLab) { mesh_view(model) } },$(frame:int) {
+        ui_edit(state) $(var model:MeshLab) {
+            if (frame==0) { verify(paints==1 && native_texture_resources()==2); saved=paints; ui_clear_stats() }
+            elif (frame==1) { verify(paints==saved && ui_stats().binding_updates==0); rui_test_click(ui_find("gc")) }
+            elif (frame==2) { verify(paints==saved); rui_test_event(ui_find("progress"),"change","0.4") }
+            elif (frame==3) { verify(model.progress==0.4 && paints>saved); rui_test_click(ui_find("texture")) }
+            elif (frame==4) { verify(!model.textured); rui_test_click(ui_find("tint")) }
+            elif (frame==5) { verify(model.alternate); rui_test_click(ui_find("mount")) }
+            elif (frame==6) { verify(destroyed==1 && native_texture_resources()==0); rui_test_click(ui_find("mount")) }
+            elif (frame==7) { verify(created==2 && native_texture_resources()==2) }
+            elif (frame==11) { verify(rui_warning_count()==0); print("PASS: mesh workshop, UV ribbon, ring, atlas, tint, cache, remount and GC\n") }
+        }
     })
     if (smoke) { verify(created==destroyed && native_texture_resources()==0 && empty(textures)) }
     return result

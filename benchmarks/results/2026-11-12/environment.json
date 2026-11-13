@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-12T22:01:33.9167697+01:00",
+  "cpu": "Intel(R) Core(TM) i9-14900HX",
+  "os": "Microsoft Windows NT 10.0.26200.0",
+  "rows": [
+    100,
+    1000
+  ],
+  "samples": 120,
+  "warmup": 30,
+  "timing_rounds": 4,
+  "build": "C:\\src\\dasrmlui\\build",
+  "compiler": "MSVC 19.38.33130 x64, Release /O2 /Ob2 /DNDEBUG",
+  "rmlui": "6.4-dev 821cbd229d804cb1c905b729af86c21133abceee",
+  "dascript": "ebac0ffe46ab30de6c9536f4b0af7a33ede45902",
+  "dassdl3": "a13e01f1f8a42683d212d4498137d37732529478",
+  "project_base": "0348e6a95ab7aa5d3058603160b06ac205b8d12a plus uncommitted work",
+  "gpu": "Intel(R) RaptorLake-S Mobile Graphics Controller",
+  "gl": "3.3.0 - Build 32.0.101.6881",
+  "sha256": {
+    "benchmarks/bindings.das": "d46dd95bc378e397170a2e7c057eb5d64b2ddf5abdf55654ae1ab08fcd02af65",
+    "src/benchmark.inc": "3a8b5bbb49dcc8cf3dc10ea28973be0f641be2cac416ab960d012e4a09383242",
+    "src/benchmark_alloc.cpp": "82a75fba1d6cd7d6fb7665ee4ac0f9c1d25fa52be3dccb1e10535b57764dc083",
+    "src/benchmark_alloc.h": "2b8cc879476b8d898ace82127cf9507163721f2db290e02ab100176ccf7b2b73",
+    "src/rml_module.cpp": "5b421004939914a25fdd80c02c96e74e8e90bd5f14fe4c1d601299a180c06473",
+    "src/gl3/RmlUi_Renderer_GL3.cpp": "af63fd44defd3146eb938d12bed335792de9a36388a07a9665d4937a0bca1ef9",
+    "dasrmlui/ui.das": "187e27c42f64a61bf7dbaf8c3be86d559752f18999a8cc402388450346f94c40",
+    "dasrmlui/macros.das": "59ed151b77c4f09689fd9876ef834a51cc91c6ad83c3bd4101007882bc5acc0a",
+    "src/host.cpp": "d742e37440a3eb09d4663324ea8fe8faab3ec3ab9da0a4ee5586b2d22aaec138"
+  }
+}

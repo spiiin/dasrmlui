@@ -30,7 +30,7 @@ def run_gl_demo(title,screenshot:string; smoke:bool; tick:block<(delta:float):vo
             let now=SDL_GetTicks()
             invoke(tick,min(0.1,float(now-previous)*0.001))
             previous=now
-            ui_frame(render)
+            invoke(render)
             rui_render()
             if (smoke && frame == 0) { verify(rui_screenshot(screenshot)) }
             if (smoke && (frame == 3 || frame == 7 || frame == 11)) { verify(rui_screenshot("{screenshot}.frame{frame}.png")) }

@@ -12,7 +12,7 @@ def main(smoke:bool) : int {
         let window : SDL_Window? = with_window("negative test",640,480,SDL_WINDOW_HIDDEN) |> sdl_use
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480))
-        ui_frame() { inventory_panel(model) }
+        ui_legacy_frame() { inventory_panel(model) }
         rui_shutdown()
         return sdl_ok()
     }

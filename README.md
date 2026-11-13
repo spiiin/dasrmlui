@@ -96,6 +96,10 @@ renderer dummy-драйвера не поддерживает используе
 ./build/bin/dasrmlui.exe examples/vector_lab.das
 ./build/bin/dasrmlui.exe examples/native_lab.das
 ./build/bin/dasrmlui.exe examples/mesh_lab.das
+./build/bin/dasrmlui.exe examples/decorator_lab.das
+./build/bin/dasrmlui.exe examples/shader_lab.das
+./build/bin/dasrmlui.exe examples/rich_text_lab.das
+./build/bin/dasrmlui.exe examples/data_models.das
 ```
 
 | Пример | Что демонстрирует |
@@ -113,9 +117,13 @@ renderer dummy-драйвера не поддерживает используе
 | Vector Lab / Vector atelier | SVG из файла и inline, crop, SVG-декоратор, Lottie JSON; смена источника/цвета/размера, remount и анимация без обновлений компонента |
 | Native Lab / Signal foundry | Три осциллограммы как настоящие custom elements: регистрация из daScript, собственная геометрия, native update/paint, события, keyed reorder, remount, resize, Hold и GC |
 | Mesh Lab / Bend the surface | Произвольные indexed mesh, UV-лента, кольцевой прогресс, vertex colors, PNG-атлас и RGBA-текстура из daScript, tint/alpha, кеширование и освобождение ресурсов |
+| Decorator Studio / Edges, made in script | Один custom decorator на обычных карточках, кнопках и input: RCSS-параметры, фигурная рамка, PNG-штамп, progress, hover, resize и GC |
+| Shader Lab / Light studies | `[ui_shader]`/`[ui_filter]` на daScript через dasGlsl: процедурная поверхность, хроматический filter и стеклянный backdrop; typed uniforms, GPU time, slider, смена цвета, remount и GC |
+| Rich Text Lab / The Field Notes | Форматированные inline-фрагменты, вложенные начертания, ссылки, PNG/спрайты и динамические переносы |
+| Data Models / Harbour | `[ui_component]` + `native_data` и `[ui_style]`, без внешних RML/RCSS; публичная Context-модель, native формы/списки/expressions, callbacks и штатная панель Data Models |
 
-Все тринадцать входят в CTest. Для самостоятельного smoke добавьте `--smoke-test`:
-шесть SDL-примеров выполняют 8 кадров, семь GL-примеров — 12; снимки идут в
+Все семнадцать входят в CTest. Для самостоятельного smoke добавьте `--smoke-test`:
+восемь SDL-примеров выполняют 8 кадров, девять GL-примеров — 12; снимки идут в
 `logs/`. GL-примерам нужен OpenGL 3.3 и Windows video driver, SDL dummy не подходит.
 Localization использует установленный `C:/Windows/Fonts/segoeui.ttf` для кириллицы;
 шрифт не копируется и не распространяется вместе с проектом.
@@ -123,8 +131,8 @@ Localization использует установленный `C:/Windows/Fonts/s
 ```powershell
 # Все тесты, включая OpenGL и SDL pixel checks:
 ctest --test-dir build --output-on-failure
-# Только тринадцать примеров native возможностей:
-ctest --test-dir build -R 'demo_(expedition|effects|drag_drop|templates|localization|progress_lab|animations|style_lab|event_studio|navigation_lab|vector_lab|native_lab|mesh_lab)$' --output-on-failure
+# Только примеры native возможностей:
+ctest --test-dir build -R 'demo_(expedition|effects|drag_drop|templates|localization|progress_lab|animations|style_lab|event_studio|navigation_lab|vector_lab|native_lab|mesh_lab|decorator_lab|shader_lab|rich_text_lab|data_models)$' --output-on-failure
 # Без графического контекста:
 ctest --test-dir build -LE graphics --output-on-failure
 ```
@@ -179,13 +187,50 @@ def inventory_panel(var model : InventoryUi) {
   очереди после отключения предыдущей командой.
 - `on_click` получает событие из очереди. Ни блок, ни адрес элемента массива не
   сохраняются после выхода из функции.
-- `ui_frame() { ... }` выполняет доставку событий, синхронизацию DOM и RmlUi Update.
+- `ui_frame(state) $(model:Model) { ... }` выполняет доставку событий, синхронизацию DOM и RmlUi Update.
 - `ui_reset()` удаляет созданные элементы и очищает runtime перед `rui_shutdown()`.
 
 Не изменяйте модель в обычном теле компонента или getter: тело может выполняться
-несколько раз за кадр. Изменения выполняются в обработчиках либо до `ui_frame`.
+несколько раз за кадр. Изменения выполняются в обработчиках либо через `ui_edit(state)` до кадра.
 Обычные циклы с повторным выполнением одного UI-места не поддерживаются — используйте
 `each_keyed`. Для динамической структуры используйте `when`.
+
+## Корневая модель и внешние изменения
+
+`[ui_component]` по умолчанию работает с гибридными привязками. Создайте состояние
+один раз после заполнения начальной модели, затем используйте его во всех кадрах:
+
+```dascript
+var initial <- initial_inventory()
+var state = ui_state(initial)
+
+// В цикле приложения после SDL events:
+ui_frame(state) $(model:InventoryUi) { inventory_panel(model) }
+
+// Когда внешний код меняет данные:
+ui_edit(state) $(var model:InventoryUi) {
+    model.selected_id = -1
+}
+
+ui_read(state) $(model:InventoryUi) {
+    print("Items: {length(model.items)}\n")
+}
+```
+
+`ui_state` глубоко копирует initial и управляется GC; `inscope` не нужен. Изменение
+исходной переменной после копирования не меняет UI. Root — структура без borrowed
+pointers/lambdas. Ссылки на модель из read/edit/frame блока не должны покидать scope.
+`ui_read` readonly; frame-макрос разрешает mutable borrow для обработчиков компонента.
+
+В `on_click`, setters и других событиях компонента записи отслеживаются автоматически.
+Для прямых внешних записей достаточно `ui_edit`; неизвестный изменяющий helper
+вызывает консервативную инвалидацию, а `[ui_action]` уточняет её до конкретных записей.
+Catalog меняет модель через события; Progress Lab использует `ui_edit` в playback tick.
+
+Ошибка в `ui_edit` не откатывает уже выполненные записи; изменения публикуются.
+Кадр нельзя запускать внутри edit. Передача другого state в `ui_frame` сбрасывает
+старое дерево. Старый механизм включается явно через `[ui_component(legacy=true)]`
+и `ui_legacy_frame()`. [Полный контракт и пример main](docs/hybrid.md).
 
 ## Стили
 
@@ -247,18 +292,17 @@ flex-свойств: `border(px(1), rgb(54,116,84))`, `border_radius(px(6))`, `m
 
 ### Зависимости и стоимость
 
-Аргументы компонента автоматически сравниваются по содержимому. Поддержаны
-`string`, `bool`, целые от `int8` до `uint64`, `float/double`, перечисления, векторы
-(`float2..4`, `int2..4`, `uint2..4`, `range`), структуры, кортежи и массивы из этих типов. Используются снимки значений с границами полей, а не хеш адреса
-массива. Поэтому `model.items[0].title = ...`, `push`, удаление и перестановка
-обнаруживаются без `revision`. Неизменившийся дочерний компонент пропускается,
-даже когда его родитель обновился.
+По умолчанию записи в модели отслеживаются макросами. Прямые scalar-привязки
+используют native DataModel; для них простой и точечные обновления не требуют
+покадрового сравнения всей root-модели. Структурные изменения выполняют проход
+компонентов и keyed-списков. Неизменившиеся привязки сохраняют свои значения.
 
-Внутри компонента **у каждой привязки свой снимок зависимостей**. Макрос выделяет
-чтения параметров и доступных локальных значений: `model.profile.name` зависит
-именно от этого поля, а не от всей `model.profile`. Обрабатываются текст,
-подпись кнопки, `bind_value`, свойства и условие `when`. Setter и тело `when`
-не входят в зависимости значения/условия.
+Для сложных выражений и legacy-компонентов сохраняется путь сравнения зависимостей.
+Макрос выделяет чтения параметров и локальных значений: `model.profile.name`
+зависит от этого поля, а не от всей `model.profile`. Поддержаны scalar-значения,
+перечисления, векторы, структуры, кортежи и массивы. Setter и тело `when` не входят
+в зависимости значения/условия. Снимки нужны этому fallback-пути, а не каждой
+native-привязке на каждом кадре.
 
 ```das
 [ui_component]
@@ -270,7 +314,7 @@ def profile(var model:Profile) {
 ```
 
 Изменение `email` не вызывает `format_name` и getter ширины. В сгенерированных
-`profile__mount` / `profile__update` каждая операция получает guard примерно
+`profile__mount` / `profile__update` fallback-операция получает guard примерно
 такого вида (идентификаторы сокращены):
 
 ```das
@@ -293,9 +337,9 @@ rt_binding("name-binding", $() { rt_dependency(model.name) }, false, false) {
 `bind_value` дополнительно обновляется после `change` своего input, даже если
 setter отклонил значение. Соседние поля при этом не пересчитываются.
 
-Стоимость не стала нулевой: аргументы корня по-прежнему сравниваются по содержимому,
-а при изменении компонента выполняется обход его структуры и проверка зависимостей
-привязок. Также остаются сопоставление DOM, обход массива и проверка ключей списка.
+Стоимость зависит от пути обновления: при структурных изменениях и fallback
+выполняются обход компонента и проверка зависимостей привязок. Также остаются
+сопоставление DOM, обход массива и проверка ключей списка.
 Пропускаются именно вычисления неизменившихся привязок. Произвольный код перед
 UI-вызовами и выражения аргументов дочерних компонентов исполняются как обычный
 код daScript; дорогие вычисления помещайте внутрь getter или отдельного компонента
@@ -484,7 +528,7 @@ GC и повторный reset. `composition.das` проверяет computed, �
 зависимостей в trace. `viewport.das` проверяет 10 000 строк при ограниченном DOM,
 scroll/shrink/resize и клавиатурный фокус. `forms.das` проверяет черновики, диапазоны,
 переполнение, валидацию, Enter/blur/Escape, checkbox мышью и select клавиатурой.
-В CTest входят восемнадцать интерактивных примеров; полный список — `ctest --test-dir build -N`.
+В CTest входят двадцать интерактивных примеров; полный список — `ctest --test-dir build -N`.
 Новые проверки также покрывают отказ drop при заполненном контейнере, сохранение
 ключей при перестановке, native move/resize, teardown документов, перевод native
 RML и смену языка без изменения модели, заполнение разных участков кривой и размер
@@ -547,12 +591,59 @@ unregister, shutdown/restart и завершение script Context; отдел�
 SDL/GL3 pixels, порядок смешивания, atlas UV, tint/alpha, GC, stale handles и cleanup
 после ошибки Paint. [Контракт API](docs/dsl.md#mesh-uv-и-текстуры).
 
+`register_decorator` добавляет native DecoratorInstancer с typed RCSS-параметрами;
+`custom_decorator` применяет его в `[ui_style]`, шаблонах и reactive-компонентах.
+Create/Paint/Destroy написаны на daScript и получают отдельный canvas с тем же
+mesh/texture API. [Регистрация, параметры и lifetime](docs/dsl.md#пользовательские-decorators).
+`decorator_pixels` проверяет SDL/GL3, cascade/hover, paint-area, DPI, opacity, GC и
+ошибки; `decorator_host_lifetime` — Destroy до освобождения script Context.
+
+`register_shader` и `register_filter` компилируют GLSL fragment-функции из daScript
+для GL3. `custom_shader`, `custom_filter`, `custom_backdrop_filter` и цепочки эффектов
+работают в DSL стилей, компонентов и шаблонов. Параметры number/length/color становятся
+uniforms, `u_time` анимирует поверхность без обновлений компонента.
+[Контракт GLSL и lifetime](docs/dsl.md#пользовательские-filters-и-shaders-gl3).
+Для кода эффектов на daScript подключите `dasrmlui/shaders`: `[ui_shader]` и
+`[ui_filter]` используют существующий генератор dasGlsl. Shader Lab целиком переведён
+на функции daScript, без строк GLSL. [Аннотации и пример](docs/dsl.md#шейдеры-на-dascript-dasglsl).
+`gpu_effect_pixels` проверяет реальные пиксели, порядок проходов, backdrop, clipping,
+opacity, DPI, lifecycle/GC и restart; `gpu_backend` — явный отказ на SDL renderer.
+Пиксельная fixture выполняется с исходным GLSL и с dasGlsl; отдельно проверяются
+генерация и ошибки DSL. Runtime package содержит генератор и проверяется запуском Shader Lab.
+
 ## Файлы
 
+**The Field Notes / Rich Text Lab** показывает форматированные inline-фрагменты,
+вложенные bold/italic, ссылки с мышью и клавиатурой, PNG/спрайты, сноски и динамический
+reflow. [DSL, шрифты, привязки и тесты](docs/rich-text.md).
+
+Сравнение нашего DSL с native data binding: `./tools/benchmark.ps1`.
+Гибридный runtime включён по умолчанию: `[ui_component]`, `ui_state`, `ui_frame(state)`, `ui_edit`.
+Прямые scalar-привязки обслуживает native DataModel; структура и fallback остаются в DSL.
+[API, отслеживание записей и ограничения](docs/hybrid.md).
+Для внешних `.rml` доступен [публичный DataModel API](docs/data-models.md):
+`ui_data_model`, `ui_data_bind/set`, native формы, `ui_data_on/events` и
+`ui_load_rml`. Модели зарегистрированы в Context и доступны штатному Debugger;
+`ui_data_debugger()` открывает его панель Data Models. Значения внешних моделей
+копируются в native-хранилище; это отдельный путь от managed `ui_state` компонентов.
+Ту же модель можно использовать в `[ui_component]` через `native_data(name, model)`:
+`data_value`, `data_text`, `data_if`, `data_for` и другие native-привязки описываются
+на daScript. Harbour использует этот DSL и `[ui_style]`, без внешних файлов RML/RCSS.
+Отдельно измеряются bindings, Update, Render, ожидание GPU, GC и выделения памяти.
+[Методика, ограничения и результаты](benchmarks/README.md).
+[Новый API ui_state/ui_edit: повторный бенчмарк](benchmarks/state-results.md),
+включая отдельные Update, render и выделения памяти.
+[Исторический отчёт hybrid / legacy DSL / native](benchmarks/hybrid-results.md)
+описывает прежний API; его числа не являются измерением нового managed state.
+
 - `dasrmlui/macros.das` — AST-аннотации компонентов, стилей и шаблонов.
+- `dasrmlui/shaders.das`, `shader_macros.das`, `glsl_ui_builtins.das` — адаптер dasGlsl, аннотации shader/filter и выборка исходного слоя.
 - `dasrmlui/ui.das` — runtime и типизированный API стилей на daScript.
 - `src/rml_module.cpp` — SDL_Renderer, безопасные handles и биндинги RmlUi.
 - `src/native_elements.inc` — custom Element/Instancer, callbacks и кеш native-геометрии.
+- `src/native_decorators.inc` — Decorator/Instancer, схема RCSS-параметров и данные canvas для каждого применения.
+- `src/gpu_effects.inc` — native Filter/Decorator instancers и регистрация GPU-эффектов.
+- `src/gl3/` — закреплённая копия GL3 backend RmlUi с поддержкой пользовательских программ.
 - `src/host.cpp` — загрузка модулей и запуск `[export] main(smoke:bool):int`.
 - `examples/inventory_ui.das` — прикладная модель, компоненты и стили.
 - `examples/inventory.das` — окно и цикл приложения на dasSDL3.

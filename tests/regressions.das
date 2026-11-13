@@ -60,7 +60,7 @@ def order_8() { rule("progress") { width(px(90)); height(px(10)) } }
 [ui_style]
 def order_9() { rule("progress") { width(px(100)); height(px(10)) } }
 
-[ui_component]
+[ui_component(legacy=true)]
 def order_probe(reverse:bool) {
     if (reverse) { use_style(@@order_9); use_style(@@order_8); use_style(@@order_7); use_style(@@order_6); use_style(@@order_5); use_style(@@order_4); use_style(@@order_3); use_style(@@order_2); use_style(@@order_1); use_style(@@order_0) }
     else { use_style(@@order_0); use_style(@@order_1); use_style(@@order_2); use_style(@@order_3); use_style(@@order_4); use_style(@@order_5); use_style(@@order_6); use_style(@@order_7); use_style(@@order_8); use_style(@@order_9) }
@@ -70,14 +70,14 @@ def order_probe(reverse:bool) {
 def check_order(window:SDL_Window?; renderer:SDL_Renderer?; reverse:bool) {
     verify(rui_init(window,renderer,640,480))
     verify(rui_default_font())
-    ui_frame() { order_probe(reverse) }
+    ui_legacy_frame() { order_probe(reverse) }
     verify(rui_bounds(ui_find("gauge")).z == (reverse ? 10. : 100.),"Sheets must cascade in the order they were first used")
     ui_reset()
     rui_shutdown()
 }
 
 // Enum and vector arguments are compared by value like any other input.
-[ui_component]
+[ui_component(legacy=true)]
 def mode_badge(mode:Mode; origin:float2) {
     row("badge") {
         text("mode") { mode_reads += 1; return "{mode}" }
@@ -95,7 +95,7 @@ def regression_window() {
     }
 }
 
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     use_style(@@regression_style)
     column("screen") {
@@ -130,7 +130,7 @@ def main(smoke:bool):int {
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480))
         verify(rui_default_font())
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_warning_count() == 0ul,"A valid tree must not produce RmlUi warnings")
 
         // A caption change keeps the button's own children.
@@ -138,18 +138,18 @@ def main(smoke:bool):int {
         let icon = ui_find("icon")
         verify(find(rui_inner_markup(action),"one") == 0 && rui_child_count(action) == 2)
         model.caption = "two"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_alive(icon) && ui_find("icon") == icon,"Caption change destroyed a child element")
         verify(find(rui_inner_markup(action),"two") == 0 && rui_child_count(action) == 2)
         rui_test_click(action)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(model.clicks == 1)
 
         // A button without a caption holds only what its body creates.
         let bare = ui_find("bare")
         verify(rui_child_count(bare) == 1 && rui_child(bare,0) == ui_find("glyph"))
         rui_test_click(bare)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(model.clicks == 11)
 
         // A computed part name restyles the same element, containers and leaves alike.
@@ -158,7 +158,7 @@ def main(smoke:bool):int {
         verify(sized != 0ul && leaf != 0ul && rui_bounds(sized).z == 40.)
         verify(rui_bounds(sized).w == 24.,"A value call named like a style helper must stay user code")
         model.wide = true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_find("wide") == sized && ui_find("narrow") == 0ul,"Part name was not updated")
         verify(rui_bounds(sized).z == 120.,"Part class was not updated")
         verify(ui_find("label_wide") == leaf && ui_find("label_narrow") == 0ul)
@@ -167,44 +167,44 @@ def main(smoke:bool):int {
         // Enum and vector inputs skip and update by value.
         verify(mode_reads == 1 && origin_reads == 1)
         model.unrelated += 1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mode_reads == 1 && origin_reads == 1)
         model.mode = Mode.busy
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mode_reads == 2 && origin_reads == 1 && rui_inner_markup(ui_find("mode")) == "busy")
         model.origin = float2(5.,2.)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mode_reads == 2 && origin_reads == 2 && find(rui_inner_markup(ui_find("origin")),"5") == 0)
 
         // The base text is a setting, not a constant. A larger size makes the
         // same text taller; the defaults bring it back.
         let text_height = rui_bounds(leaf).w
         set_base_text("LatoLatin",px(20))
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(base_font_family() == "LatoLatin" && rui_bounds(leaf).w > text_height,"set_base_text did not restyle the tree")
         set_base_text("LatoLatin")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_bounds(leaf).w == text_height && rui_warning_count() == 0ul)
 
         // RmlUi lays a native template out while loading it, before the DSL
         // stylesheet is attached. Its own sheet must already name a font.
         let frame = open_template(@@regression_window,"Window",float2(20.,20.))
         verify(frame != 0ul && rui_warning_count() == 0ul,"A template must load with a font")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_warning_count() == 0ul)
         rui_close_document(frame)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
 
         // A constant property under a condition is applied when its branch is reached.
         let by_if = ui_find("by_if")
         let by_when = ui_find("by_when")
         verify(rui_local_property(by_if,"width") == "33px" && rui_local_property(by_when,"height") == "")
         model.flag = true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_local_property(by_if,"width") == "77px","A constant property under if was not applied")
         verify(rui_local_property(by_when,"height") == "21px","A constant property under when was not applied")
         model.flag = false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_local_property(by_if,"width") == "33px","The other branch was not applied again")
 
         // A box is a block wherever it stands, so it keeps its own size.
@@ -214,22 +214,22 @@ def main(smoke:bool):int {
         // Keypad Enter submits like Enter. A key nobody listens for wakes nothing.
         rui_focus(ui_find("field"))
         rui_test_shortcut("Keypad Enter",0)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(model.submits == 1,"Keypad Enter must submit")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         ui_clear_stats()
         rui_test_shortcut("A",0)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_stats().dispatches == 0,"An unmapped key must not be dispatched")
 
         // A rejected declaration is reported once, not on every pass.
         verify(rui_warning_count() == 0ul)
         model.typo = true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         let reported = rui_warning_count()
         verify(reported > 0ul,"A mistyped property must be reported")
         model.unrelated += 1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_warning_count() == reported)
 
         ui_reset()

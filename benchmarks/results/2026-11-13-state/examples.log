@@ -1,0 +1,57 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/src/dasrmlui/build
+
+[HANDLER_OUTPUT] 
+Test project C:/src/dasrmlui/build
+
+      Start 26: demo_dashboard
+ 1/21 Test #26: demo_dashboard ...................   Passed    7.06 sec
+      Start 27: demo_settings
+ 2/21 Test #27: demo_settings ....................   Passed    6.35 sec
+      Start 28: demo_kanban
+ 3/21 Test #28: demo_kanban ......................   Passed    8.38 sec
+      Start 29: demo_catalog
+ 4/21 Test #29: demo_catalog .....................   Passed   10.17 sec
+      Start 30: demo_component_lab
+ 5/21 Test #30: demo_component_lab ...............   Passed    4.84 sec
+      Start 31: demo_expedition
+ 6/21 Test #31: demo_expedition ..................   Passed    5.06 sec
+      Start 32: demo_drag_drop
+ 7/21 Test #32: demo_drag_drop ...................   Passed    4.63 sec
+      Start 33: demo_templates
+ 8/21 Test #33: demo_templates ...................   Passed    4.46 sec
+      Start 34: demo_localization
+ 9/21 Test #34: demo_localization ................   Passed    4.31 sec
+      Start 35: demo_event_studio
+10/21 Test #35: demo_event_studio ................   Passed    5.04 sec
+      Start 36: demo_navigation_lab
+11/21 Test #36: demo_navigation_lab ..............   Passed    4.51 sec
+      Start 37: demo_rich_text_lab
+12/21 Test #37: demo_rich_text_lab ...............   Passed    4.81 sec
+      Start 38: demo_effects
+13/21 Test #38: demo_effects .....................   Passed    4.67 sec
+      Start 39: demo_progress_lab
+14/21 Test #39: demo_progress_lab ................   Passed    4.43 sec
+      Start 40: demo_animations
+15/21 Test #40: demo_animations ..................   Passed    6.02 sec
+      Start 41: demo_style_lab
+16/21 Test #41: demo_style_lab ...................   Passed    7.65 sec
+      Start 42: demo_vector_lab
+17/21 Test #42: demo_vector_lab ..................   Passed    7.41 sec
+      Start 43: demo_native_lab
+18/21 Test #43: demo_native_lab ..................   Passed    5.93 sec
+      Start 44: demo_mesh_lab
+19/21 Test #44: demo_mesh_lab ....................   Passed    4.61 sec
+      Start 45: demo_decorator_lab
+20/21 Test #45: demo_decorator_lab ...............   Passed    6.95 sec
+      Start 46: demo_shader_lab
+21/21 Test #46: demo_shader_lab ..................   Passed    9.18 sec
+
+100% tests passed, 0 tests failed out of 21
+
+Label Time Summary:
+graphics    =  56.84 sec*proc (9 tests)
+opengl      =  56.84 sec*proc (9 tests)
+
+Total Test time (real) = 126.59 sec
+`nAdditional smoke: examples/inventory.das --smoke-test; SDL_VIDEODRIVER=dummy; exit code 0. Output: logs/state-inventory.log.

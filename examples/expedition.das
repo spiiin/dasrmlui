@@ -69,14 +69,17 @@ def main(smoke:bool):int {
     vehicles |> push <| Vehicle(id=1,sprite_id="rover",title="Nomad / Rover")
     vehicles |> push <| Vehicle(id=2,sprite_id="probe",title="Echo / Science probe")
     vehicles |> push <| Vehicle(id=3,sprite_id="cargo",title="Atlas / Cargo lander")
-    var model=Expedition()
-    return run_demo("dasrmlui - Expedition console","logs/expedition.png",smoke,$() { expedition(model) }) $(frame:int) {
-        if (frame==0) { rui_test_click(ui_find("vehicle",2)); rui_test_click(ui_find("surface")) }
-        elif (frame==1) { verify(model.vehicle==2 && model.route=="surface"); rui_test_click(ui_find("fuel")) }
-        elif (frame==2) { verify(model.fuel!=65.0); rui_test_click(ui_find("notes_tab")) }
-        elif (frame==3) { verify(model.tab==1 && rui_visible(ui_find("notes")) && !rui_visible(ui_find("fuel"))); rui_focus(ui_find("notes")); rui_test_text(" Ready.") }
-        elif (frame==4) { verify(find(model.notes,"Ready.")>=0); rui_test_click(ui_find("setup_tab")) }
-        elif (frame==5) { verify(model.tab==0); rui_test_click(ui_find("launch")) }
-        elif (frame==6) { verify(model.launches==1); rui_test_resize(720,820) }
+    var initial=Expedition()
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Expedition console","logs/expedition.png",smoke,$() { ui_frame(state) $(model:Expedition) { expedition(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Expedition) {
+            if (frame==0) { rui_test_click(ui_find("vehicle",2)); rui_test_click(ui_find("surface")) }
+            elif (frame==1) { verify(model.vehicle==2 && model.route=="surface"); rui_test_click(ui_find("fuel")) }
+            elif (frame==2) { verify(model.fuel!=65.0); rui_test_click(ui_find("notes_tab")) }
+            elif (frame==3) { verify(model.tab==1 && rui_visible(ui_find("notes")) && !rui_visible(ui_find("fuel"))); rui_focus(ui_find("notes")); rui_test_text(" Ready.") }
+            elif (frame==4) { verify(find(model.notes,"Ready.")>=0); rui_test_click(ui_find("setup_tab")) }
+            elif (frame==5) { verify(model.tab==0); rui_test_click(ui_find("launch")) }
+            elif (frame==6) { verify(model.launches==1); rui_test_resize(720,820) }
+        }
     }
 }

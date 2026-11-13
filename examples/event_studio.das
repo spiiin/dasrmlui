@@ -13,6 +13,7 @@ var windows=Windows()
 var saved=""
 var editor_mounts:int
 
+[ui_action]
 def record(var model:Studio; message:string) {
     model.entries |> push <| Entry(id=model.revision,message=message)
     if (length(model.entries)>8) { model.entries |> erase(0) }
@@ -163,39 +164,47 @@ def studio(var model:Studio) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Studio()
-    record(model,"Workspace mounted / 3 documents")
+    var initial=Studio()
+    record(initial,"Workspace mounted / 3 documents")
     var draft:uint64
-    return run_demo("Signal desk - events and documents","logs/event_studio.png",smoke,$() { studio(model) },$(frame:int) {
-        if (frame==0) {
-            draft=ui_find("draft"); rui_focus(draft)
-            rui_test_event(draft,"change","A persistent studio draft.")
-            rui_test_shortcut("S",1)
-        } elif (frame==1) {
-            verify(saved=="A persistent studio draft." && model.saves==1,"shortcut sees latest draft")
-            rui_test_click(ui_find("commands"))
-        } elif (frame==2) {
-            verify(document_visible(windows.menu),"commands popup visible")
-            rui_test_key("Down",false)
-            ui_frame() { studio(model) }
-            verify(rui_focused(ui_find("menu_publish")),"Down moves menu focus")
-            rui_test_key("Enter",false)
-        } elif (frame==3) {
-            verify(document_visible(windows.dialog) && document_modal(windows.dialog),"keyboard menu opens modal")
-            rui_test_click(ui_find("confirm"))
-        } elif (frame==4) {
-            verify(!document_visible(windows.dialog),"confirm closes modal")
-            rui_test_click(ui_find("hide"))
-        } elif (frame==5) {
-            verify(!document_visible(windows.editor) && rui_alive(draft),"hidden editor retained")
-            rui_test_click(ui_find("restore"))
-        } elif (frame==6) {
-            verify(ui_find("draft")==draft && editor_mounts==1,"same editor incarnation")
-            let bounds=rui_bounds(draft)
-            rui_test_pointer(bounds.x+30.,bounds.y+30.,1,0.)
-        } elif (frame==7) {
-            verify(document_visible(windows.menu),"right-click context menu")
-            print("PASS: studio shortcut, keyboard popup menu, modal action, hidden local draft and context menu\n")
+    var state=ui_state(initial)
+    return run_demo("Signal desk - events and documents","logs/event_studio.png",smoke,$() { ui_frame(state) $(model:Studio) { studio(model) } },$(frame:int) {
+        ui_edit(state) $(var model:Studio) {
+            if (frame==0) {
+                draft=ui_find("draft"); rui_focus(draft)
+                rui_test_event(draft,"change","A persistent studio draft.")
+                rui_test_shortcut("S",1)
+            } elif (frame==1) {
+                verify(saved=="A persistent studio draft." && model.saves==1,"shortcut sees latest draft")
+                rui_test_click(ui_find("commands"))
+            } elif (frame==3) {
+                verify(document_visible(windows.dialog) && document_modal(windows.dialog),"keyboard menu opens modal")
+                rui_test_click(ui_find("confirm"))
+            } elif (frame==4) {
+                verify(!document_visible(windows.dialog),"confirm closes modal")
+                rui_test_click(ui_find("hide"))
+            } elif (frame==5) {
+                verify(!document_visible(windows.editor) && rui_alive(draft),"hidden editor retained")
+                rui_test_click(ui_find("restore"))
+            } elif (frame==6) {
+                verify(ui_find("draft")==draft && editor_mounts==1,"same editor incarnation")
+                let bounds=rui_bounds(draft)
+                rui_test_pointer(bounds.x+30.,bounds.y+30.,1,0.)
+            } elif (frame==7) {
+                verify(document_visible(windows.menu),"right-click context menu")
+                print("PASS: studio shortcut, keyboard popup menu, modal action, hidden local draft and context menu\n")
+            }
+        }
+        if (frame==2) {
+            ui_edit(state) $(var model:Studio) {
+                verify(document_visible(windows.menu),"commands popup visible")
+                rui_test_key("Down",false)
+            }
+            ui_frame(state) $(model:Studio) { studio(model) }
+            ui_edit(state) $(var model:Studio) {
+                verify(rui_focused(ui_find("menu_publish")),"Down moves menu focus")
+                rui_test_key("Enter",false)
+            }
         }
     })
 }

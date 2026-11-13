@@ -20,7 +20,7 @@ struct Model {
 var title_reads, detail_reads, width_reads, disabled_reads, condition_reads, input_reads, row_reads, clicks : int
 def input_text(value:string) : string { input_reads += 1; return value }
 
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     column("screen") {
         text("title") { let value = model.profile.name; title_reads += 1; return value }
@@ -64,7 +64,7 @@ def main(smoke:bool):int {
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480))
         verify(rui_default_font())
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         let title_handle = ui_find("title")
         let row1 = ui_find("row",1)
         let input = ui_find("input")
@@ -73,82 +73,82 @@ def main(smoke:bool):int {
 
         ui_clear_stats()
         model.unrelated += 1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_stats().binding_updates == 0 && ui_stats().binding_skips > 0,
             "An unrelated field must not evaluate any binding")
         verify(title_reads == 1 && detail_reads == 1 && width_reads == 1 && condition_reads == 1 && input_reads == 1 && row_reads == 2)
         model.profile.name = "Grace"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(title_reads == 2 && detail_reads == 1 && width_reads == 1 && disabled_reads == 1 && input_reads == 1,
             "A nested field must not invalidate sibling fields")
         verify(ui_find("title") == title_handle && find(rui_markup(),"Grace") >= 0)
 
         model.profile.detail = "Compiler designer"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(detail_reads == 2 && condition_reads == 1,
             "A cached true condition must still update its children")
         model.size = 140.0
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(width_reads == 2 && title_reads == 2 && disabled_reads == 1)
         model.enabled = false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(disabled_reads == 2 && width_reads == 2)
         verify(!rui_enabled(ui_find("action")))
         rui_test_event(ui_find("action"),"click","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(clicks == 0, "Disabled buttons must reject clicks")
         model.enabled = true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         rui_test_event(ui_find("action"),"click","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(clicks == 1)
         rui_test_event(ui_find("disable_action"),"click","")
         rui_test_event(ui_find("action"),"click","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(clicks == 1, "An earlier event may disable a later event's target")
 
         model.rows[0].title = "ONE"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(row_reads == 3 && ui_find("row",1) == row1)
         let swap = model.rows[0]
         model.rows[0] = model.rows[1]
         model.rows[1] = swap
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(row_reads == 3, "Keyed reorder must retain binding snapshots without evaluating getters")
 
         rui_test_event(input,"change","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_get_value(input) == "accepted" && input_reads == 2,
             "Rejected input forces only its binding and never evaluates its value during dispatch")
         verify(title_reads == 2 && row_reads == 3 && condition_reads == 1)
         rui_test_event(input,"change","new value")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(model.input == "new value" && input_reads == 3 && width_reads == 2)
 
         let detail = ui_find("detail")
         model.show = false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(!rui_alive(detail) && condition_reads == 2)
         model.profile.detail = "changed while hidden"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(detail_reads == 2 && condition_reads == 2)
         model.show = true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_find("detail") != detail && detail_reads == 3 && condition_reads == 3)
         model.rows |> erase(1)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         model.rows |> push <| Row(id=1,title="ONE")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_find("row",1) != row1 && row_reads == 4,
             "A remounted key must not inherit a retired binding snapshot")
         unsafe { heap_collect(true,false) }
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(row_reads == 4 && detail_reads == 3)
         ui_reset()
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(title_reads == 3 && row_reads == 6)
         clear(model.rows)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(find(rui_markup(),"No rows remain") >= 0,
             "Dependency sampling must preserve short-circuit safety for array indexing")
         ui_reset()

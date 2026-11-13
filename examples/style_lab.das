@@ -109,25 +109,28 @@ def station(var model:Lab) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Lab()
+    var initial=Lab()
     var initialized=false
     var note,preview=0ul
+    var state=ui_state(initial)
     let result=run_gl_demo("dasrmlui - The relay station","logs/style_lab.png",smoke,
         $(delta:float) { if (smoke && !initialized) { rui_test_display_scale(1.); initialized=true } },
-        $() { station(model) }) $(frame:int) {
-        if (frame==0) { note=ui_find("note"); preview=ui_find("preview"); verify(rui_bounds(preview).z==500.); rui_test_event(note,"change","Keep this draft through every theme.") }
-        elif (frame==1) { rui_test_click(ui_find("paper")) }
-        elif (frame==2) { verify(theme_active("paper") && !theme_active("night")); rui_test_click(ui_find("scale_150")) }
-        elif (frame==3) { verify(ui_scale()==1.5 && rui_bounds(preview).z==750. && rui_visible(ui_find("dpi_badge"))); rui_test_click(ui_find("scale_100")) }
-        elif (frame==4) { rui_test_resize(760,820) }
-        elif (frame==5) { verify(rui_bounds(ui_find("sidebar")).y>rui_bounds(preview).y+100.,"native media column layout"); rui_test_click(ui_find("stretch")) }
-        elif (frame==6) { verify(rui_bounds(preview).z==320.); rui_test_resize(1200,820) }
-        elif (frame==7) { verify(abs(rui_bounds(ui_find("sidebar")).y-rui_bounds(preview).y)<2.); rui_test_click(ui_find("night")) }
-        elif (frame==8) { verify(theme_active("night")); rui_test_click(ui_find("stretch")) }
-        elif (frame==11) {
-            verify(ui_find("note")==note && ui_find("preview")==preview && rui_get_value(note)=="Keep this draft through every theme." && mounts==1)
-            verify(rui_bounds(preview).z==500. && !rui_visible(ui_find("dpi_badge")))
-            print("PASS: theme switching, dp scale, responsive media, ninepatch resizing and retained draft/handles\n")
+        $() { ui_frame(state) $(model:Lab) { station(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Lab) {
+            if (frame==0) { note=ui_find("note"); preview=ui_find("preview"); verify(rui_bounds(preview).z==500.); rui_test_event(note,"change","Keep this draft through every theme.") }
+            elif (frame==1) { rui_test_click(ui_find("paper")) }
+            elif (frame==2) { verify(theme_active("paper") && !theme_active("night")); rui_test_click(ui_find("scale_150")) }
+            elif (frame==3) { verify(ui_scale()==1.5 && rui_bounds(preview).z==750. && rui_visible(ui_find("dpi_badge"))); rui_test_click(ui_find("scale_100")) }
+            elif (frame==4) { rui_test_resize(760,820) }
+            elif (frame==5) { verify(rui_bounds(ui_find("sidebar")).y>rui_bounds(preview).y+100.,"native media column layout"); rui_test_click(ui_find("stretch")) }
+            elif (frame==6) { verify(rui_bounds(preview).z==320.); rui_test_resize(1200,820) }
+            elif (frame==7) { verify(abs(rui_bounds(ui_find("sidebar")).y-rui_bounds(preview).y)<2.); rui_test_click(ui_find("night")) }
+            elif (frame==8) { verify(theme_active("night")); rui_test_click(ui_find("stretch")) }
+            elif (frame==11) {
+                verify(ui_find("note")==note && ui_find("preview")==preview && rui_get_value(note)=="Keep this draft through every theme." && mounts==1)
+                verify(rui_bounds(preview).z==500. && !rui_visible(ui_find("dpi_badge")))
+                print("PASS: theme switching, dp scale, responsive media, ninepatch resizing and retained draft/handles\n")
+            }
         }
     }
     if (smoke) { verify(unmounts==1) }

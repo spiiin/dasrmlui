@@ -4,7 +4,12 @@
 # named after this process, so two test runs at once do not share it.
 param([string]$Build, [string]$Config = '')
 $ErrorActionPreference = 'Stop'
+$buildRoot = [IO.Path]::GetFullPath($Build).TrimEnd('\','/')
 $package = Join-Path $Build "package-check-$PID"
+$package = [IO.Path]::GetFullPath($package)
+if (!$package.StartsWith($buildRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Package scratch directory must remain inside the build directory'
+}
 try {
     $install = @('--install', $Build, '--component', 'runtime', '--prefix', $package)
     if ($Config) { $install += @('--config', $Config) }
@@ -30,9 +35,20 @@ try {
         $env:SDL_VIDEODRIVER = 'dummy'
         $output = & $exe.FullName 'examples/dashboard.das' --smoke-test 2>&1 | Out-String
         $code = $LASTEXITCODE
+        if ($code) { Write-Output $output; throw "The packaged SDL example exited with code $code" }
+        $output = & $exe.FullName 'examples/rich_text_lab.das' --smoke-test 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        if ($code) { Write-Output $output; throw "The packaged rich-text example/fonts failed with code $code" }
+        $output = & $exe.FullName 'examples/data_models.das' --smoke-test 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        if ($code) { Write-Output $output; throw "The packaged native DataModel DSL example failed with code $code" }
+        if (!(Test-Path 'daScript/modules/dasGlsl/glsl/glsl_internal.das')) { throw 'The package is missing dasGlsl' }
+        $env:SDL_VIDEODRIVER = 'windows'
+        $output = & $exe.FullName 'examples/shader_lab.das' --smoke-test 2>&1 | Out-String
+        $code = $LASTEXITCODE
     } finally { Pop-Location }
     if ($code) { Write-Output $output; throw "The packaged example exited with code $code" }
-    Write-Output "PASS: the package runs on its own"
+    Write-Output "PASS: the package runs SDL and dasGlsl/GL3 examples on its own"
     Write-Output $roots
 } finally {
     if (Test-Path $package) { Remove-Item -Recurse -Force $package -ErrorAction SilentlyContinue }

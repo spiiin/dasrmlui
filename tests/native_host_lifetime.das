@@ -5,7 +5,7 @@ require dasrmlui/ui
 require dassdl3/sdl3_window_boost
 require dassdl3/sdl3_scope
 var destroyed:int
-[ui_component]
+[ui_component(legacy=true)]
 def scene() { native_element("late","test-late") }
 [export]
 def main(smoke:bool):int {
@@ -23,7 +23,7 @@ def main(smoke:bool):int {
                 if (!smoke) { panic("late native destroy fault") }
             }
         },float2(20.,20.))
-        ui_frame() { scene() }
+        ui_legacy_frame() { scene() }
         // No geometry was rendered. Deliberately leave the native context alive
         // to exercise the host's final lifetime guard after main returns.
         return sdl_ok()

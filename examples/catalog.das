@@ -126,24 +126,27 @@ def main(smoke:bool):int {
     groups |> push <| UiOption(value="Design",caption="Design")
     groups |> push <| UiOption(value="Audio",caption="Audio")
     groups |> push <| UiOption(value="Video",caption="Video")
-    var model=Catalog()
-    return run_demo("dasrmlui - Asset library","logs/catalog.png",smoke,$() { catalog(model) }) $(frame:int) {
-        if (frame == 0) { rui_test_click(ui_find("jump")) }
-        elif (frame == 1) { verify(ui_find("asset",2500) != 0ul); rui_test_click(ui_find("asset",2500)) }
-        elif (frame == 2) { verify(model.selected == 2500); rui_test_click(ui_find("edit")) }
-        elif (frame == 3) {
-            verify(rui_focused(ui_find("title")) && editor_mounts == 1)
-            rui_test_event(ui_find("title"),"change","Updated asset")
+    var initial=Catalog()
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Asset library","logs/catalog.png",smoke,$() { ui_frame(state) $(model:Catalog) { catalog(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Catalog) {
+            if (frame == 0) { rui_test_click(ui_find("jump")) }
+            elif (frame == 1) { verify(ui_find("asset",2500) != 0ul); rui_test_click(ui_find("asset",2500)) }
+            elif (frame == 2) { verify(model.selected == 2500); rui_test_click(ui_find("edit")) }
+            elif (frame == 3) {
+                verify(rui_focused(ui_find("title")) && editor_mounts == 1)
+                rui_test_event(ui_find("title"),"change","Updated asset")
+            }
+            elif (frame == 4) { rui_test_click(ui_find("save")) }
+            elif (frame == 5) {
+                verify(assets[2499].title == "Updated asset" && editor_unmounts == 1 && rui_focused(ui_find("edit")))
+                rui_test_resize(720,820)
+            }
+            elif (frame == 6) {
+                verify(ui_width() == 720.0)
+                rui_test_event(ui_find("search"),"change","Updated")
+            }
+            elif (frame == 7) { verify(ui_find("asset",2500) != 0ul && ui_find("asset",2499) == 0ul) }
         }
-        elif (frame == 4) { rui_test_click(ui_find("save")) }
-        elif (frame == 5) {
-            verify(assets[2499].title == "Updated asset" && editor_unmounts == 1 && rui_focused(ui_find("edit")))
-            rui_test_resize(720,820)
-        }
-        elif (frame == 6) {
-            verify(ui_width() == 720.0)
-            rui_test_event(ui_find("search"),"change","Updated")
-        }
-        elif (frame == 7) { verify(ui_find("asset",2500) != 0ul && ui_find("asset",2499) == 0ul) }
     }
 }

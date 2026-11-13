@@ -16,7 +16,7 @@ def patches() {
     rule(part("large")) { property("left","200px"); width(px(240)); height(px(160)) }
     theme("paper") { rule(part("small")+", "+part("large")) { ninepatch("paper","paper_inner") } }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def screen() { use_style(@@patches); box("small") {}; box("large") {} }
 [export]
 def main(smoke:bool):int {
@@ -26,15 +26,15 @@ def main(smoke:bool):int {
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,600,400)); verify(rui_default_font())
         rui_test_display_scale(1.)
-        ui_frame() { screen() }
+        ui_legacy_frame() { screen() }
         verify(rui_bounds(ui_find("small"))==float4(20.,20.,120.,80.))
         verify(rui_bounds(ui_find("large"))==float4(200.,20.,240.,160.))
         rui_render(); verify(rui_screenshot("logs/ninepatch_1.png"))
         set_ui_scale(2.)
-        ui_frame() { screen() }
+        ui_legacy_frame() { screen() }
         rui_render(); verify(rui_screenshot("logs/ninepatch_2.png"))
         set_ui_scale(1.); set_theme("paper")
-        ui_frame() { screen() }
+        ui_legacy_frame() { screen() }
         rui_render(); verify(rui_screenshot("logs/ninepatch_paper.png"))
         ui_reset(); rui_shutdown()
         return sdl_ok()

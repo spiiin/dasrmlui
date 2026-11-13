@@ -113,42 +113,49 @@ def window_desktop(var model:Windows) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Windows()
-    model.opened <- array<bool>(true,true)
-    model.show_notes <- array<bool>(true,true)
-    model.notes <- array<string>("Map the eastern valley.\nDeparture: 07:30.","Bring spare batteries.\nWeather is clear.")
+    var initial=Windows()
+    initial.opened <- array<bool>(true,true)
+    initial.show_notes <- array<bool>(true,true)
+    initial.notes <- array<string>("Map the eastern valley.\nDeparture: 07:30.","Bring spare batteries.\nWeather is clear.")
     window_ids <- array<int>(0,1); documents <- array<uint64>(0ul,0ul)
     var before=float4(0.)
     var size=float4(0.)
     var old,editor,slot_host,status,other_editor=0ul
-    let result=run_demo("dasrmlui - The field office","logs/templates.png",smoke,$() { window_desktop(model) }) $(frame:int) {
-        if (frame==0) {
-            verify(mounted==2 && editors_mounted==2)
-            editor=ui_find("editor",0); other_editor=ui_find("editor",1); status=ui_find("status",0)
-            slot_host=rui_document_element(documents[0],"field_notes")
-            verify(rui_contains(slot_host,editor) && rui_contains(rui_document_element(documents[0],"crew_status"),status))
-            before=rui_bounds(documents[0]); rui_test_drag_offset(rui_document_element(documents[0],"move"),35.,25.)
+    var state=ui_state(initial)
+    let result=run_demo("dasrmlui - The field office","logs/templates.png",smoke,$() { ui_frame(state) $(model:Windows) { window_desktop(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Windows) {
+            if (frame==0) {
+                verify(mounted==2 && editors_mounted==2)
+                editor=ui_find("editor",0); other_editor=ui_find("editor",1); status=ui_find("status",0)
+                slot_host=rui_document_element(documents[0],"field_notes")
+                verify(rui_contains(slot_host,editor) && rui_contains(rui_document_element(documents[0],"crew_status"),status))
+                before=rui_bounds(documents[0]); rui_test_drag_offset(rui_document_element(documents[0],"move"),35.,25.)
+            }
+            elif (frame==1) { let moved=rui_bounds(documents[0]); verify(abs(moved.x-before.x-35.)<2. && abs(moved.y-before.y-25.)<2.,"native move handle"); size=moved; rui_test_drag_offset(rui_document_element(documents[0],"resize"),45.,30.) }
+            elif (frame==2) { let resized=rui_bounds(documents[0]); verify(abs(resized.z-size.z-45.)<2. && abs(resized.w-size.w-30.)<2.,"native resize handle"); rui_focus(ui_find("editor",0)); rui_test_text(" Ready.") }
+            elif (frame==3) { verify(find(model.notes[0],"Ready.")>=0 && ui_find("status",0)==status); rui_test_click(ui_find("toggle_notes",0)) }
+            elif (frame==4) {
+                verify(!rui_alive(editor) && rui_alive(slot_host) && empty(rui_inner_markup(slot_host)) && editors_unmounted==1,"unmount one slot only")
+                verify(rui_alive(status) && ui_find("editor",1)==other_editor && find(rui_inner_markup(status),"hidden")>=0)
+                rui_test_click(ui_find("toggle_notes",0))
+            }
+            elif (frame==5) {
+                verify(ui_find("editor",0)!=editor && editors_mounted==3 && find(rui_get_value(ui_find("editor",0)),"Ready.")>=0)
+                old=documents[0]; rui_test_click(ui_find("close",0))
+            }
+            elif (frame==6) { verify(!rui_alive(old) && unmounted==1 && editors_unmounted==2); rui_test_click(ui_find("open_planner")) }
         }
-        elif (frame==1) { let moved=rui_bounds(documents[0]); verify(abs(moved.x-before.x-35.)<2. && abs(moved.y-before.y-25.)<2.,"native move handle"); size=moved; rui_test_drag_offset(rui_document_element(documents[0],"resize"),45.,30.) }
-        elif (frame==2) { let resized=rui_bounds(documents[0]); verify(abs(resized.z-size.z-45.)<2. && abs(resized.w-size.w-30.)<2.,"native resize handle"); rui_focus(ui_find("editor",0)); rui_test_text(" Ready.") }
-        elif (frame==3) { verify(find(model.notes[0],"Ready.")>=0 && ui_find("status",0)==status); rui_test_click(ui_find("toggle_notes",0)) }
-        elif (frame==4) {
-            verify(!rui_alive(editor) && rui_alive(slot_host) && empty(rui_inner_markup(slot_host)) && editors_unmounted==1,"unmount one slot only")
-            verify(rui_alive(status) && ui_find("editor",1)==other_editor && find(rui_inner_markup(status),"hidden")>=0)
-            rui_test_click(ui_find("toggle_notes",0))
-        }
-        elif (frame==5) {
-            verify(ui_find("editor",0)!=editor && editors_mounted==3 && find(rui_get_value(ui_find("editor",0)),"Ready.")>=0)
-            old=documents[0]; rui_test_click(ui_find("close",0))
-        }
-        elif (frame==6) { verify(!rui_alive(old) && unmounted==1 && editors_unmounted==2); rui_test_click(ui_find("open_planner")) }
-        elif (frame==7) {
-            verify(documents[0]!=0ul && documents[0]!=old && mounted==3 && editors_mounted==4)
-            verify(ui_find("editor",1)==other_editor && find(rui_get_value(ui_find("editor",0)),"Ready.")>=0)
-            rui_test_click(ui_find("mark_ready",1))
-            ui_frame() { window_desktop(model) }
-            verify(find(model.notes[1],"Ready.")>=0,"other window remains interactive after reopening planner")
-            print("PASS: three named slots, independent components, selective unmount, native handles, binding and close/reopen\n")
+        if (frame==7) {
+            ui_edit(state) $(var model:Windows) {
+                verify(documents[0]!=0ul && documents[0]!=old && mounted==3 && editors_mounted==4)
+                verify(ui_find("editor",1)==other_editor && find(rui_get_value(ui_find("editor",0)),"Ready.")>=0)
+                rui_test_click(ui_find("mark_ready",1))
+            }
+            ui_frame(state) $(model:Windows) { window_desktop(model) }
+            ui_edit(state) $(var model:Windows) {
+                verify(find(model.notes[1],"Ready.")>=0,"other window remains interactive after reopening planner")
+                print("PASS: three named slots, independent components, selective unmount, native handles, binding and close/reopen\n")
+            }
         }
     }
     if (smoke) { verify(unmounted==3 && editors_unmounted==4,"ui_reset closes remaining documents and slot contents") }

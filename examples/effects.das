@@ -96,8 +96,8 @@ def effects(var model:Effects) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Effects()
-    model.values <- array<float>(1.,0.,0.,1.34,1.,1.32,0.,0.,0.,8.)
+    var initial=Effects()
+    initial.values <- array<float>(1.,0.,0.,1.34,1.,1.32,0.,0.,0.,8.)
     controls |> push <| FilterControl(id=0,title="Opacity",maximum=1.,step=.05)
     controls |> push <| FilterControl(id=1,title="Sepia",maximum=1.,step=.05)
     controls |> push <| FilterControl(id=2,title="Grayscale",maximum=1.,step=.05)
@@ -108,13 +108,16 @@ def main(smoke:bool):int {
     controls |> push <| FilterControl(id=7,title="Invert",maximum=1.,step=.05)
     controls |> push <| FilterControl(id=8,title="Blur",maximum=8.,step=.5)
     controls |> push <| FilterControl(id=9,title="Shadow",maximum=24.,step=1.)
-    return run_gl_demo("dasrmlui - Effects atelier","logs/effects.png",smoke,$(dt:float) {},$() { effects(model) }) $(frame:int) {
-        if (frame==0) { rui_test_click(ui_find("filter",2)) }
-        elif (frame==1) { verify(model.values[2]>0.0); rui_test_click(ui_find("transform_tab")) }
-        elif (frame==2) { verify(model.tab==1); model.angle=12.; model.scale=.85 }
-        elif (frame==4) { rui_test_click(ui_find("type_tab")) }
-        elif (frame==5) { verify(model.tab==2); model.glow=6.; model.blur=8. }
-        elif (frame==8) { rui_test_click(ui_find("reset")) }
-        elif (frame==9) { verify(model.angle==0. && model.scale==1. && model.values[2]==0.) }
+    var state=ui_state(initial)
+    return run_gl_demo("dasrmlui - Effects atelier","logs/effects.png",smoke,$(dt:float) {},$() { ui_frame(state) $(model:Effects) { effects(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Effects) {
+            if (frame==0) { rui_test_click(ui_find("filter",2)) }
+            elif (frame==1) { verify(model.values[2]>0.0); rui_test_click(ui_find("transform_tab")) }
+            elif (frame==2) { verify(model.tab==1); model.angle=12.; model.scale=.85 }
+            elif (frame==4) { rui_test_click(ui_find("type_tab")) }
+            elif (frame==5) { verify(model.tab==2); model.glow=6.; model.blur=8. }
+            elif (frame==8) { rui_test_click(ui_find("reset")) }
+            elif (frame==9) { verify(model.angle==0. && model.scale==1. && model.values[2]==0.) }
+        }
     }
 }

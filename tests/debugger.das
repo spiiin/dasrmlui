@@ -9,15 +9,15 @@ require dassdl3/sdl3_scope
 
 var clicks,hotkeys,status_reads,stable_reads:int
 struct Model { popup:uint64; show_action:bool=true }
-[ui_component]
+[ui_component(legacy=true)]
 def status() { text("status") { status_reads+=1; return debugger_visible() ? "visible" : "hidden" } }
-[ui_component]
+[ui_component(legacy=true)]
 def stable() { text("stable") { stable_reads+=1; return "unchanged" } }
 [ui_template]
 def popup_frame() {
     window_frame("frame") { width(px(200)); height(px(80)); property("position","absolute"); property("z-index","1"); slot("items") }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def scene(model:Model) {
     status(); stable()
     when(model.show_action) { button("action","Application button") {
@@ -41,11 +41,11 @@ def main(smoke:bool):int {
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,1000,700)); verify(rui_default_font())
         model.popup=open_template(@@popup_frame,"Popup",float2(100.,400.),UiDocumentOptions(visible=false))
-        ui_frame() { scene(model) }
+        ui_legacy_frame() { scene(model) }
         let action=ui_find("action"); let base_documents=rui_test_document_count()
         verify(!debugger_ready() && !debugger_visible(),"plugin opt-in")
         debugger_hotkey(); verify(!debugger_ready(),"hotkey registration is lazy")
-        rui_focus(action); rui_test_shortcut("F8",0); ui_frame() { scene(model) }
+        rui_focus(action); rui_test_shortcut("F8",0); ui_legacy_frame() { scene(model) }
         verify(debugger_ready() && debugger_visible() && hotkeys==0,"F8 starts plugin and consumes key down/up")
         verify(status_reads==2 && stable_reads==1,"debugger visibility invalidates only readers")
         let debug_documents=rui_test_document_count()
@@ -58,25 +58,25 @@ def main(smoke:bool):int {
         rui_update()
         verify(rui_local_property(menu,"font-family")==font,"application stylesheet cannot replace debugger styles")
         // Restore DSL styles by rebuilding its owned tree; the plugin must remain alive.
-        ui_reset(); ui_frame() { scene(model) }
+        ui_reset(); ui_legacy_frame() { scene(model) }
         var inspected=ui_find("action")
         rui_test_click(debug_button("debug-info-button")); rui_update()
         verify(rui_visible(info),"native Element Info panel opens")
-        rui_test_click(inspected); ui_frame() { scene(model) }
+        rui_test_click(inspected); ui_legacy_frame() { scene(model) }
         verify(clicks==0,"first inspector pick must not invoke app callback")
         verify(find(rui_inner_markup(info),"application-button")>=0,"inspector shows the picked native element")
         unsafe { heap_collect(true,false) }
-        model.show_action=false; ui_frame() { scene(model) }
+        model.show_action=false; ui_legacy_frame() { scene(model) }
         verify(!rui_alive(inspected) && rui_alive(info),"destroying selected element leaves inspector alive")
-        model.show_action=true; ui_frame() { scene(model) }
+        model.show_action=true; ui_legacy_frame() { scene(model) }
         inspected=ui_find("action")
         rui_test_click(debug_button("outlines-button")); rui_update()
         verify(rui_has_class(debug_button("outlines-button"),"open"),"native outlines toggled")
-        debugger_show(false); ui_frame() { scene(model) }
+        debugger_show(false); ui_legacy_frame() { scene(model) }
         verify(!debugger_visible() && !rui_visible(info),"hide closes inspector as well as toolbar")
         verify(rui_inner_markup(ui_find("status"))=="hidden","hide invalidates debugger readers")
         verify(!rui_has_class(debug_button("outlines-button"),"open"),"hide turns off outlines")
-        rui_test_click(inspected); ui_frame() { scene(model) }
+        rui_test_click(inspected); ui_legacy_frame() { scene(model) }
         verify(clicks==1,"hidden inspector no longer captures clicks")
         show_popup(model.popup,float2(100.,400.)); rui_focus(ui_find("popup_item"))
         debugger_show(); rui_update()
@@ -87,7 +87,7 @@ def main(smoke:bool):int {
         hide_document(model.popup)
         debugger_shutdown(); rui_update()
         verify(!debugger_ready() && rui_test_document_count()==base_documents && !rui_alive(menu),"shutdown removes native debug documents")
-        rui_test_shortcut("F8",0); ui_frame() { scene(model) }
+        rui_test_shortcut("F8",0); ui_legacy_frame() { scene(model) }
         verify(!debugger_ready(),"shutdown disables shortcut")
         debugger_show(); verify(debugger_ready(),"plugin can restart")
         close_document(model.popup); ui_reset(); rui_shutdown()

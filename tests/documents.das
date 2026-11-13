@@ -21,7 +21,7 @@ def frame() {
         slot("body")
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     button("background","Background") {
         width(px(120)); height(px(35))
@@ -69,58 +69,58 @@ def main(smoke:bool):int {
         model.menu=open_template(@@frame,"Menu",float2(0.),UiDocumentOptions(visible=false))
         modal_target=model.dialog
         verify(rui_focus_node()==previous && !document_visible(model.editor),"hidden load cannot steal focus")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         let draft=ui_find("draft")
         rui_focus(ui_find("background"))
         show_document(model.editor,UiDocumentOptions(focus=UiDocumentFocus.None))
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_focus_node()==ui_find("background") && shows==1,"show without focus")
         show_document(model.editor,UiDocumentOptions(focus=UiDocumentFocus.Auto))
         rui_focus(draft); rui_test_event(draft,"change","saved while hidden")
-        ui_frame() { screen(model) }
-        hide_document(model.editor); ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
+        hide_document(model.editor); ui_legacy_frame() { screen(model) }
         verify(hides==1 && rui_focus_node()==ui_find("background"),"hide returns previous focus")
         verify(ui_find("draft")==draft && model.note=="saved while hidden" && rui_alive(draft),"hide retains DOM and draft")
-        show_document(model.editor); ui_frame() { screen(model) }
+        show_document(model.editor); ui_legacy_frame() { screen(model) }
         verify(ui_find("draft")==draft && shows==3,"show retains incarnation and native show fires on each call")
         // Both are native documents at the same explicit z-index.
         show_document(model.dialog,UiDocumentOptions(focus=UiDocumentFocus.None))
         bring_to_front(model.editor); rui_update()
-        rui_test_click(ui_find("draft")); ui_frame() { screen(model) }
+        rui_test_click(ui_find("draft")); ui_legacy_frame() { screen(model) }
         verify(rui_focus_node()==draft,"front document receives hit-tested input")
         send_to_back(model.editor); rui_update()
-        rui_test_click(ui_find("dialog_button")); ui_frame() { screen(model) }
+        rui_test_click(ui_find("dialog_button")); ui_legacy_frame() { screen(model) }
         if (edits!=101) { panic("back overlap edits={edits}, dialog={rui_bounds(ui_find("dialog_button"))}, editor={rui_bounds(draft)}") }
         hide_document(model.dialog)
         rui_focus(draft)
         show_document(model.dialog,UiDocumentOptions(modal=UiModal.Modal,focus=UiDocumentFocus.Document))
         verify(document_modal(model.dialog) && rui_focus_node()==model.dialog,"modal document focus")
-        rui_test_click(ui_find("background")); ui_frame() { screen(model) }
+        rui_test_click(ui_find("background")); ui_legacy_frame() { screen(model) }
         verify(background_clicks==0,"modal blocks native background click")
         hide_document(model.dialog)
         verify(rui_focus_node()==draft,"modal restores editor focus")
         // Events already queued before opening the modal cannot reach the background afterwards.
         rui_test_event(ui_find("open_modal"),"click","")
         rui_test_event(ui_find("background"),"click","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(background_clicks==0 && document_modal(model.dialog),"queued background command blocked by new modal")
         // A popup can be opened from a modal and returns focus to that modal.
         rui_focus(ui_find("dialog_button"))
-        show_popup(model.menu,float2(790.,590.)); ui_frame() { screen(model) }
+        show_popup(model.menu,float2(790.,590.)); ui_legacy_frame() { screen(model) }
         let bounds=rui_bounds(model.menu)
         verify(bounds.x>=0. && bounds.y>=0. && bounds.x+bounds.z<=800. && bounds.y+bounds.w<=600.,"popup clamped to viewport")
-        rui_test_key("Escape",false); ui_frame() { screen(model) }
+        rui_test_key("Escape",false); ui_legacy_frame() { screen(model) }
         verify(!document_visible(model.menu) && dismiss_reason=="escape" && rui_focus_node()==ui_find("dialog_button"),"Escape and modal focus return")
         hide_document(model.dialog)
         rui_focus(ui_find("background"))
-        show_popup(model.menu,float2(500.,300.)); ui_frame() { screen(model) }
-        rui_test_click(ui_find("background")); ui_frame() { screen(model) }
+        show_popup(model.menu,float2(500.,300.)); ui_legacy_frame() { screen(model) }
+        rui_test_click(ui_find("background")); ui_legacy_frame() { screen(model) }
         verify(dismiss_reason=="outside" && background_clicks==0 && !document_visible(model.menu),"outside click consumed including release")
         verify(rui_focus_node()==ui_find("background"),"outside returns focus")
-        show_popup(model.menu,float2(500.,300.)); ui_frame() { screen(model) }
-        rui_test_click(ui_find("menu_item")); ui_frame() { screen(model) }
+        show_popup(model.menu,float2(500.,300.)); ui_legacy_frame() { screen(model) }
+        rui_test_click(ui_find("menu_item")); ui_legacy_frame() { screen(model) }
         verify(menu_clicks==1 && !document_visible(model.menu),"menu item activates and hides")
-        show_popup(model.menu,float2(790.,590.)); rui_test_resize(640,480); ui_frame() { screen(model) }
+        show_popup(model.menu,float2(790.,590.)); rui_test_resize(640,480); ui_legacy_frame() { screen(model) }
         let smaller=rui_bounds(model.menu)
         verify(smaller.x+smaller.z<=640. && smaller.y+smaller.w<=480.,"popup reclamped on resize")
         hide_document(model.menu)

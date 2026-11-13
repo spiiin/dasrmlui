@@ -114,17 +114,20 @@ def quotation(var model:Quote) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Quote()
-    model.ids |> push(1); model.ids |> push(2); model.ids |> push(3)
+    var initial=Quote()
+    initial.ids |> push(1); initial.ids |> push(2); initial.ids |> push(3)
     activity_changed=ui_signal()
     var first = 0ul
-    return run_demo("dasrmlui - Quote builder","logs/component_lab.png",smoke,$() { quotation(model) }) $(frame:int) {
-        if (frame == 0) { first=ui_find("units",1); rui_test_click(ui_find("increase",1)) }
-        elif (frame == 1) { verify(find(rui_markup(),"Quantity: 3") >= 0); rui_test_click(ui_find("reorder")) }
-        elif (frame == 2) { verify(ui_find("units",1) == first); rui_test_click(ui_find("remove",1)) }
-        elif (frame == 3) { verify(!rui_alive(first)); rui_test_click(ui_find("restore")) }
-        elif (frame == 4) { verify(ui_find("units",1) != first && ui_find("units",1) != 0ul) }
-        elif (frame == 5) { rui_test_resize(720,820) }
-        elif (frame == 6) { verify(ui_width() == 720.0) }
+    var state=ui_state(initial)
+    return run_demo("dasrmlui - Quote builder","logs/component_lab.png",smoke,$() { ui_frame(state) $(model:Quote) { quotation(model) } }) $(frame:int) {
+        ui_edit(state) $(var model:Quote) {
+            if (frame == 0) { first=ui_find("units",1); rui_test_click(ui_find("increase",1)) }
+            elif (frame == 1) { verify(find(rui_markup(),"Quantity: 3") >= 0); rui_test_click(ui_find("reorder")) }
+            elif (frame == 2) { verify(ui_find("units",1) == first); rui_test_click(ui_find("remove",1)) }
+            elif (frame == 3) { verify(!rui_alive(first)); rui_test_click(ui_find("restore")) }
+            elif (frame == 4) { verify(ui_find("units",1) != first && ui_find("units",1) != 0ul) }
+            elif (frame == 5) { rui_test_resize(720,820) }
+            elif (frame == 6) { verify(ui_width() == 720.0) }
+        }
     }
 }

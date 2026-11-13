@@ -20,7 +20,7 @@ def run_demo(title, screenshot:string; smoke:bool; render:block; check:block<(fr
                 if (should_close(event)) { running = false }
                 rui_event(event)
             }
-            ui_frame(render)
+            invoke(render)
             renderer |> set_color(uint4(12u,18u,29u,255u)) |> sdl_try
             renderer |> clear() |> sdl_try
             rui_render()

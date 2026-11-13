@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-13T00:45:36.8814175+01:00",
+  "cpu": "Intel(R) Core(TM) i9-14900HX",
+  "os": "Microsoft Windows NT 10.0.26200.0",
+  "rows": [
+    100,
+    1000
+  ],
+  "samples": 120,
+  "warmup": 30,
+  "timing_rounds": 4,
+  "build": "C:\\src\\dasrmlui\\build",
+  "compiler_and_flags": [
+    "CMAKE_BUILD_TYPE:STRING=Release",
+    "CMAKE_CXX_COMPILER:FILEPATH=C:/msvs17.8/2022/Professional/VC/Tools/MSVC/14.38.33130/bin/Hostx64/x64/cl.exe",
+    "CMAKE_CXX_FLAGS_RELEASE:STRING=/O2 /Ob2 /DNDEBUG"
+  ],
+  "rmlui": "821cbd229d804cb1c905b729af86c21133abceee",
+  "dascript": "ebac0ffe46ab30de6c9536f4b0af7a33ede45902",
+  "dassdl3": "a13e01f1f8a42683d212d4498137d37732529478",
+  "project_base": "e6b559a994eaf2ca478018d1adedd6ac0188428d",
+  "project_has_uncommitted_work": true,
+  "gpu": "Intel(R) RaptorLake-S Mobile Graphics Controller",
+  "gl": "3.3.0 - Build 32.0.101.6881",
+  "sha256": {
+    "benchmarks/bindings.das": "9e2c88b5e5a727cd794bb8a807f43f2b572c45e98150f9c38cebbd9b7dd9daa5",
+    "benchmarks/analyze.py": "dd388c81533eac0b584a60d6bbfc2fdabeb2bda39402840d614d307d00b85294",
+    "src/benchmark.inc": "3a8b5bbb49dcc8cf3dc10ea28973be0f641be2cac416ab960d012e4a09383242",
+    "src/benchmark_alloc.cpp": "82a75fba1d6cd7d6fb7665ee4ac0f9c1d25fa52be3dccb1e10535b57764dc083",
+    "src/benchmark_alloc.h": "2b8cc879476b8d898ace82127cf9507163721f2db290e02ab100176ccf7b2b73",
+    "src/rml_module.cpp": "36317c4fee3a40dabe599bed2cc4e3ccca21e6f7aad55e9ddd78c6aab44202fd",
+    "src/hybrid.inc": "98c1296b808ff9aa9c31f35d460266668a1be9666127c967842a7f3a990bb609",
+    "src/host.cpp": "d742e37440a3eb09d4663324ea8fe8faab3ec3ab9da0a4ee5586b2d22aaec138",
+    "src/gl3/RmlUi_Renderer_GL3.cpp": "af63fd44defd3146eb938d12bed335792de9a36388a07a9665d4937a0bca1ef9",
+    "dasrmlui/ui.das": "521ea4744e8ffad6d654206eb69f2d790b900d8522a829858deaf4a04ebc54cc",
+    "dasrmlui/macros.das": "02370fcb0d48442364d9faca6a605029d351fc7c057043161b188304854c62f6",
+    "dasrmlui/state_types.das": "5fbc4e97e660304d2f3587f38d75366ef93111a479d2f8ef5c252be16441e0f8",
+    "build/bin/dasrmlui_bench.exe": "e171e464283787b6302884eedbf480710b3f49a8c711b713237347265e3c792c"
+  },
+  "validation": "93/93 CTest passed; 22 example smoke tests passed"
+}

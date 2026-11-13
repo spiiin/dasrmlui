@@ -13,7 +13,7 @@ var mounts, unmounts, outer_mounts, outer_unmounts : int
 var disposed : table<int;int>
 var teardown_order = ""
 
-[ui_component]
+[ui_component(legacy=true)]
 def counter(id:int) {
     state(Counter(id=id)) $(var local:Counter) {
         on_mount() {
@@ -34,7 +34,7 @@ def counter(id:int) {
         }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def group(model:Model) {
     on_mount() { outer_mounts += 1 }
     on_unmount() { outer_unmounts += 1; teardown_order += "parent;" }
@@ -42,7 +42,7 @@ def group(model:Model) {
         model.ids |> each_keyed($(id:int) => id) $(id:int) { counter(id) }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def screen(model:Model) { when(model.visible) { group(model) } }
 
 [export]
@@ -54,42 +54,42 @@ def main(smoke:bool):int {
         let window : SDL_Window? = with_window("lifecycle tests",640,480,SDL_WINDOW_HIDDEN) |> sdl_use
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480)); verify(rui_default_font())
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mounts == 2 && outer_mounts == 1 && unmounts == 0)
         let first = ui_find("count",1)
-        for (i in range(10)) { ui_frame() { screen(model) } }
+        for (i in range(10)) { ui_legacy_frame() { screen(model) } }
         verify(mounts == 2)
         rui_test_event(ui_find("increment",1),"click","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(find(rui_markup(),">11<") >= 0)
         model.ids[0] = 2; model.ids[1] = 1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_find("count",1) == first && mounts == 2 && unmounts == 0)
         unsafe { heap_collect(true,false) }
         rui_test_event(ui_find("increment",1),"click","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(find(rui_markup(),">12<") >= 0)
         model.ids |> erase(1)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(!rui_alive(first) && unmounts == 1 && disposed[1] == 12)
         model.ids |> push(1)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mounts == 3 && ui_find("count",1) != first)
         teardown_order = ""
         model.visible = false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(unmounts == 3 && outer_unmounts == 1 && teardown_order == "child;child;parent;")
         verify(disposed[1] == 10)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(unmounts == 3)
         model.visible = true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mounts == 5 && outer_mounts == 2)
         ui_reset()
         verify(unmounts == 5 && outer_unmounts == 2)
         ui_reset()
         verify(unmounts == 5)
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mounts == 7 && outer_mounts == 3)
         ui_reset(); rui_shutdown()
         print("PASS: mount once, keyed local state, current-state cleanup, child-first unmount, GC, reset and remount\n")

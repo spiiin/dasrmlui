@@ -13,7 +13,7 @@ def painter(event:UiNativeEvent) {
     native_triangle(event.element,float2(10.,10.),float2(40.,10.),float2(10.,40.),rgb(240,240,240))
     paints+=1
 }
-[ui_component]
+[ui_component(legacy=true)]
 def scene(var model:Model) {
     box("clip") {
         property("position","absolute"); property("left","20px"); property("top","20px")
@@ -37,12 +37,12 @@ def main(smoke:bool):int {
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,240,180)); verify(rui_default_font()); rui_test_display_scale(1.)
         register_native_element("test-pixels",@@painter,float2(120.,90.))
-        ui_frame() { scene(model) }; snapshot(renderer,"initial"); verify(paints==1)
-        ui_clear_stats(); ui_frame() { scene(model) }; snapshot(renderer,"cached")
+        ui_legacy_frame() { scene(model) }; snapshot(renderer,"initial"); verify(paints==1)
+        ui_clear_stats(); ui_legacy_frame() { scene(model) }; snapshot(renderer,"cached")
         verify(paints==1 && ui_stats().binding_updates==0)
-        model.alternate=true; ui_frame() { scene(model) }; snapshot(renderer,"changed"); verify(paints==2)
-        model.opacity=0.5; ui_frame() { scene(model) }; snapshot(renderer,"alpha"); verify(paints==3)
-        set_ui_scale(2.); ui_frame() { scene(model) }; snapshot(renderer,"dpi"); verify(paints==4)
+        model.alternate=true; ui_legacy_frame() { scene(model) }; snapshot(renderer,"changed"); verify(paints==2)
+        model.opacity=0.5; ui_legacy_frame() { scene(model) }; snapshot(renderer,"alpha"); verify(paints==3)
+        set_ui_scale(2.); ui_legacy_frame() { scene(model) }; snapshot(renderer,"dpi"); verify(paints==4)
         let element=ui_find("paint")
         rui_property(element,"width","50px"); rui_property(element,"height","40px")
         rui_update(); snapshot(renderer,"resized"); verify(paints==5)

@@ -30,7 +30,7 @@ def frame() {
 }
 [ui_template]
 def static_frame() { window_frame("frame") { text("label","No insertion points required") } }
-[ui_component]
+[ui_component(legacy=true)]
 def editor(index:int; part_name:string) {
     state(Draft(index=index,part_name=part_name)) $(var local:Draft) {
         on_mount() { mounts+=1 }
@@ -41,7 +41,7 @@ def editor(index:int; part_name:string) {
         text_input(part_name) { bind_value(local.value) $(value:string) { local.value=value } }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def moving_counter() {
     state(Counter()) $(var local:Counter) {
         on_mount() { moving_mounts+=1 }
@@ -49,7 +49,7 @@ def moving_counter() {
         button("moving","{local.value}") { on_click() { local.value+=1 } }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def window_content(model:Model; index:int) {
     state(Document(index=index)) $(var local:Document) {
         on_mount() { local.handle=open_template(@@frame,"Window {index}",float2(float(index*350),0.)); documents[index]=local.handle }
@@ -62,7 +62,7 @@ def window_content(model:Model; index:int) {
         }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def screen(model:Model) {
     model.ids |> each_keyed($(id:int)=>id) $(id:int) { window_content(model,id) }
 }
@@ -76,7 +76,7 @@ def main(smoke:bool):int {
         let window:SDL_Window?=with_window("Named template slots",800,600,SDL_WINDOW_HIDDEN) |> sdl_use
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,800,600)); verify(rui_default_font())
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(definitions==1 && mounts==4 && moving_mounts==2,"cached definition, independent component instances")
         let first=documents[0]; let second=documents[1]
         let cargo=ui_find("cargo_input",0); let notes=ui_find("notes_input",0)
@@ -90,49 +90,49 @@ def main(smoke:bool):int {
         verify(cargo_host!=rui_document_element(second,"cargo_manifest") && empty(rui_inner_markup(unused_host)))
         verify(find(template_markup(@@frame)," content=")<0,"no special native insertion point")
         ui_clear_stats()
-        for (i in range(10)) { ui_frame() { screen(model) } }
+        for (i in range(10)) { ui_legacy_frame() { screen(model) } }
         verify(ui_stats().updates==0 && mounts==4,"idle slots keep components asleep")
 
         rui_focus(cargo); rui_test_event(cargo,"change","first window only")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_get_value(cargo)=="first window only" && rui_get_value(ui_find("cargo_input",1))=="draft")
         let status=ui_find("status",0)
         model.status="Updated"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(ui_find("status",0)==status && rui_inner_markup(status)=="Updated")
         verify(ui_find("cargo_input",0)==cargo && ui_find("notes_input",0)==notes && rui_focused(cargo),"sibling update preserves input and focus")
         model.ids[0]=1; model.ids[1]=0
         unsafe { heap_collect(true,false) }
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(documents[0]==first && ui_find("cargo_input",0)==cargo && mounts==4,"keyed order and GC preserve slots")
 
         model.notes=false
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(unmounts==2 && !rui_alive(notes) && rui_alive(notes_host) && empty(rui_inner_markup(notes_host)))
         verify(rui_get_value(cargo)=="first window only")
         model.notes=true
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(mounts==6 && ui_find("notes_input",0)!=notes && rui_get_value(ui_find("notes_input",0))=="draft")
 
         let moving=ui_find("moving",0)
         rui_test_event(moving,"click","")
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_inner_markup(moving)=="1")
         model.destination="alternate_readout"
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(!rui_alive(moving) && moving_mounts==4 && moving_unmounts==2,"changing destination remounts the child")
         verify(empty(rui_inner_markup(status_host)) && rui_contains(alternate_host,ui_find("moving",0)))
         verify(rui_inner_markup(ui_find("moving",0))=="0" && ui_find("cargo_input",0)==cargo)
 
         model.ids |> erase(0) // Remove window 1 after reordering.
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(!rui_alive(second) && rui_alive(first) && unmounts==4 && moving_unmounts==3)
         let standalone=open_template(@@static_frame,"Static",float2(0.,0.))
         verify(rui_document_element(standalone,"label")!=0ul,"templates may have zero slots")
         rui_close_document(standalone)
         ui_reset()
         verify(unmounts==mounts && moving_unmounts==moving_mounts && !rui_alive(first))
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(definitions==2 && rui_alive(documents[0]) && ui_find("cargo_input",0)!=cargo,"reset clears definition and component caches")
         ui_reset(); rui_shutdown()
         verify(unmounts==mounts && moving_unmounts==moving_mounts)

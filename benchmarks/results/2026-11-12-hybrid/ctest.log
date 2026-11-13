@@ -1,0 +1,180 @@
+Internal ctest changing into directory: C:/src/dasrmlui/build
+Test project C:/src/dasrmlui/build
+      Start  1: binding_benchmark_smoke
+ 1/84 Test  #1: binding_benchmark_smoke ..........   Passed    4.71 sec
+      Start  2: runtime
+ 2/84 Test  #2: runtime ..........................   Passed    3.73 sec
+      Start  3: component_macro
+ 3/84 Test  #3: component_macro ..................   Passed    1.44 sec
+      Start  4: incremental
+ 4/84 Test  #4: incremental ......................   Passed    3.69 sec
+      Start  5: bindings
+ 5/84 Test  #5: bindings .........................   Passed    3.70 sec
+      Start  6: lifecycle
+ 6/84 Test  #6: lifecycle ........................   Passed    3.73 sec
+      Start  7: composition
+ 7/84 Test  #7: composition ......................   Passed    3.60 sec
+      Start  8: viewport
+ 8/84 Test  #8: viewport .........................   Passed    3.67 sec
+      Start  9: forms
+ 9/84 Test  #9: forms ............................   Passed    3.72 sec
+      Start 10: templates
+10/84 Test #10: templates ........................   Passed    3.55 sec
+      Start 11: template_slots
+11/84 Test #11: template_slots ...................   Passed    3.65 sec
+      Start 12: animations
+12/84 Test #12: animations .......................   Passed    3.64 sec
+      Start 13: style_environment
+13/84 Test #13: style_environment ................   Passed    3.65 sec
+      Start 14: events
+14/84 Test #14: events ...........................   Passed    3.64 sec
+      Start 15: documents
+15/84 Test #15: documents ........................   Passed    3.64 sec
+      Start 16: regressions
+16/84 Test #16: regressions ......................   Passed    3.75 sec
+      Start 17: navigation
+17/84 Test #17: navigation .......................   Passed    3.64 sec
+      Start 18: debugger
+18/84 Test #18: debugger .........................   Passed    3.59 sec
+      Start 19: vector_plugins
+19/84 Test #19: vector_plugins ...................   Passed    3.70 sec
+      Start 20: native_elements
+20/84 Test #20: native_elements ..................   Passed    3.61 sec
+      Start 21: native_safety
+21/84 Test #21: native_safety ....................   Passed    3.56 sec
+      Start 22: gpu_backend
+22/84 Test #22: gpu_backend ......................   Passed    3.56 sec
+      Start 23: hybrid
+23/84 Test #23: hybrid ...........................   Passed    3.82 sec
+      Start 24: hybrid_lifecycle
+24/84 Test #24: hybrid_lifecycle .................   Passed    3.68 sec
+      Start 25: demo_dashboard
+25/84 Test #25: demo_dashboard ...................   Passed    4.47 sec
+      Start 26: demo_settings
+26/84 Test #26: demo_settings ....................   Passed    4.28 sec
+      Start 27: demo_kanban
+27/84 Test #27: demo_kanban ......................   Passed    4.42 sec
+      Start 28: demo_catalog
+28/84 Test #28: demo_catalog .....................   Passed    4.67 sec
+      Start 29: demo_component_lab
+29/84 Test #29: demo_component_lab ...............   Passed    4.20 sec
+      Start 30: demo_expedition
+30/84 Test #30: demo_expedition ..................   Passed    4.62 sec
+      Start 31: demo_drag_drop
+31/84 Test #31: demo_drag_drop ...................   Passed    4.21 sec
+      Start 32: demo_templates
+32/84 Test #32: demo_templates ...................   Passed    4.17 sec
+      Start 33: demo_localization
+33/84 Test #33: demo_localization ................   Passed    4.04 sec
+      Start 34: demo_event_studio
+34/84 Test #34: demo_event_studio ................   Passed    4.26 sec
+      Start 35: demo_navigation_lab
+35/84 Test #35: demo_navigation_lab ..............   Passed    4.58 sec
+      Start 36: demo_effects
+36/84 Test #36: demo_effects .....................   Passed    4.77 sec
+      Start 37: demo_progress_lab
+37/84 Test #37: demo_progress_lab ................   Passed    4.11 sec
+      Start 38: demo_animations
+38/84 Test #38: demo_animations ..................   Passed    4.12 sec
+      Start 39: demo_style_lab
+39/84 Test #39: demo_style_lab ...................   Passed    3.89 sec
+      Start 40: demo_vector_lab
+40/84 Test #40: demo_vector_lab ..................   Passed    3.84 sec
+      Start 41: demo_native_lab
+41/84 Test #41: demo_native_lab ..................   Passed    3.90 sec
+      Start 42: demo_mesh_lab
+42/84 Test #42: demo_mesh_lab ....................   Passed    3.90 sec
+      Start 43: demo_decorator_lab
+43/84 Test #43: demo_decorator_lab ...............   Passed    3.80 sec
+      Start 44: demo_shader_lab
+44/84 Test #44: demo_shader_lab ..................   Passed    4.83 sec
+      Start 45: duplicate_keys
+45/84 Test #45: duplicate_keys ...................   Passed    4.63 sec
+      Start 46: style_type_error
+46/84 Test #46: style_type_error .................   Passed    3.15 sec
+      Start 47: template_static_error
+47/84 Test #47: template_static_error ............   Passed    3.15 sec
+      Start 48: template_duplicate
+48/84 Test #48: template_duplicate ...............   Passed    3.22 sec
+      Start 49: template_missing_slot
+49/84 Test #49: template_missing_slot ............   Passed    4.59 sec
+      Start 50: template_not_slot
+50/84 Test #50: template_not_slot ................   Passed    4.50 sec
+      Start 51: template_empty_slot
+51/84 Test #51: template_empty_slot ..............   Passed    3.14 sec
+      Start 52: template_slot_children
+52/84 Test #52: template_slot_children ...........   Passed    3.14 sec
+      Start 53: template_slot_duplicate
+53/84 Test #53: template_slot_duplicate ..........   Passed    3.11 sec
+      Start 54: keyframe_order_error
+54/84 Test #54: keyframe_order_error .............   Passed    3.14 sec
+      Start 55: media_nested_error
+55/84 Test #55: media_nested_error ...............   Passed    3.14 sec
+      Start 56: media_negation_error
+56/84 Test #56: media_negation_error .............   Passed    3.16 sec
+      Start 57: atlas_resolution_error
+57/84 Test #57: atlas_resolution_error ...........   Passed    3.19 sec
+      Start 58: navigation_id_error
+58/84 Test #58: navigation_id_error ..............   Passed    3.12 sec
+      Start 59: binding_arity_error
+59/84 Test #59: binding_arity_error ..............   Passed    3.16 sec
+      Start 60: smoke_warning_error
+60/84 Test #60: smoke_warning_error ..............   Passed    4.69 sec
+      Start 61: runtime_package
+61/84 Test #61: runtime_package ..................   Passed   14.15 sec
+      Start 62: elements
+62/84 Test #62: elements .........................   Passed    3.58 sec
+      Start 63: style_helpers
+63/84 Test #63: style_helpers ....................   Passed    3.60 sec
+      Start 64: style_helper_type_error
+64/84 Test #64: style_helper_type_error ..........   Passed    3.20 sec
+      Start 65: style_keyword_error
+65/84 Test #65: style_keyword_error ..............   Passed    3.21 sec
+      Start 66: ninepatch_pixels
+66/84 Test #66: ninepatch_pixels .................   Passed    6.29 sec
+      Start 67: svg_size_error
+67/84 Test #67: svg_size_error ...................   Passed    3.14 sec
+      Start 68: svg_decorator_error
+68/84 Test #68: svg_decorator_error ..............   Passed    3.26 sec
+      Start 69: vector_pixels
+69/84 Test #69: vector_pixels ....................   Passed    4.09 sec
+      Start 70: native_host_lifetime
+70/84 Test #70: native_host_lifetime .............   Passed    8.22 sec
+      Start 71: native_pixels
+71/84 Test #71: native_pixels ....................   Passed    3.97 sec
+      Start 72: native_mesh_pixels
+72/84 Test #72: native_mesh_pixels ...............   Passed    7.15 sec
+      Start 73: decorator_pixels
+73/84 Test #73: decorator_pixels .................   Passed    4.78 sec
+      Start 74: decorator_host_lifetime
+74/84 Test #74: decorator_host_lifetime ..........   Passed    8.09 sec
+      Start 75: gpu_effect_pixels
+75/84 Test #75: gpu_effect_pixels ................   Passed    6.92 sec
+      Start 76: shader_dsl_compiler
+76/84 Test #76: shader_dsl_compiler ..............   Passed    2.80 sec
+      Start 77: shader_dsl_return_error
+77/84 Test #77: shader_dsl_return_error ..........   Passed    3.67 sec
+      Start 78: shader_dsl_param_error
+78/84 Test #78: shader_dsl_param_error ...........   Passed    3.78 sec
+      Start 79: shader_dsl_builtin_error
+79/84 Test #79: shader_dsl_builtin_error .........   Passed    3.74 sec
+      Start 80: shader_dsl_capture_error
+80/84 Test #80: shader_dsl_capture_error .........   Passed    3.77 sec
+      Start 81: shader_dsl_sampling_error
+81/84 Test #81: shader_dsl_sampling_error ........   Passed    3.66 sec
+      Start 82: shader_dsl_cpu_error
+82/84 Test #82: shader_dsl_cpu_error .............   Passed    3.74 sec
+      Start 83: shader_dsl_mutable_error
+83/84 Test #83: shader_dsl_mutable_error .........   Passed    3.77 sec
+      Start 84: shader_dsl_default_error
+84/84 Test #84: shader_dsl_default_error .........   Passed    4.57 sec
+
+100% tests passed, 0 tests failed out of 84
+
+Label Time Summary:
+benchmark    =   4.71 sec*proc (1 test)
+graphics     =  89.21 sec*proc (17 tests)
+opengl       =  74.86 sec*proc (14 tests)
+sdl          =  26.28 sec*proc (5 tests)
+
+Total Test time (real) = 345.35 sec

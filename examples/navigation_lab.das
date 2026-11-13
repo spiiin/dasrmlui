@@ -118,41 +118,44 @@ def deck(var model:Lab) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Lab()
-    model.tiles <- array<Tile>(
+    var initial=Lab()
+    initial.tiles <- array<Tile>(
         Tile(id=0,title="Signals",detail="Left links to tile 06"), Tile(id=1,title="Routes",detail="Try disabling this tile"),
         Tile(id=2,title="Telemetry",detail="Geometric neighbours"), Tile(id=3,title="Archive",detail="Stable keyed identity"),
         Tile(id=4,title="Sensors",detail="Native focus-visible"), Tile(id=5,title="Actions",detail="Enter opens a popup"))
     var inspected:uint64
-    return run_demo("Vector deck - native RmlUi tools","logs/navigation_lab.png",smoke,$() { deck(model) },$(frame:int) {
-        if (frame==0) { verify(rui_focused(ui_find("tile",0))); rui_test_shortcut("Right",0) }
-        elif (frame==1) { verify(rui_focused(ui_find("tile",1))); rui_test_shortcut("Down",0) }
-        elif (frame==2) {
-            verify(rui_focused(ui_find("tile",4)))
-            rui_focus(ui_find("tile",0)); rui_test_shortcut("Left",0)
-            verify(rui_focused(ui_find("tile",5)),"native explicit edge")
-            rui_test_shortcut("Return",0)
-        } elif (frame==3) {
-            verify(document_visible(menu)); rui_test_shortcut("Right",0)
-            verify(rui_focused(ui_find("dismiss")),"native navigation inside popup")
-            rui_test_key("Escape",false); rui_test_shortcut("F8",0)
-        } elif (frame==4) {
-            verify(debugger_visible() && !document_visible(menu))
-            let tools=rui_test_debugger_document("menu")
-            rui_test_click(rui_document_element(tools,"debug-info-button")); rui_update()
-            inspected=ui_find("tile",3); rui_test_click(inspected)
-        } elif (frame==5) {
-            verify(find(rui_inner_markup(rui_test_debugger_document("info")),"deck_tile_3")>=0,"native inspector selected keyed tile")
-            verify(model.activated=="Actions","inspection did not activate tile")
-            rui_test_shortcut("F8",0)
-        } elif (frame==6) {
-            verify(!debugger_visible()); rui_test_shortcut("F8",0)
-            rui_test_click(rui_document_element(rui_test_debugger_document("menu"),"debug-info-button")); rui_update()
-            rui_test_click(ui_find("tile",0))
-        } elif (frame==7) {
-            verify(debugger_visible() && rui_alive(inspected))
-            verify(find(rui_inner_markup(rui_test_debugger_document("info")),"deck_tile_0")>=0)
-            print("PASS: native navigation, popup keyboard, F8, inspector picking and stable keyed handles\n")
+    var state=ui_state(initial)
+    return run_demo("Vector deck - native RmlUi tools","logs/navigation_lab.png",smoke,$() { ui_frame(state) $(model:Lab) { deck(model) } },$(frame:int) {
+        ui_edit(state) $(var model:Lab) {
+            if (frame==0) { verify(rui_focused(ui_find("tile",0))); rui_test_shortcut("Right",0) }
+            elif (frame==1) { verify(rui_focused(ui_find("tile",1))); rui_test_shortcut("Down",0) }
+            elif (frame==2) {
+                verify(rui_focused(ui_find("tile",4)))
+                rui_focus(ui_find("tile",0)); rui_test_shortcut("Left",0)
+                verify(rui_focused(ui_find("tile",5)),"native explicit edge")
+                rui_test_shortcut("Return",0)
+            } elif (frame==3) {
+                verify(document_visible(menu)); rui_test_shortcut("Right",0)
+                verify(rui_focused(ui_find("dismiss")),"native navigation inside popup")
+                rui_test_key("Escape",false); rui_test_shortcut("F8",0)
+            } elif (frame==4) {
+                verify(debugger_visible() && !document_visible(menu))
+                let tools=rui_test_debugger_document("menu")
+                rui_test_click(rui_document_element(tools,"debug-info-button")); rui_update()
+                inspected=ui_find("tile",3); rui_test_click(inspected)
+            } elif (frame==5) {
+                verify(find(rui_inner_markup(rui_test_debugger_document("info")),"deck_tile_3")>=0,"native inspector selected keyed tile")
+                verify(model.activated=="Actions","inspection did not activate tile")
+                rui_test_shortcut("F8",0)
+            } elif (frame==6) {
+                verify(!debugger_visible()); rui_test_shortcut("F8",0)
+                rui_test_click(rui_document_element(rui_test_debugger_document("menu"),"debug-info-button")); rui_update()
+                rui_test_click(ui_find("tile",0))
+            } elif (frame==7) {
+                verify(debugger_visible() && rui_alive(inspected))
+                verify(find(rui_inner_markup(rui_test_debugger_document("info")),"deck_tile_0")>=0)
+                print("PASS: native navigation, popup keyboard, F8, inspector picking and stable keyed handles\n")
+            }
         }
     })
 }

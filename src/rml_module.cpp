@@ -14,9 +14,14 @@
 #include <RmlUi/Core/Geometry.h>
 #include <RmlUi/Core/RenderManager.h>
 #include <RmlUi/Core/ElementUtilities.h>
+#include <RmlUi/Core/Decorator.h>
+#include <RmlUi/Core/PropertyDefinition.h>
+#include <RmlUi/Core/RenderBox.h>
+#include <RmlUi/Core/Filter.h>
+#include <RmlUi/Core/MeshUtilities.h>
 #include <algorithm>
 #include "RmlUi_Platform_SDL.h"
-#include "RmlUi_Renderer_GL3.h"
+#include "gl3/RmlUi_Renderer_GL3.h"
 #include "RmlUi_Include_GL3.h"
 #include <SDL3/SDL.h>
 #include <deque>
@@ -27,10 +32,22 @@
 #include <vector>
 #include <cstdio>
 #include <cmath>
+#include <DataModel.h>
+#include <DataView.h>
+#include <RmlUi/Core/DataVariable.h>
+#ifdef DASRMLUI_BENCHMARK
+#include "benchmark_alloc.h"
+#include <DataModel.h> // Pinned RmlUi internal API, benchmark-only phase separation.
+#include <chrono>
+#include <fstream>
+#endif
 MAKE_TYPE_FACTORY(SDL_Window, SDL_Window);
 MAKE_TYPE_FACTORY(SDL_Renderer, SDL_Renderer);
 MAKE_TYPE_FACTORY(SDL_Event, SDL_Event);
 namespace {
+#ifdef DASRMLUI_BENCHMARK
+bool bench_defer_update=false;
+#endif
 struct Geometry { std::vector<SDL_Vertex> verts; std::vector<int> indices; };
 
 class RenderInterface_SDLRenderer : public Rml::RenderInterface {
@@ -203,6 +220,8 @@ public:
 struct State;
 class ScriptInstancer;
 class ScriptElement;
+class ScriptDecoratorInstancer;
+struct GpuDefinition;
 class QueueListener : public Rml::EventListener {
 public: void ProcessEvent(Rml::Event& event) override;
 };
@@ -220,6 +239,11 @@ struct DocumentState { uint64_t return_focus=0; bool popup=false; Rml::Vector2f 
 struct State {
     std::unordered_map<std::string,std::unique_ptr<ScriptInstancer>> native_types;
     std::unordered_map<uint64_t,ScriptElement*> native_nodes;
+    std::unordered_map<std::string,std::unique_ptr<ScriptDecoratorInstancer>> decorator_types;
+    // Parsed RCSS can retain raw instancer/property-definition pointers.
+    std::vector<std::unique_ptr<ScriptDecoratorInstancer>> retired_decorator_types;
+    std::unordered_map<std::string,std::unique_ptr<GpuDefinition>> gpu_effects;
+    std::vector<std::unique_ptr<GpuDefinition>> retired_gpu_effects;
     bool debugger_ready=false, debugger_key_down=false;
     SDL_Keycode debugger_key=SDLK_UNKNOWN;
     uint64_t debugger_revision=0, debugger_return_focus=0;
@@ -272,6 +296,8 @@ uint64_t remember(Rml::Element* element) {
     return id;
 }
 #include "native_elements.inc"
+#include "native_decorators.inc"
+#include "gpu_effects.inc"
 void listen_document(Rml::ElementDocument* document, bool attach) {
     for(const char* type : {"click","change","tabchange","dragdrop","dragover","dragout","keydown","blur","animationend","transitionend"}) {
         const bool capture=!strcmp(type,"keydown") || !strcmp(type,"blur");
@@ -430,9 +456,13 @@ void QueueListener::ProcessEvent(Rml::Event& event) {
 char* str(const std::string& value, das::Context* ctx, das::LineInfoArg* at) {
     return ctx->allocateString(value.c_str(), uint64_t(value.size()), at);
 }
+#include "data_models.inc"
+#include "hybrid.inc"
 }
 void rui_shutdown() { native_guard();
     if (!state) return;
+    rui_hybrid_reset();
+    data_shutdown();
     state->listeners.clear();
     state->nodes.clear();
     state->document_styles.clear();
@@ -441,6 +471,7 @@ void rui_shutdown() { native_guard();
     Rml::Shutdown();
     // Release rooted daScript handlers only after every native element died.
     for(auto& type:state->native_types) type.second->Call(0,NativeRelease);
+    for(auto& type:state->decorator_types) type.second->Call(nullptr,NativeRelease);
     state.reset();
     if (gl_loaded) RmlGL3::Shutdown();
 }
@@ -541,6 +572,15 @@ static uint64_t rui_test_debugger_document(const char* name) {
     if(!rui_debugger_ready()) return 0;
     return remember(state->context->GetDocument(std::string("rmlui-debug-")+name));
 }
+static bool rui_debugger_models() { native_guard();
+    if(!rui_debugger_show(true)) return false;
+    auto document=state->context->GetDocument("rmlui-debug-data-models");
+    if(!document) return false;
+    // Show directly: the Debugger's Show listener keeps its toolbar in sync.
+    // A synthetic click can be intercepted by the element inspector.
+    document->Show();
+    return true;
+}
 static int rui_test_document_count() { return state ? state->context->GetNumDocuments() : 0; }
 static bool rui_has_class(uint64_t id,const char* name) { auto e=node(id); return e && e->IsClassSet(name); }
 static bool rui_font(const char* path) { native_guard(); return state && Rml::LoadFontFace(path); }
@@ -567,6 +607,18 @@ static uint64_t rui_document_load(const char* markup,const char* source,bool vis
     return id;
 }
 static uint64_t rui_document(const char* markup,const char* source) { return rui_document_load(markup,source,true); }
+static uint64_t rui_document_file(const char* path,bool visible) { native_guard();
+    if(!state) return 0;
+    auto document=state->context->LoadDocument(path);
+    if(!document) return 0;
+    const auto id=remember(document);
+    auto base=std::make_shared<Rml::StyleSheetContainer>();
+    if(auto sheet=document->GetStyleSheetContainer()) base->MergeStyleSheetContainer(*sheet);
+    state->document_styles[id]=std::move(base);
+    document_css(id); listen_document(document,true);
+    if(visible) document->Show();
+    return id;
+}
 static void rui_show_document(uint64_t id,int modal,int focus,bool scroll) { native_guard();
     auto doc=rmlui_dynamic_cast<Rml::ElementDocument*>(node(id));
     if(!doc || modal<0 || modal>2 || focus<0 || focus>3) return;
@@ -696,6 +748,7 @@ static bool rui_alive(uint64_t id) { return node(id) != nullptr; }
 static bool rui_enabled(uint64_t id) { return element_enabled(node(id)); }
 static void rui_remove(uint64_t id) { native_guard();
     auto e = node(id); if (!e || e == state->document) return;
+    hybrid_forget(e);
     if (auto p = e->GetParentNode()) p->RemoveChild(e).reset();
     for (auto it = state->nodes.begin(); it != state->nodes.end();) {
         if (!it->second) { state->properties.erase(it->first); it = state->nodes.erase(it); } else ++it;
@@ -1039,6 +1092,9 @@ static void rui_test_advance_time(double seconds) { native_guard();
     clock.test_time+=seconds;
 }
 static void rui_update() { native_guard();
+#ifdef DASRMLUI_BENCHMARK
+    if(bench_defer_update) return;
+#endif
     if(!state) return;
     for(auto it=state->listeners.begin();it!=state->listeners.end();) {
         if(!it->second->element) it=state->listeners.erase(it); else ++it;
@@ -1108,6 +1164,9 @@ static void rui_render(das::Context* context,das::LineInfoArg* at) { native_guar
 static void rui_shutdown_checked(das::Context* context,das::LineInfoArg* at) {
     rui_shutdown(); rui_native_check(context,at);
 }
+#ifdef DASRMLUI_BENCHMARK
+#include "benchmark.inc"
+#endif
 // With the clear off, the GL3 renderer composites the UI over what the host
 // has already drawn into the frame. It has no effect on the SDL_Renderer path,
 // where the host clears the frame itself.
@@ -1186,6 +1245,29 @@ static das::float4 rui_bounds(uint64_t id) {
     const auto p=e->GetAbsoluteOffset(Rml::BoxArea::Border); const auto s=e->GetBox().GetSize(Rml::BoxArea::Border);
     return {p.x,p.y,s.x,s.y};
 }
+// Read-only native layout probes. Text line positions use the glyph baseline,
+// unlike the union rectangle of an inline element that can span several lines.
+static Rml::ElementText* first_text(Rml::Element* e) {
+    if(!e) return nullptr;
+    if(auto text=rmlui_dynamic_cast<Rml::ElementText*>(e)) return text;
+    for(int i=0;i<e->GetNumChildren();++i) if(auto text=first_text(e->GetChild(i))) return text;
+    return nullptr;
+}
+static int rui_text_line_count(uint64_t id) { auto t=first_text(node(id)); return t ? int(t->GetLines().size()) : 0; }
+static das::float2 rui_text_line_position(uint64_t id,int index) {
+    auto t=first_text(node(id));
+    if(!t || index<0 || index>=int(t->GetLines().size())) return {0,0};
+    auto p=t->GetAbsoluteOffset()+t->GetLines()[index].position;
+    return {p.x,p.y};
+}
+static char* rui_text_line(uint64_t id,int index,das::Context* ctx,das::LineInfoArg* at) {
+    auto t=first_text(node(id));
+    return str(t && index>=0 && index<int(t->GetLines().size()) ? t->GetLines()[index].text : "",ctx,at);
+}
+static char* rui_computed_property(uint64_t id,const char* name,das::Context* ctx,das::LineInfoArg* at) {
+    auto e=node(id); const auto p=e ? e->GetProperty(name) : nullptr;
+    return str(p ? p->ToString() : "",ctx,at);
+}
 static void rui_test_drag_offset(uint64_t source, float dx, float dy) { native_guard();
     if (!state || !node(source)) return;
     state->context->Update(); const auto box=rui_bounds(source);
@@ -1212,8 +1294,7 @@ static void rui_test_drag(uint64_t source, uint64_t destination) { native_guard(
 static int rui_child_count(uint64_t id) { auto e=node(id); return e ? e->GetNumChildren() : -1; }
 static uint64_t rui_child(uint64_t id, int index) {
     auto e=node(id); if (!e || index<0 || index>=e->GetNumChildren()) return 0;
-    auto it = state->ids.find(e->GetChild(index));
-    return it == state->ids.end() ? 0 : it->second;
+    return remember(e->GetChild(index));
 }
 static char* rui_markup(das::Context* ctx, das::LineInfoArg* at) { Rml::String s; if (state) state->document->GetInnerRML(s); return str(s,ctx,at); }
 static char* rui_inner_markup(uint64_t id,das::Context* ctx,das::LineInfoArg* at) { Rml::String s; if(auto e=node(id)) e->GetInnerRML(s); return str(s,ctx,at); }
@@ -1267,7 +1348,47 @@ static bool rui_default_font() {
     }
     return rui_font(default_font_path.c_str());
 }
+static bool rui_default_font_styles() {
+    if(!rui_default_font()) return false;
+    const auto slash=default_font_path.find_last_of("/\\");
+    const auto directory=slash==std::string::npos ? std::string() : default_font_path.substr(0,slash+1);
+    for(const char* file:{"LatoLatin-Bold.ttf","LatoLatin-Italic.ttf","LatoLatin-BoldItalic.ttf"})
+        if(!rui_font((directory+file).c_str())) return false;
+    return true;
+}
 namespace das {
+// RmlUi virtual callbacks can re-enter daScript and collect its heap. Preserve the
+// source position of the suspended caller, also across nested calls and longjmp.
+template<typename Function> struct RuiCallNode;
+template<typename R,typename... Args>
+struct RuiCallNode<R(*)(Args...)> : SimNode_ExtFuncCallRet<typename ext_ret_carrier<R>::type> {
+    using Base=SimNode_ExtFuncCallRet<typename ext_ret_carrier<R>::type>;
+    using Function=R(*)(Args...);
+    enum { IS_CMRES=false };
+    Function fn;
+    RuiCallNode(const LineInfo& at,const char* name,Function fn):Base(at,name),fn(fn) {}
+    DAS_EVAL_ABI vec4f eval(Context& context) override {
+        auto previous=native_entry_line; native_entry_line=&this->debugInfo;
+        vec4f result=v_zero();
+        bool ok=false;
+        char error[2048];
+        bool cpp_error=false;
+        try {
+            ok=context.runWithCatch([&] {
+                if constexpr(std::is_void_v<R>) CallStaticFunction<R,Args...>(fn,context,this->arguments);
+                else result=cast<R>::from(CallStaticFunction<R,Args...>(fn,context,this->arguments));
+            });
+        } catch(const std::exception& exception) {
+            // Unwind C++ owners before entering daScript's recovery mechanism.
+            std::snprintf(error,sizeof(error),"%s",exception.what());
+            cpp_error=true;
+        }
+        native_entry_line=previous;
+        if(cpp_error) context.throw_error_at(&this->debugInfo,"%s",error);
+        if(!ok) context.rethrow();
+        return result;
+    }
+};
 class Module_dasRmlUi : public Module {
     bool initialized = false;
 public:
@@ -1278,11 +1399,27 @@ public:
         if (!sdl || !sdl->initDependencies()) return false;
         ModuleLibrary lib(this); lib.addBuiltInModule(); addBuiltinDependency(lib,sdl);
         initialized = true;
-#define B(F) addExtern<DAS_BIND_FUN(F)>(*this,lib,#F,SideEffects::worstDefault,#F)
+#define B(F) addExtern<DAS_BIND_FUN(F),RuiCallNode>(*this,lib,#F,SideEffects::worstDefault,#F)->needCallerStackFrame=true
+        B(rui_hybrid_reset); B(rui_hybrid_start); B(rui_hybrid_pending); B(rui_hybrid_invalidate); B(rui_hybrid_epoch); B(rui_hybrid_begin); B(rui_hybrid_end);
+        B(rui_data_context_has); B(rui_data_context_count); B(rui_data_create); B(rui_data_alive); B(rui_data_remove);
+        B(rui_data_mount); B(rui_data_find);
+        B(rui_data_begin); B(rui_data_abort); B(rui_data_node); B(rui_data_string); B(rui_data_bool); B(rui_data_int); B(rui_data_number); B(rui_data_commit);
+        B(rui_data_kind); B(rui_data_size); B(rui_data_get_string); B(rui_data_get_int); B(rui_data_get_number); B(rui_data_get_bool);
+        B(rui_data_dirty); B(rui_data_dirty_all); B(rui_data_is_dirty); B(rui_data_on);
+        B(rui_data_event_begin); B(rui_data_event_end); B(rui_data_event_next); B(rui_data_event_name); B(rui_data_event_type);
+        B(rui_data_event_target); B(rui_data_event_count); B(rui_data_event_string); B(rui_data_event_number); B(rui_data_event_int); B(rui_data_event_bool);
+        B(rui_document_file);
+        B(rui_hybrid_watch); B(rui_hybrid_watch_as); B(rui_hybrid_bind_as); B(rui_hybrid_source); B(rui_hybrid_written); B(rui_hybrid_tracked); B(rui_hybrid_bind); B(rui_hybrid_flush); B(rui_hybrid_reads); B(rui_hybrid_live); B(rui_hybrid_capacity);
+#ifdef DASRMLUI_BENCHMARK
+        B(bench_config); B(bench_info); B(bench_begin); B(bench_end); B(bench_case); B(bench_save);
+        B(bench_native_setup); B(bench_native_set); B(bench_native_rotate); B(bench_native_bind); B(bench_native_close);
+        B(bench_update); B(bench_finish); B(bench_css); B(bench_verify); B(bench_identity);
+#endif
         B(rui_init); B(rui_init_gl); B(rui_root); B(rui_font); B(rui_css);
-        addExtern<DAS_BIND_FUN(rui_shutdown_checked)>(*this,lib,"rui_shutdown",SideEffects::worstDefault,"rui_shutdown_checked");
+        addExtern<DAS_BIND_FUN(rui_shutdown_checked),RuiCallNode>(*this,lib,"rui_shutdown",SideEffects::worstDefault,"rui_shutdown_checked")->needCallerStackFrame=true;
         B(rui_debugger_init); B(rui_debugger_ready); B(rui_debugger_visible); B(rui_debugger_revision);
         B(rui_debugger_show); B(rui_debugger_shutdown); B(rui_debugger_hotkey);
+        B(rui_debugger_models);
         B(rui_test_debugger_document); B(rui_test_document_count);
         B(rui_has_class);
         B(rui_vector_kind); B(rui_intrinsic_size); B(rui_svg_inline);
@@ -1303,7 +1440,13 @@ public:
         B(rui_native_mesh); B(rui_native_texture_load); B(rui_native_texture_rgba);
         B(rui_native_texture_size); B(rui_native_texture_release); B(rui_native_texture_resources);
         B(rui_native_error); B(rui_native_check);
+        B(rui_decorator_register); B(rui_decorator_registration); B(rui_decorator_unregister); B(rui_decorator_live);
+        B(rui_decorator_number); B(rui_decorator_length); B(rui_decorator_color); B(rui_decorator_string);
+        B(rui_decorator_value);
+        B(rui_gpu_register); B(rui_gpu_registered); B(rui_gpu_unregister); B(rui_gpu_value);
+        B(rui_gpu_error); B(rui_gpu_counts); B(rui_gpu_available);
         B(rui_test_drag); B(rui_test_drag_offset); B(rui_bounds);
+        B(rui_text_line_count); B(rui_text_line_position); B(rui_text_line); B(rui_computed_property); B(rui_default_font_styles);
         B(rui_inner_markup); B(rui_local_property);
         B(rui_animation_start); B(rui_animation_cancel); B(rui_animation_status); B(rui_animation_generation); B(rui_test_advance_time);
         B(rui_event_generation);

@@ -43,7 +43,7 @@ def second_frame() {
         slot("body")
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def injected_content(document:uint64; message:string) {
     document_content(document,"body") { text("message",message) }
 }
@@ -67,7 +67,7 @@ def main(smoke:bool):int {
             verify(definitions==generation+1,"definition cached across instances")
             verify(part("probe")==previous,"cached template must preserve caller style")
             var message="Dynamic content"
-            ui_frame() { injected_content(first,message) }
+            ui_legacy_frame() { injected_content(first,message) }
             let content=ui_find("message")
             verify(rui_document_element(first,"move")!=rui_document_element(second,"move"),"document-local ids")
             verify(rui_document_element(first,"injected")==0ul,"literal text/title must not become markup")
@@ -79,7 +79,7 @@ def main(smoke:bool):int {
             verify(rui_bounds(rui_document_element(first,"static_column")).z==123.)
             unsafe { heap_collect(true,false) }
             message="Updated after GC"
-            ui_frame() { injected_content(first,message) }
+            ui_legacy_frame() { injected_content(first,message) }
             verify(ui_find("message")==content && rui_inner_markup(content)==message)
             rui_close_document(second)
             verify(rui_alive(first) && !rui_alive(second) && rui_alive(independent),"closing one instance leaves others alive")

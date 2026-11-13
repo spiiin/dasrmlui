@@ -125,25 +125,28 @@ def bench(var model:Bench) {
 }
 [export]
 def main(smoke:bool):int {
-    var model=Bench()
-    model.channels <- array<Channel>(Channel(id=1,title="Carrier",description="2 Hz / reference",frequency=2.),
+    var initial=Bench()
+    initial.channels <- array<Channel>(Channel(id=1,title="Carrier",description="2 Hz / reference",frequency=2.),
         Channel(id=2,title="Harmonic",description="4 Hz / oscillator",frequency=4.),
         Channel(id=3,title="Modulation",description="7 Hz / auxiliary",frequency=7.))
     var first:uint64
     var saved_paints:int
+    var state=ui_state(initial)
     let result=run_gl_demo("Signal foundry - native elements","logs/native_lab.png",smoke,$(dt:float) {
         if (!native_registered("lab-waveform")) { install_waveform() }
-    },$() { bench(model) },$(frame:int) {
-        if (frame==0) { first=ui_find("trace",1); verify(creations==3); rui_test_click(ui_find("reverse")) }
-        elif (frame==1) { verify(ui_find("trace",1)==first && creations==3 && releases==0); rui_test_click(ui_find("third")) }
-        elif (frame==2) { verify(releases==1 && length(traces)==2); rui_test_click(ui_find("third")) }
-        elif (frame==3) { verify(creations==4 && length(traces)==3); rui_test_click(ui_find("resize")) }
-        elif (frame==4) { verify(rui_native_size(first).y==115.); rui_test_click(ui_find("trace",2)); rui_test_click(ui_find("gc")) }
-        elif (frame==5) { verify(model.selected==2); rui_test_event(ui_find("gain"),"change","0.4"); rui_test_click(ui_find("pause")) }
-        elif (frame==6) { verify(model.paused && model.gain==0.4); saved_paints=paint_count; ui_clear_stats() }
-        elif (frame==7) { verify(paint_count==saved_paints && ui_stats().binding_updates==0,"held native geometry and bindings are cached") }
-        elif (frame==8) { rui_test_click(ui_find("pause")) }
-        elif (frame==11) { verify(paint_count>saved_paints && rui_warning_count()==0); print("PASS: native instruments, input, keyed reorder, remount, resize, GC and retained geometry\n") }
+    },$() { ui_frame(state) $(model:Bench) { bench(model) } },$(frame:int) {
+        ui_edit(state) $(var model:Bench) {
+            if (frame==0) { first=ui_find("trace",1); verify(creations==3); rui_test_click(ui_find("reverse")) }
+            elif (frame==1) { verify(ui_find("trace",1)==first && creations==3 && releases==0); rui_test_click(ui_find("third")) }
+            elif (frame==2) { verify(releases==1 && length(traces)==2); rui_test_click(ui_find("third")) }
+            elif (frame==3) { verify(creations==4 && length(traces)==3); rui_test_click(ui_find("resize")) }
+            elif (frame==4) { verify(rui_native_size(first).y==115.); rui_test_click(ui_find("trace",2)); rui_test_click(ui_find("gc")) }
+            elif (frame==5) { verify(model.selected==2); rui_test_event(ui_find("gain"),"change","0.4"); rui_test_click(ui_find("pause")) }
+            elif (frame==6) { verify(model.paused && model.gain==0.4); saved_paints=paint_count; ui_clear_stats() }
+            elif (frame==7) { verify(paint_count==saved_paints && ui_stats().binding_updates==0,"held native geometry and bindings are cached") }
+            elif (frame==8) { rui_test_click(ui_find("pause")) }
+            elif (frame==11) { verify(paint_count>saved_paints && rui_warning_count()==0); print("PASS: native instruments, input, keyed reorder, remount, resize, GC and retained geometry\n") }
+        }
     })
     if (smoke) { verify(creations==releases && empty(traces) && native_handler_count()==0) }
     return result

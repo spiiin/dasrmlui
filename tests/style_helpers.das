@@ -30,7 +30,7 @@ def helper_style() {
     }
 }
 
-[ui_component]
+[ui_component(legacy=true)]
 def screen(var model:Model) {
     use_style(@@helper_style)
     column("screen") {
@@ -81,7 +81,7 @@ def main(smoke:bool):int {
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480))
         verify(rui_default_font())
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(rui_warning_count() == 0ul,"RmlUi must accept every declaration the helpers write")
 
         // Each helper writes the declaration it is named after.
@@ -125,10 +125,10 @@ def main(smoke:bool):int {
         has(dynamic,"margin-left","4px")
         verify(offset_reads == 1)
         model.unrelated += 1
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         verify(offset_reads == 1,"An unchanged helper argument must not be read again")
         model.offset = 9.
-        ui_frame() { screen(model) }
+        ui_legacy_frame() { screen(model) }
         has(dynamic,"margin-left","9px")
         verify(offset_reads == 2)
 

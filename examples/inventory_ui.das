@@ -12,6 +12,7 @@ struct InventoryUi {
     selected_id : int = -1
     next_id : int = 100
 }
+[ui_action]
 def rename_item(var model:InventoryUi; id:int; title:string) {
     if (empty(title)) { return }
     for (item in model.items) {
@@ -22,6 +23,7 @@ def rename_item(var model:InventoryUi; id:int; title:string) {
         }
     }
 }
+[ui_action]
 def remove_item(var model:InventoryUi; id:int) {
     for (i in range(length(model.items))) {
         if (model.items[i].id == id) {

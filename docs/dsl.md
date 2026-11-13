@@ -4,6 +4,34 @@
 `dasrmlui/macros.das`. Отдельного парсера, `.rml` или `.rcss` не требуется.
 Работающие приложения: `examples/catalog.das` и `examples/component_lab.das`.
 
+`[ui_component]` по умолчанию использует гибридный runtime с native DataModel для
+прямых scalar-привязок. Структура, сложные выражения и внешние зависимости сохраняют
+fallback. Корневая модель создаётся один раз через `ui_state(initial)`:
+
+```dascript
+var initial = Model()
+var state = ui_state(initial)
+ui_frame(state) $(model:Model) { screen(model) }
+ui_edit(state) $(var model:Model) { model.title = "New title" }
+ui_read(state) $(model:Model) { print("{model.title}\n") }
+```
+
+Здесь Model — прикладная структура с полем title, screen — её компонент.
+`ui_state` — GC-owned глубокая копия initial; после создания изменения initial
+не влияют на UI. Не создавайте state каждый кадр и не используйте `inscope`.
+Root не должен содержать borrowed pointers/lambdas. Заимствование модели действует
+только внутри read/edit/frame блока; ссылки не должны покидать его scope.
+`ui_read` readonly; `ui_frame` через макрос разрешает mutable borrow для handlers.
+
+События компонентов отслеживают записи автоматически. Внешние прямые записи
+делаются через `ui_edit`; неизвестные изменяющие helpers инвалидируют консервативно,
+`[ui_action]` даёт точное отслеживание их записей. Catalog работает через события,
+Progress Lab использует edit в tick. Ошибка edit не откатывает частичные изменения;
+frame внутри edit запрещён. Передача другого state в frame сбрасывает старое дерево.
+
+Для старого сравнения зависимостей явно используйте `[ui_component(legacy=true)]`
+и `ui_legacy_frame()`. [Полный пример main, lifetime и ограничения](hybrid.md).
+
 ## Media queries, темы, DPI и ninepatch
 
 Пример `examples/style_lab.das` показывает две темы, масштаб 100/150%, native
@@ -373,7 +401,7 @@ flow("workspace",900.0) {
 
 ```das
 ui_trace(true)
-ui_frame() { screen(model) }
+ui_frame(state) $(model:Model) { screen(model) }
 for (i in range(ui_trace_count())) {
     let entry=ui_trace_at(i)
     print("{entry.owner} / {entry.site}: {entry.reason}\n")
@@ -442,6 +470,11 @@ box("panel") {
 приложение рисует свою сцену, а интерфейс накладывается поверх неё.
 
 ## Базовый шрифт
+
+Для абзацев с разным форматированием используйте `rich_text`, `span`, `strong`,
+`emphasis`, `link`, `inline_image`/`inline_sprite`, `line_break`.
+[Inline rich text: API, наследование, baseline и динамические привязки](rich-text.md).
+`rui_default_font_styles()` загружает также Bold, Italic и BoldItalic.
 
 ```das
 verify(rui_font("assets/Inter-Regular.ttf"))
@@ -982,8 +1015,13 @@ DSL. `ui_reset` удаляет прикладные узлы, но не выкл
 При `rui_shutdown` плагин освобождает сама RmlUi. Инициализация идемпотентна;
 проверены явный restart и создание нового context после полного shutdown.
 
-Data Models показывает только **native RmlUi data models**, а не произвольные
-переменные daScript или состояние наших компонентов. Для DSL остаются `ui_stats`
+Data Models показывает **native RmlUi data models**, включая scalar slots гибридной
+модели `dasrmlui` и именованные поля [публичных моделей внешних RML](data-models.md).
+`ui_data_debugger()` сразу открывает эту панель. Публичную модель также можно
+использовать внутри `[ui_component]` через `native_data(name, model)` с `data_*`
+привязками, без внешнего RML; [синтаксис и граница владения](data-models.md#внутри-ui_component-без-внешнего-rml).
+Произвольные переменные daScript
+и полная структура состояния компонентов не отражаются. Для DSL остаются `ui_stats`
 и `ui_trace`. Выбрать другой context пока нельзя: bridge обслуживает один context.
 
 Пример: `examples/navigation_lab.das` (Vector deck). Стрелки/Enter управляют плитками
@@ -1236,3 +1274,363 @@ Host завершает native context до уничтожения script Contex
 Native contract сверяется с [RmlUi custom elements](https://mikke89.github.io/RmlUiDoc/pages/cpp_manual/custom_elements.html)
 и заголовками используемой локальной ревизии.
 
+## Пользовательские decorators
+
+`register_decorator` регистрирует `Rml::DecoratorInstancer`, который создаёт обычные
+native `Decorator`. Они оформляют существующие `box`, `button`, `input` и другие
+элементы: отдельный native-элемент для этого не нужен. Регистрация выполняется после
+инициализации RmlUi, **до первого вычисления стилей**.
+
+```das
+def draw_frame(event:UiDecoratorEvent) {
+    if (event.kind!=UiDecoratorKind.Paint) { return }
+    let ink=decorator_color(event.canvas,"ink")
+    let edge=decorator_length(event.canvas,"edge",event.size.x)
+    native_rect(event.canvas,float4(0.,0.,edge,event.size.y),ink.ink,ink.alpha)
+}
+// В startup после rui_init / rui_init_gl:
+// register_decorator("app-frame",array<UiDecoratorParam>(
+//     decorator_color_param("ink",rgb(70,120,100)),
+//     decorator_length_param("edge",dp(4))),@@draw_frame)
+
+[ui_style]
+def frame_style() {
+    rule(part("card")) {
+        custom_decorator("app-frame",array<UiDecoratorArg>(
+            decorator_arg("edge",dp(8)),decorator_arg("ink",rgb(160,90,60))))
+    }
+    rule(hover(part("card"))) {
+        custom_decorator("app-frame",array<UiDecoratorArg>(decorator_arg("edge",pct(8))))
+    }
+}
+```
+
+Сигнатура: `register_decorator(name,parameters,handler):uint64`. Handler — owning
+lambda `@(event:UiDecoratorEvent) { ... }` или функция `@@name`. Имена типов — строчные
+латинские буквы/цифры/дефис, начинаются с буквы и содержат дефис. Встроенные типы и
+дубликаты не заменяются. Имена параметров уникальны, по тем же правилам без обязательного
+дефиса; максимум 32 параметра, имя `decorator` зарезервировано. Пустая схема допустима.
+
+| Объявление параметра | Getter в callback | Native parser |
+|---|---|---|
+| `decorator_number_param(name,value:float)` | `decorator_number(canvas,name):float` | `number` |
+| `decorator_length_param(name,value:UiLength)` | `decorator_length(canvas,name,percentage_base=0.):float` | `length_percent` |
+| `decorator_color_param(name,value:UiColor,alpha=1.)` | `decorator_color(canvas,name):UiDecoratorColor` | `color` |
+| `decorator_string_param(name,value:string)` | `decorator_string(canvas,name):string` | `string` |
+
+`UiDecoratorColor` содержит `ink:UiColor` и `alpha:float` в диапазоне 0..1.
+Length getter возвращает физические пиксели: dp учитывает DPI, em — шрифт элемента,
+проценты разрешаются относительно явно переданного `percentage_base`. Например,
+для скоса угла можно передать `min(event.size.x,event.size.y)`.
+Неизвестный параметр, неверный getter или устаревший canvas вызывают ошибку.
+
+`custom_decorator(name,args,paint_area="padding-box")` принимает именованные
+`decorator_arg(name,value)`; есть перегрузки для float/int, UiLength, UiColor/alpha
+и string. Порядок именованных аргументов не важен; пропущенные берутся из схемы.
+`custom_decorator(name)` применяет все defaults. RCSS-значения проверяются штатными
+парсерами RmlUi и сериализуются в каноническую декларацию, например
+`app-frame(rgb(160,90,60), 8dp) padding-box`. Ошибки имён, дубликаты и неверные
+значения обнаруживаются до изменения стиля. Строковые значения должны быть без
+кавычек, обратных слешей, переводов строк, `;` и фигурных скобок.
+
+Helper работает в `[ui_style]`, статических шаблонах и непосредственно в
+`[ui_component]`, где становится отдельной reactive-привязкой. Применяется обычный
+RCSS cascade, включая hover, classes, media и themes. Как `svg_decorator`, helper
+задаёт всё свойство `decorator`; повторный вызов заменяет предыдущее значение.
+Несколько decorators в native RCSS list (`a(), b()`) поддержаны runtime;
+каждое применение получает свой canvas, даже на одном элементе.
+
+`UiDecoratorEvent` содержит:
+
+- `canvas:uint64` — уникальные данные **одного применения** декоратора. Передавайте
+  его в `native_mesh`, `native_rect/triangle/line/image`, texture API и `native_invalidate`;
+- `element:uint64` — обычный DOM handle для чтения атрибутов/свойств. Это не canvas;
+- `kind:UiDecoratorKind` — Create, Paint или Destroy;
+- `size:float2` — размер выбранной области в физических пикселях;
+- `dpi:float` — актуальный density-independent pixel ratio;
+- `paint_area:string` — `border-box`, `padding-box` или `content-box`.
+
+Координаты рисунка начинаются в левом верхнем углу **выбранной paint-area**, runtime
+применяет её offset. Область не является автоматической обрезкой произвольного mesh
+по border-radius: для фигурной рамки формируйте соответствующую геометрию.
+Действуют native clipping/transform/layer состояния; возможности зависят от renderer.
+Opacity применяется к каждому submission, как у native-элементов.
+
+Create соответствует `GenerateElementData`, Destroy — `ReleaseElementData`.
+RmlUi может пересоздать данные при resize, DPI, opacity, изменении параметров или
+каскада, **не удаляя сам DOM-элемент**. При этом новый Create иногда приходит раньше
+старого Destroy. Храните состояние в таблице по `event.canvas`, а не только по element.
+Paint вызывается для нового/инвалидированного canvas; следующие кадры используют
+кеш mesh без входа в daScript. Для изменения внешнего состояния вызовите
+`native_invalidate(canvas)`. Изменение произвольного атрибута DOM само по себе не
+является зависимостью декоратора — передавайте реактивное значение параметром либо
+инвалидируйте canvas явно.
+
+Текстуры доступны в Create/Paint, поскольку декорируемый элемент уже присоединён
+к context. Все ресурсы canvas автоматически освобождаются после Destroy. Во время
+Destroy canvas уже невалиден; он служит ключом удаления состояния, а элемент может
+находиться в процессе разрушения. Ошибка Create/Paint отключает Paint этого canvas,
+но не отменяет Destroy. Ошибки перехватываются на C++-границе и сообщаются через
+тот же `rui_native_check`/`rui_native_error`, что у native-элементов.
+Мутации DOM, update/render/shutdown внутри callbacks запрещены.
+
+Owning lambda остаётся в GC-root таблице до unregister/shutdown. C++ не хранит
+указателей в script heap; mesh и пиксели копируются. Привязки сохраняют реальную
+позицию вызова и стековый кадр, чтобы GC внутри Paint/Destroy корректно обходил
+локальные значения приостановленного вызывающего daScript-кода.
+
+`decorator_registered`, `decorator_instance_count` (живые canvas) и
+`decorator_handler_count` доступны для диагностики. `unregister_decorator(name)`
+возвращает false, пока тип используют canvas **или кешированные native Decorator
+definitions**. Поэтому даже после удаления элементов stylesheet может удерживать
+тип. Неиспользуемый тип можно снять и зарегистрировать снова; старый C++ instancer
+остаётся неактивным до shutdown, поскольку разобранный RCSS хранит raw pointers на
+него и его property definitions. Lambda при успешном unregister освобождается сразу.
+Повторная регистрация не переназначает уже разобранный RCSS старому stylesheet:
+для нового типа пересоздайте соответствующие стили/документы.
+`ui_reset` сохраняет регистрации, `rui_shutdown` удаляет их после native teardown.
+Как и для native-элементов, shutdown должен предшествовать освобождению SDL/GL renderer.
+
+Пример: `examples/decorator_lab.das` (Decorator Studio). `decorator_pixels` проверяет
+SDL/GL3, параметры/defaults, hover, paint-area, texture, opacity, DPI/resize, clipping,
+cache, несколько decorators на элементе, captured values/GC, stale handles и ошибки.
+`decorator_host_lifetime` проверяет поздний Destroy до освобождения script Context.
+
+
+## Пользовательские filters и shaders GL3
+
+Регистрация выполняется после `rui_init_gl` и до вычисления стилей. Код GLSL находится
+в обычной строке daScript; встроенный `%_esc~ ... %_esc` позволяет не экранировать
+фигурные скобки. Отдельного парсера DSL или shader-файла не требуется.
+
+```das
+register_shader("app-stripes",%_esc~
+vec4 effect(vec2 uv) {
+    float stripe = step(0.5, fract(uv.x * u_size.x / p_pitch + u_time * p_speed));
+    return vec4(p_tint.rgb * mix(0.2, 1.0, stripe), p_tint.a);
+}
+%_esc,array<UiEffectParam>(
+    effect_length_param("pitch",dp(20)),
+    effect_number_param("speed",0.2),
+    effect_color_param("tint",rgb(80,200,240))))
+
+register_filter("app-desaturate",%_esc~
+vec4 effect(vec2 uv) {
+    vec4 c = sample_source(uv);
+    float luma = dot(c.rgb,vec3(0.2126,0.7152,0.0722));
+    return vec4(mix(c.rgb,vec3(luma),p_amount),c.a);
+}
+%_esc,array<UiEffectParam>(effect_number_param("amount",0.5)))
+
+[ui_style]
+def material_style() {
+    rule(part("surface")) {
+        width(px(320)); height(px(180));
+        custom_shader("app-stripes",array<UiEffectArg>(effect_arg("pitch",pct(10))))
+    }
+    rule(part("glass")) { custom_backdrop_filter("app-desaturate") }
+}
+
+[ui_component]
+def material(amount:float) {
+    use_style(@@material_style)
+    box("surface") {
+        custom_filter("app-desaturate",array<UiEffectArg>(effect_arg("amount",amount)))
+        text("caption","The filter processes children too")
+    }
+}
+```
+
+`register_shader(name, source, params)` создаёт native DecoratorInstancer, который
+рисует фон элемента через CompiledShader. `register_filter(name, source, params,
+ overflow=0.)` создаёт native FilterInstancer: он обрабатывает слой элемента вместе
+с потомками или backdrop. `overflow` — дополнительная область рисования в `dp`
+вокруг элемента, например для blur или смещения; для backdrop она не расширяет
+его область. Есть перегрузки регистрации без массива параметров.
+
+`UiEffectParam`/`UiEffectArg` используют тот же формат схемы, что и параметры
+script decorators. Поддержаны `effect_number_param`, `effect_length_param`,
+`effect_color_param` и перегрузки `effect_arg` для float/int, UiLength и UiColor
+с alpha. Строковые параметры для GPU не поддержаны. Имена эффектов содержат дефис,
+имена параметров — строчные латинские буквы, цифры и дефис; первый символ — буква.
+Схема неизменна: до 32 параметров, исходник до 1 MiB. Defaults и значения проходят
+native RCSS parser, неизвестные и повторяющиеся аргументы отклоняются.
+
+`custom_shader(name, args, paint_area="padding-box")` поддерживает также
+`border-box` и `content-box`. Геометрия учитывает скругления, opacity и transforms
+RmlUi. `custom_filter` записывает `filter`, `custom_backdrop_filter` —
+`backdrop-filter`. Несколько вызовов одного свойства заменяют его значение.
+Для последовательных проходов используйте:
+
+```das
+custom_filters(array<UiFilterEffect>(
+    filter_effect("app-desaturate",array<UiEffectArg>(effect_arg("amount",0.8))),
+    filter_effect("app-other"))) // app-other должен быть зарегистрирован
+```
+
+`custom_backdrop_filters` принимает такой же массив. Порядок элементов — порядок
+проходов. Пустой массив снимает фильтр (`none`). Native built-in и пользовательские
+фильтры можно смешивать через обычное `property("filter", "app-desaturate(0.5) blur(2px)")`.
+Все helpers доступны в `[ui_style]`, `[ui_template]` и `[ui_component]`. В компоненте
+изменение параметра обновляет только соответствующую привязку свойства.
+
+### Контракт GLSL
+
+Пользователь задаёт `vec4 effect(vec2 uv)`; `#version 330`, uniforms и `main`
+добавляются runtime. Можно определять собственные вспомогательные GLSL-функции.
+Возвращается **straight RGBA** в диапазоне 0..1; wrapper выполняет clamp и
+premultiply для native blending RmlUi. RGB не нужно заранее умножать на alpha.
+
+| Имя | Значение |
+|---|---|
+| `uv` | Локальные координаты 0..1, начало сверху слева |
+| `u_time` | Время SystemInterface RmlUi, float в секундах; обновляется при draw |
+| `u_size` | Shader: размер paint area в px. Filter: размер текущей clipped postprocess области, включая overflow |
+| `u_texel` | `1 / u_size`, удобно для соседних выборок |
+| `p_<name>` | Number и length — float; color — vec4 straight RGBA 0..1. Дефисы в имени заменяются на `_` |
+| `sample_source(uv)` | Только filter: straight RGBA исходного слоя, прозрачный чёрный вне текущей области |
+
+Length/dp разрешаются в пиксели, проценты — относительно **ширины** paint area
+shader или border box элемента filter. `u_size` фильтра может отличаться от размера
+элемента из-за clipping, overflow и viewport. Выборка ограничена текущей областью,
+чтобы не читать оставшиеся пиксели чужого слоя из переиспользуемого framebuffer.
+`u_time` не создаёт зависимости daScript: GPU-анимация работает без обновления
+компонента, пока приложение продолжает вызывать render.
+
+### Lifetime и ограничения
+
+Исходники/схемы копируются, GLSL компилируется и линкуется один раз при регистрации.
+Ошибка компилятора вызывает исключение daScript с диагностикой GL; частичные
+ресурсы освобождаются, имя можно зарегистрировать заново. Изменение параметров
+пересоздаёт native instance с новыми uniforms, но переиспользует GL program.
+Отдельных daScript callbacks в render нет; сборка GC не затрагивает GPU-ресурсы.
+
+`gpu_effects_available()` проверяет GL3 capability. `gpu_effect_counts()` возвращает
+`int2(programs, compiled_instances)` для диагностики. `shader_registered` и
+`filter_registered` проверяют тип; `unregister_shader`/`unregister_filter` возвращают
+false, пока существуют native definitions (в том числе кеш RCSS) или compiled instances.
+Удаление элемента освобождает его instances; кеш RCSS может удерживать definitions
+до сброса соответствующих stylesheet/document caches. Retired instancers сохраняются
+до shutdown, поскольку разобранный RCSS может содержать их указатели. При shutdown
+native instances/definitions освобождаются раньше registry и GL context.
+
+Это GL3 fragment API с готовым vertex stage и одним проходом на filter. Произвольные
+vertex/compute shaders, дополнительные texture samplers, mutable framebuffer handles
+и пользовательские uniforms вне зарегистрированной схемы пока не экспортированы.
+Для нескольких проходов используйте цепочку. SDL_Renderer выдаёт явную ошибку
+регистрации; автоматического fallback нет. GLSL исполняется драйвером и предназначен
+для доверенного кода приложения.
+
+`examples/shader_lab.das` — процедурная Aurora, chromatic filter и frosted backdrop,
+slider, смена tint, static phase, remount и GC. `gpu_effect_pixels` проверяет цвета,
+alpha, последовательность проходов, backdrop, built-in filter после custom,
+transform/clipping, overflow, DPI, time без binding updates, template, GC и
+shutdown/restart с живыми instances. `gpu_backend` проверяет отказ на SDL renderer.
+
+## Шейдеры на daScript: dasGlsl
+
+`require dasrmlui/shaders` подключает `[ui_shader]` и `[ui_filter]`. Они передают
+типизированный AST функций существующему генератору `dasGlsl` из daScript.
+Отдельного парсера нет; функции, helpers, арифметика, ветвления, циклы и локальные
+структуры компилируются в GLSL 330. Компиляция AST происходит при загрузке скрипта,
+компиляция/линковка GL program — при регистрации. На каждом кадре эти стадии не повторяются.
+
+```das
+require dasrmlui/shaders
+
+[ui_shader]
+def stripes(uv,size:float2; time:float; pitch,speed:float; tint:float4):float4 {
+    let stripe=step(0.5,fract(uv.x*size.x/pitch+time*speed))
+    return float4(tint.xyz*lerp(0.2,1.,stripe),tint.w)
+}
+
+[ui_filter]
+def desaturate(uv:float2; amount:float):float4 {
+    let c=sample_source(uv)
+    let luma=dot(c.xyz,float3(0.2126,0.7152,0.0722))
+    return float4(lerp(c.xyz,float3(luma),amount),c.w)
+}
+
+// После rui_init_gl, до применения стилей:
+register_shader("app-stripes",stripes_shader(),array<UiEffectParam>(
+    effect_length_param("pitch",dp(20)),
+    effect_number_param("speed",0.2),
+    effect_color_param("tint",rgb(80,200,240))))
+register_filter("app-desaturate",desaturate_filter(),array<UiEffectParam>(
+    effect_number_param("amount",0.5)))
+```
+
+Аннотация генерирует фабрику дескриптора `имя_shader()` или `имя_filter()`.
+Она возвращает `UiShaderProgram`: сгенерированный исходник, сигнатуру параметров и
+тип эффекта. Исходник можно посмотреть через `.source`; это одна строковая константа
+на функцию. Перегрузки `register_shader`/`register_filter` принимают этот дескриптор
+вместо строки GLSL. Перегрузки со строками продолжают работать.
+
+Сигнатура входной функции определяет uniforms:
+
+| Аргумент | Тип daScript | Значение |
+|---|---|---|
+| `uv` | `float2` | Локальные UV, начало сверху слева |
+| `time` | `float` | GPU uniform `u_time` |
+| `size` | `float2` | GPU uniform `u_size` |
+| `texel` | `float2` | GPU uniform `u_texel` |
+| Любой другой | `float` | Именованный RCSS parameter с parser number или length/percent |
+| Любой другой | `float4` | Именованный RCSS color, straight RGBA 0..1 |
+
+Встроенные аргументы можно опускать и переставлять; они не входят в RCSS schema.
+Например, `[ui_shader] def pulse(time:float):float4` не требует массива параметров.
+Все остальные аргументы должны присутствовать в schema ровно один раз, включая
+неиспользуемые в теле. Порядок schema не обязан совпадать с порядком аргументов.
+`edge_width` в daScript соответствует RCSS-имени `edge-width`. Number и length
+остаются разными RCSS parser-ами, хотя оба передаются функции как float.
+Несоответствие kind, отсутствие/дублирование/лишний параметр или неверный parser
+вызывает исключение до создания native registry entry и GL program.
+
+Аргументы entry-функции доступны только для чтения; для изменений создавайте
+локальную переменную. Default-значения задаются в schema, а не в аргументах функции.
+Возвращаемый тип — `float4`, straight RGBA. Итоговый clamp, premultiply, opacity,
+clipping и transforms выполняет существующая обвязка GL3/RmlUi.
+
+`sample_source(uv)` доступен в `[ui_filter]`, включая вызовы из helpers. Он возвращает
+straight RGBA исходного слоя; вне текущей postprocess области — прозрачный чёрный.
+Адаптер использует тот же перевод координат и защиту границ framebuffer, что и
+строковый API. В `[ui_shader]` такая выборка запрещена, потому что исходного слоя нет.
+
+Стиль и reactive bindings остаются обычными:
+
+```das
+[ui_style]
+def material_style() {
+    rule(part("surface")) {
+        width(px(320)); height(px(180)); custom_shader("app-stripes")
+    }
+}
+[ui_component]
+def material(amount:float) {
+    use_style(@@material_style)
+    box("surface") {
+        custom_filter("app-desaturate",array<UiEffectArg>(effect_arg("amount",amount)))
+        text("caption","daScript on the GPU")
+    }
+}
+```
+
+Это shader-подмножество daScript. Mutable CPU globals, dynamic arrays, строки и
+CPU-only операции не становятся GPU-данными автоматически. Mutable globals,
+неподходящие аргументы/result и выборка source в shader отклоняются при компиляции
+скрипта; остальные неподдерживаемые конструкции диагностирует dasGlsl или GL compiler.
+Числовые константы и вспомогательные функции из импортированных модулей поддержаны.
+Entry имена нельзя перегружать; имена `main` и `dasrmlui_entry` зарезервированы,
+опции аннотаций пока не предусмотрены. Эти функции предназначены для исполнения
+на GPU: не вызывайте filter-функции как CPU-функции для чтения экрана.
+
+Самостоятельный host подключает `glsl` из `daScript/modules/dasGlsl/glsl`; runtime
+package устанавливает эту папку вместе с daslib. dasOpenGL, SPIR-V, shadercross и
+дополнительный native renderer для адаптера не нужны. Зависимость daScript не изменяется.
+
+Полный пример — `examples/shader_lab_effects.das` и `examples/shader_lab.das`:
+Aurora, Prism и Glass целиком написаны на daScript. Тест `shader_dsl_compiler`
+проверяет генерацию/сигнатуры/helpers, восемь отрицательных тестов — диагностику.
+`gpu_effect_pixels` прогоняет исходный GLSL и dasGlsl с одинаковыми pixel oracles,
+включая alpha, chain/backdrop, DPI, время, GC, remount и shutdown/restart.
+`runtime_package` запускает Shader Lab из установленной автономной папки.

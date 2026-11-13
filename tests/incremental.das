@@ -11,7 +11,7 @@ var parent_runs, leaf_runs, getter_runs, external_runs : int
 var external_value = "outside"
 var changed = ui_signal()
 
-[ui_component]
+[ui_component(legacy=true)]
 def leaf(value:int) {
     leaf_runs += 1
     box("leaf") {
@@ -19,13 +19,13 @@ def leaf(value:int) {
         text("number") { getter_runs += 1; return "{value}" }
     }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def external_view() {
     ui_watch(changed)
     external_runs += 1
     text("external") { return external_value }
 }
-[ui_component]
+[ui_component(legacy=true)]
 def panel(model:Model) {
     parent_runs += 1
     column("parent") {
@@ -48,21 +48,21 @@ def main(smoke:bool):int {
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,640,480))
         verify(rui_default_font())
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         let static_handle = ui_find("static")
         let external_handle = ui_find("external")
         verify(parent_runs == 1 && leaf_runs == 2 && getter_runs == 2 && external_runs == 1)
         verify(ui_stats().mounts == 4)
 
         ui_clear_stats()
-        for (i in range(120)) { ui_frame() { panel(model) } }
+        for (i in range(120)) { ui_legacy_frame() { panel(model) } }
         verify(parent_runs == 1 && leaf_runs == 2 && getter_runs == 2 && external_runs == 1,
             "Idle frames must not execute component bodies or getters")
         verify(ui_stats().updates == 0 && ui_stats().mounts == 0 && ui_stats().skips == 120)
         verify(ui_find("static") == static_handle && ui_find("external") == external_handle)
 
         model.left += 1
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(parent_runs == 2 && leaf_runs == 3 && getter_runs == 3,
             "Only the child with changed arguments should update")
         verify(external_runs == 1)
@@ -70,35 +70,35 @@ def main(smoke:bool):int {
 
         external_value = "changed through token"
         changed |> ui_touch()
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(parent_runs == 3 && external_runs == 2 && leaf_runs == 3,
             "A watched dependency must invalidate sleeping ancestors")
         verify(ui_find("external") == external_handle)
         verify(find(rui_markup(),external_value) >= 0)
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(parent_runs == 3 && external_runs == 2)
 
         model.show = false
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(!rui_alive(external_handle))
         let after_remove = parent_runs
         changed |> ui_touch()
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(parent_runs == after_remove, "Unmount must detach dependency subscriptions")
         model.show = true
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(ui_find("external") != external_handle && external_runs == 3)
         verify(ui_find("conditional_text") != 0ul && find(rui_markup(),"new static") >= 0,
             "An update must initialize static text in a newly mounted subtree")
         unsafe { heap_collect(true,false) }
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(external_runs == 3)
 
         ui_reset()
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(ui_stats().mounts == 4 && external_runs == 4)
         changed |> ui_touch()
-        ui_frame() { panel(model) }
+        ui_legacy_frame() { panel(model) }
         verify(external_runs == 5, "Reset must allow subscriptions to be rebuilt")
         ui_reset()
         rui_shutdown()
