@@ -24,6 +24,10 @@ def main(smoke:bool):int {
         with_sdl() |> sdl_use
         let window:SDL_Window?=with_window("Data models",1000,700,SDL_WINDOW_HIDDEN) |> sdl_use
         let renderer:SDL_Renderer?=window |> with_renderer() |> sdl_use
+        // rejected() below recovers from panics, and after a recovered panic the
+        // scope's own handle no longer reads back. The restart at the end used to
+        // pass whatever was there, which happened to be non-null. Keep a copy.
+        let kept_renderer=renderer
         verify(rui_init(window,renderer,1000,700)); verify(rui_default_font())
         let model=ui_data_model("manifest"); old=model
         let second=ui_data_model("secondary")
@@ -127,7 +131,7 @@ def main(smoke:bool):int {
         ui_data_events(disposable) $(event:UiDataEvent) { verify(ui_data_close(disposable)); unsafe { heap_collect(true,false) } }
         close_document(disposable_doc); verify(!ui_data_alive(disposable))
         rui_shutdown()
-        verify(rui_init(window,renderer,1000,700)); verify(rui_default_font())
+        verify(rui_init(window,kept_renderer,1000,700)); verify(rui_default_font())
         let fresh=ui_data_model("manifest"); verify(fresh.handle!=old.handle && !ui_data_alive(old))
         ui_data_bind(fresh,"headline","after restart")
         let live=rui_document("<rml><head/><body style=\"font-family:LatoLatin; font-size:18px\" data-model='manifest'>\{\{headline\}\}</body></rml>","restart.rml")

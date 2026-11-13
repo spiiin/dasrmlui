@@ -404,7 +404,7 @@ ui_trace(true)
 ui_frame(state) $(model:Model) { screen(model) }
 for (i in range(ui_trace_count())) {
     let entry=ui_trace_at(i)
-    print("{entry.owner} / {entry.site}: {entry.reason}\n")
+    print("{entry.owner} / {entry.site}: {entry.reason}\n") // owner: цепочка компонентов, «имя:номер/имя:номер»
 }
 ```
 

@@ -99,40 +99,68 @@ def decorator_number(canvas:uint64; name:string):float { return rui_decorator_nu
 def decorator_length(canvas:uint64; name:string; percentage_base:float=0.):float { return rui_decorator_length(canvas,name,percentage_base) }
 def decorator_string(canvas:uint64; name:string):string { return rui_decorator_string(canvas,name) }
 
+// A node, a component, a binding and a handler are named by a number: the
+// number of the place they are nested in, mixed with their own site, key or
+// occurrence. The text paths these replace were rebuilt, hashed and compared
+// on every visit and were most of what a pass left on the heap. Two places
+// share a number with a chance of about one in 2^64 per pair.
+def private mix(a,b:uint64):uint64 {
+    var h = (a + 0x9E3779B97F4A7C15ul) * 0xBF58476D1CE4E5B9ul
+    h = (h ^ b) * 0x94D049BB133111EBul
+    h = h ^ (h >> 31ul)
+    return h == 0ul ? 1ul : h // 0 means "none"
+}
+def private text_hash(value:string):uint64 { return empty(value) ? 0x656d707479ul : hash(value) }
+// What kind of place a number names, where a site alone would not tell.
+let private KIND_COMPONENT = 0x01ul
+let private KIND_BINDING = 0x02ul
+let private KIND_EVENT = 0x03ul
+let private KIND_WHEN = 0x04ul
+let private KIND_PRESENCE = 0x05ul
+let private KIND_KEY = 0x06ul
+let private KIND_DOCUMENT = 0x07ul
+let private KIND_DOCUMENT_EVENTS = 0x08ul
+let private KIND_MOUNT = 0x09ul
+let private KIND_STATE = 0x0aul
+let private KIND_HYBRID = 0x0bul
+let private KIND_VOLATILE = 0x0cul
 struct private UiComponentState {
     seen : int
     dirty : bool
     bindings_dirty : bool
-    dependencies : string
-    node_keys : array<string>
-    children : array<string>
-    binding_keys : array<string>
-    handler_keys : array<string>
+    dependencies : uint64
+    parent : uint64 // the enclosing component, 0 at the root
+    depth : int     // nesting: teardown runs deepest first
+    node_keys : array<uint64>
+    children : array<uint64>
+    binding_keys : array<uint64>
+    handler_keys : array<uint64>
 }
 struct UiStats { mounts, updates, skips, dispatches, binding_mounts, binding_updates, binding_skips, computed_updates, computed_skips : int }
 struct private UiBindingState {
     seen : int
-    dependencies : string
-    node_keys : array<string>
+    dependencies : uint64
+    node_keys : array<uint64>
 }
-var private bindings : table<string;UiBindingState>
-var private conditions : table<string;bool>
-var private visited_bindings : array<string>
+var private bindings : table<uint64;UiBindingState>
+var private conditions : table<uint64;bool>
+var private visited_bindings : array<uint64>
 var private force_bindings = false
 var private hybrid_active=false
 var private hybrid_width,hybrid_height:float
 var private hybrid_locale,hybrid_style,hybrid_debug:uint64
 var private stats = UiStats()
-var private components : table<string; UiComponentState>
-var private visited_nodes : array<string>
-var private visited_components : array<string>
-var private dependency_parts : array<string>
+var private components : table<uint64; UiComponentState>
+var private visited_nodes : array<uint64>
+var private visited_components : array<uint64>
+// The snapshot of the dependencies being read: a running mix of their values.
+var private dependency_hash : uint64
 struct UiSignal { id : uint64 }
 struct UiAnimation { name,easing:string; seconds:float; iterations:int=1; alternate:bool }
-struct private UiAnimationBinding { signature:string; generation:uint64 }
-struct private UiPresence { owner:string; handle,generation:uint64; exiting:bool }
+struct private UiAnimationBinding { signature:uint64; generation:uint64 }
+struct private UiPresence { owner:uint64; handle,generation:uint64; exiting:bool }
 var private animation_bindings:table<uint64;UiAnimationBinding>
-var private presences:table<string;UiPresence>
+var private presences:table<uint64;UiPresence>
 struct private UiTemplateDefinition {
     name, source, css_source, markup, css, root_class, root_properties, title, native_tags : string
 }
@@ -146,46 +174,53 @@ var private template_definition=UiTemplateDefinition()
 var private template_previous_style=""
 var private template_selected=""
 var private template_has_root=false
-struct private UiSubscription { signal : uint64; owner, ancestor : string }
+struct private UiSubscription { signal : uint64; owner, ancestor : uint64 }
 var private signal_id : uint64
 var private subscriptions : array<UiSubscription>
-var private component_stack : array<string>
+var private component_stack : array<uint64>
+var private component_names : array<string> // kept only while tracing
 var private mounting = true
-var private active_component = ""
+var private active_component = 0ul
 var private first_mount = false
 var private unmounting = false
 struct private UiTeardown {
-    owner, key : string
+    owner, slot : uint64
+    key : string
     cleanup : function<(key:string):void>
     save : function<(key:string):void>
 }
 var private state_leases : array<UiTeardown>
 var private teardown_hooks : array<UiTeardown>
-var private mount_hooks : table<string;bool>
-var private computed_snapshots : table<string;string>
+var private mount_hooks : table<uint64;uint64> // hook -> its component
+var private computed_snapshots : table<uint64;uint64>
+// Storage tables of local state stay keyed by text: generated teardown code and
+// live reload name a slot by it. The text is built once and found by number.
+var private local_keys : table<uint64;string>
 struct UiTrace { owner, site, reason : string }
 var private trace_enabled = false
 var private traces : array<UiTrace>
-var private named_dependencies : table<string;string>
-var private trace_dependencies : table<string;table<string;string>>
+var private named_dependencies : table<string;uint64>
+var private trace_dependencies : table<uint64;table<string;uint64>>
 def ui_trace(enabled:bool) { trace_enabled = enabled; clear(traces); clear(trace_dependencies); clear(named_dependencies) }
 def ui_trace_count() : int { return length(traces) }
 def ui_trace_at(index:int) : UiTrace { return traces[index] }
 def private trace_update(site,reason:string) {
     if (!trace_enabled) { return }
     if (length(traces) == 256) { traces |> erase(0) }
-    traces |> push <| UiTrace(owner=active_component,site=site,reason=reason)
+    var owner=""
+    for (name in component_names) { owner = empty(owner) ? name : "{owner}/{name}" }
+    traces |> push <| UiTrace(owner=owner,site=site,reason=reason)
 }
+// The value is mixed on its own and then into the snapshot, the same way with
+// tracing on or off, so that switching it does not look like a change.
 def rt_named_dependency(name:string; value:auto(T)) {
-    let start=length(dependency_parts)
+    let outer=dependency_hash
+    dependency_hash=0ul
     rt_dependency(value)
-    if (trace_enabled) {
-        var snapshot=""
-        for (i in range(start,length(dependency_parts))) { snapshot += dependency_parts[i] }
-        named_dependencies[name]=snapshot
-    }
+    if (trace_enabled) { named_dependencies[name]=dependency_hash }
+    dependency_hash=mix(outer,dependency_hash)
 }
-def private trace_reason(key,fallback:string):string {
+def private trace_reason(key:uint64; fallback:string):string {
     if (!trace_enabled) { return fallback }
     var changed=""
     let known=key_exists(trace_dependencies,key)
@@ -208,13 +243,19 @@ def private trace_reason(key,fallback:string):string {
 def slot(content:block) { invoke(content) }
 def emit(event:block<(value:auto(T)):void>; value:T) { invoke(event,value) }
 def emit(event:block) { invoke(event) }
-def rt_volatile_dependency() { dependency_parts |> push <| "callback:{epoch};" }
+def rt_volatile_dependency() { dependency_hash = mix(dependency_hash,mix(KIND_VOLATILE,uint64(epoch))) }
 
 def rt_local_key(owner,site:string) : string { return "{owner}/state:{site}" }
+def private owner_text(owner:uint64):string { return "{owner}" }
+def private local_key(slot:uint64; site:string):string {
+    if (!key_exists(local_keys,slot)) { local_keys[slot] = rt_local_key(owner_text(active_component),site) }
+    return local_keys[slot]
+}
 def rt_local_state(var storage:table<string;array<auto(T)>>; site:string; version:int;
                    initialize:block<():T>; cleanup:function<(key:string):void>; save:function<(key:string):void>; body:block<(var local:T&):void>) {
-    verify(!empty(active_component) && path == active_component, "state must be declared at component scope, before DOM containers")
-    let key = rt_local_key(active_component,site)
+    verify(active_component != 0ul && path == active_component, "state must be declared at component scope, before DOM containers")
+    let slot = mix(mix(active_component,KIND_STATE),text_hash(site))
+    let key = local_key(slot,site)
     if (!key_exists(storage,key)) {
         verify(first_mount, "state declarations must be unconditional; use a child component inside when/each_keyed")
         var initial = invoke(initialize)
@@ -222,61 +263,58 @@ def rt_local_state(var storage:table<string;array<auto(T)>>; site:string; versio
         rt_live_restore("local/{key}",version,initial)
         storage[key] |> push_clone(initial)
         static_if (typeinfo can_delete(initial)) { delete initial }
-        state_leases |> push <| UiTeardown(owner=active_component,key=key,cleanup=cleanup,save=save)
+        state_leases |> push <| UiTeardown(owner=active_component,slot=slot,key=key,cleanup=cleanup,save=save)
     }
     if (hybrid_active && !dispatching) { rt_hybrid_sources(storage[key][0]) }
     invoke(body,storage[key][0])
 }
 def rt_computed(var storage:table<string;array<auto(T)>>; site:string; dependencies:block;
                 volatile_read:bool; evaluate:block<():T>; cleanup:function<(key:string):void>; body:block<(value:T):void>) {
-    verify(!empty(active_component) && path == active_component, "computed must be declared at component scope")
-    let key = rt_local_key(active_component,site)
+    verify(active_component != 0ul && path == active_component, "computed must be declared at component scope")
+    let slot = mix(mix(active_component,KIND_STATE),text_hash(site))
+    let key = local_key(slot,site)
     if (!dispatching) {
         let snapshot = dependency_snapshot(dependencies)
         let mounted = key_exists(storage,key)
         verify(mounted || first_mount,"computed declarations must be unconditional; use a child component")
-        if (!mounted || volatile_read || force_bindings || computed_snapshots[key] != snapshot) {
+        if (!mounted || volatile_read || force_bindings || computed_snapshots[slot] != snapshot) {
             var value = invoke(evaluate)
             if (!mounted) {
                 storage[key] |> push_clone(value)
-                state_leases |> push <| UiTeardown(owner=active_component,key=key,cleanup=cleanup)
+                state_leases |> push <| UiTeardown(owner=active_component,slot=slot,key=key,cleanup=cleanup)
             } else { storage[key][0] := value }
             static_if (typeinfo can_delete(value)) { delete value }
-            computed_snapshots[key] = snapshot
+            computed_snapshots[slot] = snapshot
             stats.computed_updates += 1
-            trace_update(site,trace_reason(key,mounted ? "computed dependency changed" : "computed mount"))
+            trace_update(site,trace_reason(slot,mounted ? "computed dependency changed" : "computed mount"))
         } else { stats.computed_skips += 1 }
     }
     if (hybrid_active && !dispatching) { rt_hybrid_sources(storage[key][0]) }
     invoke(body,storage[key][0])
 }
 def rt_on_mount(site:string; body:block) {
-    verify(!empty(active_component) && path == active_component,"on_mount must be declared at component scope")
-    let key = "{active_component}/{site}"
+    verify(active_component != 0ul && path == active_component,"on_mount must be declared at component scope")
+    let key = mix(mix(active_component,KIND_MOUNT),text_hash(site))
     if (first_mount && !key_exists(mount_hooks,key)) {
-        mount_hooks[key] = true
+        mount_hooks[key] = active_component
         invoke(body)
     }
 }
 def rt_on_unmount(site:string; cleanup:function<(key:string):void>) {
-    verify(!empty(active_component) && path == active_component,"on_unmount must be declared at component scope")
+    verify(active_component != 0ul && path == active_component,"on_unmount must be declared at component scope")
     if (!first_mount) { return }
     teardown_hooks |> push <| UiTeardown(owner=active_component,key=site,cleanup=cleanup)
 }
-def private retire_component(owner:string) {
+def private retire_component(owner:uint64) {
     unmounting = true
-    var inscope trace_keys:array<string>
-    for (key in keys(trace_dependencies)) {
-        if (key == owner || find(key,"{owner}/") == 0) { trace_keys |> push(key) }
-    }
-    for (key in trace_keys) { trace_dependencies |> erase(key) }
+    trace_dependencies |> erase(owner)
     let hook_count = length(teardown_hooks)
     for (offset in range(hook_count)) {
         let i = hook_count-offset-1
         if (teardown_hooks[i].owner == owner) {
             let hook = teardown_hooks[i]
             teardown_hooks |> erase(i)
-            invoke(hook.cleanup,owner)
+            invoke(hook.cleanup,owner_text(owner))
         }
     }
     let lease_count = length(state_leases)
@@ -287,17 +325,25 @@ def private retire_component(owner:string) {
             state_leases |> erase(i)
             invoke(lease.cleanup,lease.key)
             if (!live_retiring && lease.save!=null) { rt_live_forget("local/{lease.key}") }
-            computed_snapshots |> erase(lease.key)
+            computed_snapshots |> erase(lease.slot)
+            trace_dependencies |> erase(lease.slot)
+            local_keys |> erase(lease.slot)
         }
     }
-    var inscope dead_hooks : array<string>
-    for (key in keys(mount_hooks)) { if (find(key,"{owner}/") == 0) { dead_hooks |> push(key) } }
+    var inscope dead_hooks : array<uint64>
+    for (key,component in keys(mount_hooks),values(mount_hooks)) { if (component == owner) { dead_hooks |> push(key) } }
     for (key in dead_hooks) { mount_hooks |> erase(key) }
     unmounting = false
 }
-def private retire_components(var dead:array<string>) {
-    dead |> sort() $(a,b) => length(a) > length(b)
-    for (owner in dead) { retire_component(owner) }
+// Children first: a component is retired before the one it is nested in.
+def private retire_components(dead:array<uint64>) {
+    var deepest = 0
+    for (owner in dead) { deepest = max(deepest,components?[owner]?.depth ?? 0) }
+    for (level in range(deepest+1)) {
+        for (owner in dead) {
+            if ((components?[owner]?.depth ?? 0) == deepest-level) { retire_component(owner) }
+        }
+    }
 }
 
 def rt_mounting() : bool { return mounting }
@@ -354,13 +400,11 @@ def ui_collect_garbage(megabytes:int=8; force:bool=false) : bool {
 def ui_stats() : UiStats { return stats }
 def ui_clear_stats() { stats = UiStats() }
 
-def private dependency_snapshot(dependencies:block) : string {
-    clear(dependency_parts)
+def private dependency_snapshot(dependencies:block) : uint64 {
+    dependency_hash = 0ul
     if (trace_enabled) { clear(named_dependencies) }
     invoke(dependencies)
-    return build_string() $(var writer) {
-        for (part in dependency_parts) { writer |> write(part) }
-    }
+    return mix(dependency_hash,KIND_BINDING)
 }
 
 // A binding owns only its leaf nodes, never borrowed closures. Structural
@@ -370,7 +414,7 @@ def rt_binding(site:string; dependencies:block; volatile_read, input:bool; body:
     // every pass, as it always was when its component updated. It does not ask
     // for a pass by itself: what it reads is reported with ui_changed or ui_touch.
     if (dispatching) { invoke(body); return }
-    let key = "{path}/binding:{site}"
+    let key = mix(mix(path,KIND_BINDING),text_hash(site))
     let snapshot = dependency_snapshot(dependencies)
     let mounted = key_exists(bindings,key)
     var changed = !mounted || volatile_read || force_bindings
@@ -386,11 +430,15 @@ def rt_binding(site:string; dependencies:block; volatile_read, input:bool; body:
         trace_update(site,trace_reason(key,!mounted ? "mount" : (force_bindings ? "explicit signal" : (input && !empty(events) ? "input or dependency changed" : (volatile_read ? "opaque getter" : "dependency changed")))))
         let start = length(visited_nodes)
         invoke(body)
-        var state = UiBindingState(seen=epoch,dependencies=snapshot)
-        for (i in range(start,length(visited_nodes))) { state.node_keys |> push(visited_nodes[i]) }
-        if (mounted) { bindings |> erase(key); stats.binding_updates += 1 }
-        else { stats.binding_mounts += 1 }
-        bindings[key] <- state
+        // The record is refilled in place: its array keeps its storage.
+        if (mounted) { stats.binding_updates += 1 } else { stats.binding_mounts += 1 }
+        unsafe {
+            var state & = bindings[key]
+            state.seen = epoch
+            state.dependencies = snapshot
+            clear(state.node_keys)
+            for (i in range(start,length(visited_nodes))) { state.node_keys |> push(visited_nodes[i]) }
+        }
     } else {
         stats.binding_skips += 1
         bindings[key].seen = epoch
@@ -404,7 +452,7 @@ def rt_binding(site:string; dependencies:block; volatile_read, input:bool; body:
     }
 }
 def rt_condition(site:string; dependencies:block; volatile_read:bool; getter:block<():bool>) : bool {
-    let key = "{path}/binding:{site}"
+    let key = mix(mix(path,KIND_BINDING),text_hash(site))
     var value = conditions?[key] ?? false
     if (!dispatching) {
         rt_binding(site,dependencies,volatile_read,false) { value = invoke(getter) }
@@ -413,28 +461,25 @@ def rt_condition(site:string; dependencies:block; volatile_read:bool; getter:blo
     return value
 }
 
-// Collision-free, length-delimited value snapshots. These checks do not run
-// UI getters. Structures/arrays are walked by content, never by their address.
-def rt_dependency(value : string) { dependency_parts |> push <| "s{length(value)}:{value};" }
-def rt_dependency(value : int | uint | int64 | uint64 | bool | int8 | uint8 | int16 | uint16) { dependency_parts |> push <| "{value};" }
-def rt_dependency(value : float) { dependency_parts |> push <| "{value:.9g};" }
-def rt_dependency(value : double) { dependency_parts |> push <| "{value:.17g};" }
-def rt_dependency(value : float2) { dependency_parts |> push <| "{value.x:.9g},{value.y:.9g};" }
-def rt_dependency(value : float3) { dependency_parts |> push <| "{value.x:.9g},{value.y:.9g},{value.z:.9g};" }
-def rt_dependency(value : float4) { dependency_parts |> push <| "{value.x:.9g},{value.y:.9g},{value.z:.9g},{value.w:.9g};" }
-def rt_dependency(value : int2 | int3 | int4 | uint2 | uint3 | uint4 | range | urange | range64 | urange64) { dependency_parts |> push <| "{value};" }
+// A snapshot is the running mix of the values read, in order; an array mixes
+// its length first. These checks do not run UI getters. Structures and arrays
+// are walked by content, never by their address. Two different sets of values
+// give the same snapshot with a chance of about one in 2^64.
+def rt_dependency(value : string) { dependency_hash = mix(dependency_hash,text_hash(value)) }
+def rt_dependency(value : int | uint | int64 | uint64 | bool | int8 | uint8 | int16 | uint16 | float | double |
+                  float2 | float3 | float4 | int2 | int3 | int4 | uint2 | uint3 | uint4 | range | urange | range64 | urange64) {
+    dependency_hash = mix(dependency_hash,hash(value))
+}
 def rt_dependency(value : array<auto(T)>) {
-    dependency_parts |> push <| "a{length(value)}["
+    dependency_hash = mix(dependency_hash,uint64(length(value))+0x6172726179ul)
     for (item in value) { _::rt_dependency(item) }
-    dependency_parts |> push <| "]"
 }
 def rt_dependency(value : auto(T)) {
     static_if (typeinfo is_struct(type<T>) || typeinfo is_tuple(type<T>)) {
-        dependency_parts |> push <| "("
+        dependency_hash = mix(dependency_hash,0x737472756374ul)
         apply(value) $(field_name, field) { _::rt_dependency(field) }
-        dependency_parts |> push <| ")"
     } static_elif (typeinfo is_enum(type<T>)) {
-        dependency_parts |> push <| "e{value};"
+        dependency_hash = mix(dependency_hash,hash(value))
     } else {
         static_assert(false, "UI dependency type unsupported: pass scalar/enum/vector/struct/array values, or an explicit version")
     }
@@ -445,6 +490,10 @@ struct UiNode {
     native_model : uint64
     seen : int
     tag, name : string
+    owner : uint64   // the component the node was described in
+    depth : int
+    keys : int[4]    // keys of the enclosing list items, innermost last
+    key_count : int
 }
 struct UiEvent {
     handle : uint64
@@ -461,20 +510,45 @@ struct UiEvent {
 // Phase: 1 capture, 2 target, 4 bubble. Modifiers: Ctrl=1, Shift=2, Alt=4, Meta=8.
 // A modifier filter ignores Caps/Num/Scroll lock; -1 matches any combination.
 struct UiEventOptions { use_capture, stop, stop_immediate : bool; key:string; modifiers:int = -1; enabled:bool = true }
-struct private UiHandler { handle,token:uint64; seen:int; signature:string }
-var private handlers:table<string;UiHandler>
-var private visited_handlers:array<string>
+struct private UiHandler { handle,token:uint64; seen:int; signature:uint64 }
+var private handlers:table<uint64;UiHandler>
+var private visited_handlers:array<uint64>
 def event_parameter(event:UiEvent; name:string; fallback:string=""):string { return event.parameters?[name] ?? fallback }
 def event_ctrl(event:UiEvent):bool { return (event.modifiers & 1)!=0 }
 def event_shift(event:UiEvent):bool { return (event.modifiers & 2)!=0 }
 def event_alt(event:UiEvent):bool { return (event.modifiers & 4)!=0 }
 def event_meta(event:UiEvent):bool { return (event.modifiers & 8)!=0 }
-var private nodes : table<string; UiNode>
+var private nodes : table<uint64; UiNode>
 var private order : array<uint64>
 var private parents : table<uint64; uint64>
-var private calls : table<string; int>
+var private calls : table<uint64; int>
 var private events : array<UiEvent>
-var private path = ""
+var private path = 0ul
+// Keys of the list items being described, for ui_find and focus requests.
+// Four levels of nested lists are kept; deeper ones lose the outermost key.
+var private item_keys : int[4]
+var private item_key_count = 0
+def private enter_item(key:int) {
+    if (item_key_count == 4) {
+        for (i in range(3)) { item_keys[i] = item_keys[i+1] }
+        item_key_count = 3
+    }
+    item_keys[item_key_count] = key
+    item_key_count += 1
+}
+def private in_item(n:UiNode; key:int):bool {
+    for (i in range(n.key_count)) { if (n.keys[i] == key) { return true } }
+    return false
+}
+// Whether a node described in `owner` lies inside the component `ancestor`.
+def private inside_component(owner,ancestor:uint64):bool {
+    var at = owner
+    while (at != 0ul) {
+        if (at == ancestor) { return true }
+        at = components?[at]?.parent ?? 0ul
+    }
+    return false
+}
 var private current : uint64
 var private depth = 0
 var private root_depth = 0
@@ -486,14 +560,14 @@ var private styles : table<string; string>
 // order once it outgrows its small packed form, so the order is kept apart.
 var private style_order : array<string>
 var private css_dirty = true
-struct private UiVirtual { owner:string; scroll:float; first,last:int }
+struct private UiVirtual { owner:uint64; scroll:float; first,last:int }
 var private virtuals : table<uint64;UiVirtual>
-struct private UiFocusRequest { owner,name:string; key:int = -1 }
+struct private UiFocusRequest { owner:uint64; name:string; key:int = -1 }
 var private focus_requests : array<UiFocusRequest>
 var private focus_returns : table<uint64;uint64>
 struct private UiDraft { text,model,error:string; dirty:bool }
 var private drafts : table<uint64;UiDraft>
-var private option_snapshots : table<uint64;string>
+var private option_snapshots : table<uint64;uint64>
 var private style_build = ""
 var private style_defining=false
 var private keyframes_building=false
@@ -519,10 +593,10 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
     let old_covered = hybrid_covered
     hybrid_covered = hybrid_cover_next
     hybrid_cover_next = false
-    let counter_key = "{path}/component:{name}"
+    let counter_key = mix(mix(path,KIND_COMPONENT),text_hash(name))
     let index = calls?[counter_key] ?? 0
     calls[counter_key] = index + 1
-    path = "{counter_key}:{index}"
+    path = mix(counter_key,uint64(index))
     style = ""
     root_depth = depth
     let component_path = path
@@ -551,14 +625,16 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
         }
     } else {
         component_stack |> push(component_path)
+        let traced = trace_enabled
+        if (traced) { component_names |> push("{name}:{index}") }
         // Replace subscriptions without keeping references into a mutable table.
         let subscription_count = length(subscriptions)
         for (offset in range(subscription_count)) {
             let i = subscription_count-offset-1
             if (subscriptions[i].owner == component_path) { subscriptions |> erase(i) }
         }
-        if (hybrid_active) { clear(dependency_parts); invoke(dependencies) }
-        let snapshot = hybrid_active ? "hybrid:{rui_hybrid_epoch()}" : dependency_snapshot($() {
+        if (hybrid_active) { dependency_hash = 0ul; invoke(dependencies) }
+        let snapshot = hybrid_active ? mix(KIND_HYBRID,rui_hybrid_epoch()) : dependency_snapshot($() {
             rt_named_dependency("viewport.width",rui_width())
             rt_named_dependency("viewport.height",rui_height())
             rt_named_dependency("locale.revision",rui_locale_revision())
@@ -580,14 +656,22 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
             let handler_start = length(visited_handlers)
             if (!mounted) { first_mount = true; stats.mounts += 1; invoke(mount_body) }
             else { stats.updates += 1; invoke(update_body) }
-            // Reacquire after nested calls: inserting children can rehash.
-            var state = UiComponentState(seen=epoch,dependencies=snapshot)
-            for (i in range(node_start,length(visited_nodes))) { state.node_keys |> push(visited_nodes[i]) }
-            for (i in range(child_start,length(visited_components))) { state.children |> push(visited_components[i]) }
-            for (i in range(binding_start,length(visited_bindings))) { state.binding_keys |> push(visited_bindings[i]) }
-            for (i in range(handler_start,length(visited_handlers))) { state.handler_keys |> push(visited_handlers[i]) }
-            if (mounted) { components |> erase(component_path) }
-            components[component_path] <- state
+            // Reacquire after nested calls: inserting children can rehash. The
+            // record is refilled in place, so its arrays keep their storage.
+            unsafe {
+                var state & = components[component_path]
+                state.seen = epoch
+                state.dirty = false
+                state.bindings_dirty = false
+                state.dependencies = snapshot
+                state.parent = old_component
+                state.depth = length(component_stack)
+                clear(state.node_keys); clear(state.children); clear(state.binding_keys); clear(state.handler_keys)
+                for (i in range(node_start,length(visited_nodes))) { state.node_keys |> push(visited_nodes[i]) }
+                for (i in range(child_start,length(visited_components))) { state.children |> push(visited_components[i]) }
+                for (i in range(binding_start,length(visited_bindings))) { state.binding_keys |> push(visited_bindings[i]) }
+                for (i in range(handler_start,length(visited_handlers))) { state.handler_keys |> push(visited_handlers[i]) }
+            }
         } else {
             stats.skips += 1
             components[component_path].seen = epoch
@@ -611,6 +695,7 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
                 visited_handlers |> push(key)
             }
         }
+        if (traced) { pop(component_names) }
         pop(component_stack)
     }
     path = old_path
@@ -623,9 +708,17 @@ def rt_component(name : string; dependencies, mount_body, update_body, dispatch_
 }
 
 def private node_begin(site, tag, part_name, extra_class : string; input_type:string = "text") : uint64 {
-    let key = "{path}/{site}"
-    var n = nodes?[key] ?? UiNode()
-    if (!dispatching) {
+    return node_at(mix(path,text_hash(site)),tag,part_name,extra_class,input_type)
+}
+def private node_handle(key:uint64) : uint64 { return nodes?[key]?.handle ?? 0ul }
+def private node_at(key:uint64; tag, part_name, extra_class : string; input_type:string = "text") : uint64 {
+    if (dispatching) { return node_handle(key) }
+    // The record is updated where it lives. Nothing below calls back into the
+    // script, so the table cannot move under the reference; and a copy of every
+    // record on the script stack, at every level of nesting, is what a deep
+    // tree used to run out of stack on.
+    unsafe {
+        var n & = nodes[key]
         if (n.handle == 0ul || !rui_alive(n.handle)) {
             let root_class = depth == root_depth ? "{style}__root" : ""
             let part_class = empty(part_name) ? "" : "{style}__{part_name}"
@@ -635,6 +728,7 @@ def private node_begin(site, tag, part_name, extra_class : string; input_type:st
             n.parent = current
             n.tag = tag
             n.name = part_name
+            n.native_model = 0ul
         }
         verify(n.tag == tag, "A UI site changed its element type")
         verify(n.seen != epoch, "Repeated UI site: use each_keyed instead of a plain loop")
@@ -645,22 +739,26 @@ def private node_begin(site, tag, part_name, extra_class : string; input_type:st
             n.name = part_name
         }
         n.seen = epoch
-        nodes[key] = n
+        n.owner = active_component
+        n.depth = depth
+        n.keys = item_keys
+        n.key_count = item_key_count
         visited_nodes |> push(key)
         order |> push(n.handle)
         parents[n.handle] = current
+        return n.handle
     }
-    return n.handle
 }
 
 def private container(site, tag, name, cls : string; body : block; input_type:string = "text") {
     let old_path = path
     let old_current = current
     let old_mounting = mounting
-    let previous = nodes?["{path}/{site}"] ?? UiNode()
-    mounting = previous.handle == 0ul || !rui_alive(previous.handle)
-    current = node_begin(site, tag, name, cls,input_type)
-    path = "{path}/{site}"
+    let key = mix(path,text_hash(site))
+    let previous = node_handle(key)
+    mounting = previous == 0ul || !rui_alive(previous)
+    current = node_at(key, tag, name, cls,input_type)
+    path = key
     depth += 1
     invoke(body)
     depth -= 1
@@ -699,10 +797,11 @@ def element(site,name,tag:string) { element(site,name,tag) {} }
 // A single reconciled host; all descendants belong exclusively to RmlUi.
 def rt_native_data(site,name:string; model:UiDataModel; builder:function<():void>) {
     if (dispatching) { return }
-    let key="{path}/{site}"
-    let previous=nodes?[key] ?? UiNode()
-    let host=node_begin(site,"div",name,"ru-box")
-    if (previous.handle==host && previous.native_model==model.handle) { return }
+    let key=mix(path,text_hash(site))
+    let previous=node_handle(key)
+    let previous_model=nodes?[key]?.native_model ?? 0ul
+    let host=node_at(key,"div",name,"ru-box")
+    if (previous==host && previous_model==model.handle) { return }
     verify(ui_data_alive(model),"native_data requires a live public DataModel")
     verify(!native_building,"native_data scopes cannot be nested")
     native_building=true
@@ -801,12 +900,12 @@ def rt_native_data_for(name,item,expression:string; body:block) {
 def document_events(site:string; document:uint64; body:block) {
     if (!rui_alive(document)) { return }
     let old_current=current; let old_path=path
-    current=document; path="{path}/document-events:{site}:{document}"
+    current=document; path=mix(mix(mix(path,KIND_DOCUMENT_EVENTS),text_hash(site)),document)
     invoke(body)
     current=old_current; path=old_path
 }
 def on_event(site,kind:string; config:UiEventOptions; body:block<(event:UiEvent):void>) {
-    let key="{path}/event:{site}"
+    let key=mix(mix(path,KIND_EVENT),text_hash(site))
     if (dispatching) {
         if (!config.enabled) { return }
         let token=handlers?[key]?.token ?? 0ul
@@ -818,9 +917,10 @@ def on_event(site,kind:string; config:UiEventOptions; body:block<(event:UiEvent)
     verify(!empty(kind),"on_event requires a non-empty event name")
     verify(config.modifiers>=-1 && config.modifiers<=15,"on_event modifiers must be -1 or a Ctrl/Shift/Alt/Meta mask")
     if (!config.enabled) { return }
-    let signature="{current}/{kind}/{config.use_capture}/{config.stop}/{config.stop_immediate}/{config.key}/{config.modifiers}"
+    let flags=(config.use_capture ? 1ul : 0ul) | (config.stop ? 2ul : 0ul) | (config.stop_immediate ? 4ul : 0ul)
+    let signature=mix(mix(mix(mix(mix(current,text_hash(kind)),flags),text_hash(config.key)),uint64(config.modifiers+1)),KIND_EVENT)
     var token=handlers?[key]?.token ?? 0ul
-    if ((handlers?[key]?.signature ?? "")!=signature || !rui_listener_alive(token)) {
+    if ((handlers?[key]?.signature ?? 0ul)!=signature || !rui_listener_alive(token)) {
         token=rui_relisten(token,current,kind,config.use_capture,config.stop,config.stop_immediate,config.key,config.modifiers)
     }
     handlers[key]=UiHandler(handle=current,token=token,seen=epoch,signature=signature)
@@ -838,7 +938,7 @@ def document_content(site:string; document:uint64; target:string; body:block) {
     let old_path=path
     // Destination identity belongs in the path: changing a slot remounts its
     // children instead of reusing nodes whose parent is still the old slot.
-    current=host; path="{path}/{site}:document:{document}:slot:{host}"
+    current=host; path=mix(mix(mix(mix(path,KIND_DOCUMENT),text_hash(site)),document),host)
     invoke(body)
     current=old_current; path=old_path
 }
@@ -933,9 +1033,10 @@ def text(site, name, value : string) {
 }
 def text(site, name : string; getter : block<():string>) { text(site,name,invoke(getter)) }
 def rt_static_text(site, name, value : string) {
-    let n = nodes?["{path}/{site}"] ?? UiNode()
-    let fresh = n.handle == 0ul || !rui_alive(n.handle)
-    let handle = node_begin(site,"span",name,"")
+    let key = mix(path,text_hash(site))
+    let previous = node_handle(key)
+    let fresh = previous == 0ul || !rui_alive(previous)
+    let handle = node_at(key,"span",name,"")
     if (fresh) { rui_text(handle,value) }
 }
 def button(site, name, caption : string; body : block) {
@@ -1110,16 +1211,16 @@ def field_pending(name:string; key:int = -1) : bool {
     return drafts?[handle]?.dirty ?? false
 }
 def private find_owned(name:string; item_key:int):uint64 {
-    for (key,n in keys(nodes),values(nodes)) {
-        if (n.name == name && (empty(active_component) || find(key,"{active_component}/") == 0) &&
-            (item_key == -1 || find(key,":key:{item_key}/") >= 0)) { return n.handle }
+    for (n in values(nodes)) {
+        if (n.name == name && (active_component == 0ul || inside_component(n.owner,active_component)) &&
+            (item_key == -1 || in_item(n,item_key))) { return n.handle }
     }
     return 0ul
 }
 def when(site : string; condition : bool; body : block) {
     if (condition) {
         let old = path
-        path = "{path}/{site}:when"
+        path = mix(mix(path,KIND_WHEN),text_hash(site))
         invoke(body)
         path = old
     }
@@ -1135,7 +1236,8 @@ def private start_animation(handle:uint64; animation:UiAnimation):uint64 {
 // Driven by model values; changing revision replays the same animation.
 def animate(animation:UiAnimation; revision:int=0; enabled:bool=true) {
     if (dispatching) { return }
-    let signature="{animation.name}/{animation.seconds}/{animation.easing}/{animation.iterations}/{animation.alternate}/{revision}/{enabled}"
+    let signature=mix(mix(mix(mix(mix(mix(mix(text_hash(animation.name),hash(animation.seconds)),text_hash(animation.easing)),
+        uint64(animation.iterations)),animation.alternate ? 1ul : 0ul),uint64(revision)),enabled ? 1ul : 0ul),KIND_PRESENCE)
     let old=animation_bindings?[current] ?? UiAnimationBinding()
     if (old.signature==signature) { return }
     var generation=0ul
@@ -1165,7 +1267,7 @@ def private exit_focus(handle:uint64) {
 }
 def animated_when(site,name:string; visible:bool; enter,leave:UiAnimation; body:block) {
     verify(leave.iterations==1,"Exit animation must run exactly once")
-    let key="{path}/presence:{site}"
+    let key=mix(mix(path,KIND_PRESENCE),text_hash(site))
     let existing=key_exists(presences,key)
     if (!existing && !visible) { return }
     var presence=presences?[key] ?? UiPresence(owner=active_component)
@@ -1199,6 +1301,8 @@ def each_keyed(site : string; items : array<auto(T)>;
         // iteration lock rejects structural mutation. Events use the snapshot path.
         var inscope unique:table<int;bool>
         let old=path
+        let list=mix(mix(old,KIND_KEY),text_hash(site))
+        let outer_keys=item_keys; let outer_count=item_key_count
         for (item in items) {
             // An item passed by value reaches the blocks as a copy: the element
             // itself is watched, so a write to it runs the pass that renews the copy.
@@ -1206,10 +1310,12 @@ def each_keyed(site : string; items : array<auto(T)>;
             let key=invoke(key_of,item)
             verify(!key_exists(unique,key),"each_keyed: duplicate key")
             unique[key]=true
-            path="{old}/{site}:key:{key}"
+            path=mix(list,uint64(key))
+            item_keys=outer_keys; item_key_count=outer_count; enter_item(key)
             invoke(body,item)
         }
-        path=old; return
+        path=old; item_keys=outer_keys; item_key_count=outer_count
+        return
     }
     var inscope snapshot := items
     var inscope unique : table<int; bool>
@@ -1219,12 +1325,15 @@ def each_keyed(site : string; items : array<auto(T)>;
         unique[key] = true
     }
     let old = path
+    let list = mix(mix(old,KIND_KEY),text_hash(site))
+    let outer_keys = item_keys; let outer_count = item_key_count
     for (item in snapshot) {
         let key = invoke(key_of,item)
-        path = "{old}/{site}:key:{key}"
+        path = mix(list,uint64(key))
+        item_keys = outer_keys; item_key_count = outer_count; enter_item(key)
         invoke(body,item)
     }
-    path = old
+    path = old; item_keys = outer_keys; item_key_count = outer_count
 }
 
 // Fixed-height virtualization. Only the visible slice is cloned and mounted.
@@ -1259,29 +1368,34 @@ def virtual_each(site,name:string; items:array<auto(T)>; row_height,viewport_hei
             property("height","{float(view.first)*row_height}px"); property("flex-shrink","0")
         })
         let old_path = path
+        let outer_keys = item_keys; let outer_count = item_key_count
         for (item in snapshot) {
             let key = invoke(key_of,item)
-            path = "{old_path}:key:{key}"
+            path = mix(mix(old_path,KIND_KEY),uint64(key))
+            item_keys = outer_keys; item_key_count = outer_count; enter_item(key)
             container("virtual-row","div","","ru-column",$() {
                 property("height","{row_height}px"); property("flex-shrink","0")
                 property("overflow","hidden")
                 invoke(body,item)
             })
         }
-        path = old_path
+        path = old_path; item_keys = outer_keys; item_key_count = outer_count
         container("virtual-bottom","div","","",$() {
             property("height","{float(max(0,count-view.last))*row_height}px"); property("flex-shrink","0")
         })
     })
 }
-def private invalidate_owner(owner:string) {
-    for (key,value in keys(components),values(components)) {
-        if (key == owner || find(owner,"{key}/") == 0) { value.dirty = true }
+// The component and everything it is nested in.
+def private invalidate_owner(owner:uint64) {
+    var at = owner
+    while (at != 0ul && key_exists(components,at)) {
+        components[at].dirty = true
+        at = components[at].parent
     }
 }
 def private wake_animation_exits():bool {
     var changed=false
-    var dead:array<string>
+    var dead:array<uint64>
     for (key,presence in keys(presences),values(presences)) {
         if (!rui_alive(presence.handle)) { dead |> push(key); continue }
         let status=rui_animation_status(presence.handle)
@@ -1318,7 +1432,8 @@ def set_base_text(family:string; size:UiLength=UiLength(value=16.,unit="px"); co
 }
 def base_font_family():string { return base_font }
 def private begin_pass() {
-    path = ""
+    path = 0ul
+    item_key_count = 0
     current = rui_root()
     depth = 0
     root_depth = 0
@@ -1350,7 +1465,7 @@ def private reconcile(body : block) {
     clear(visited_handlers)
     begin_pass()
     invoke(body)
-    var inscope dead : array<string>
+    var inscope dead : array<uint64>
     for (key,value in keys(components),values(components)) {
         if (value.seen != epoch) { dead |> push(key) }
     }
@@ -1369,8 +1484,8 @@ def private reconcile(body : block) {
     var restore_depth=2147483647
     for (key in dead) {
         let handle=nodes[key].handle
-        if (key_exists(focus_returns,handle) && rui_contains(handle,focused) && length(key) < restore_depth) {
-            restore_focus=focus_returns[handle]; restore_depth=length(key)
+        if (key_exists(focus_returns,handle) && rui_contains(handle,focused) && nodes[key].depth < restore_depth) {
+            restore_focus=focus_returns[handle]; restore_depth=nodes[key].depth
         }
     }
     for (key in dead) {
@@ -1417,9 +1532,9 @@ def private reconcile(body : block) {
     rui_update()
     if (rui_enabled(restore_focus)) { rui_focus(restore_focus) }
     for (request in focus_requests) {
-        for (key,n in keys(nodes),values(nodes)) {
-            if (n.name == request.name && (empty(request.owner) || find(key,"{request.owner}/") == 0) &&
-                (request.key == -1 || find(key,":key:{request.key}/") >= 0)) {
+        for (n in values(nodes)) {
+            if (n.name == request.name && (request.owner == 0ul || inside_component(n.owner,request.owner)) &&
+                (request.key == -1 || in_item(n,request.key))) {
                 if (rui_enabled(n.handle)) { rui_focus(n.handle) }
                 break
             }
@@ -1666,8 +1781,8 @@ def rt_ui_frame(state:$UiState<auto(T)>?; body:block<(var value:T):void>; opaque
 }
 
 def ui_reset() {
-    verify(empty(active_component) && !unmounting, "ui_reset must run outside component rendering and teardown")
-    var inscope dead : array<string>
+    verify(active_component == 0ul && !unmounting, "ui_reset must run outside component rendering and teardown")
+    var inscope dead : array<uint64>
     for (key in keys(components)) { dead |> push(key) }
     retire_components(dead)
     for (handler in values(handlers)) { rui_unlisten(handler.token) }
@@ -1679,9 +1794,9 @@ def ui_reset() {
     template_selected=""; template_building=false; template_definition=UiTemplateDefinition()
     clear(components); clear(visited_nodes); clear(visited_components)
     clear(bindings); clear(conditions); clear(visited_bindings)
-    clear(subscriptions); clear(component_stack); clear(dependency_parts)
+    clear(subscriptions); clear(component_stack); clear(component_names); dependency_hash = 0ul
     clear(state_leases); clear(teardown_hooks); clear(mount_hooks)
-    clear(computed_snapshots); clear(traces)
+    clear(computed_snapshots); clear(local_keys); clear(traces)
     clear(trace_dependencies); clear(named_dependencies)
     clear(virtuals); clear(focus_requests); clear(focus_returns)
     clear(drafts); clear(option_snapshots)
@@ -1694,8 +1809,8 @@ def ui_reset() {
     rui_native_check()
 }
 def ui_find(part_name : string; item_key : int = -1) : uint64 {
-    for (key, value in keys(nodes), values(nodes)) {
-        if (value.name == part_name && (item_key == -1 || find(key,":key:{item_key}/") >= 0)) {
+    for (value in values(nodes)) {
+        if (value.name == part_name && (item_key == -1 || in_item(value,item_key))) {
             return value.handle
         }
     }
@@ -2349,7 +2464,7 @@ def rt_ui_live_resume() { live_retiring=false }
 def rt_ui_live_release() {
     // Also unwind a candidate whose first mount/migration raised an exception.
     live_retiring=true
-    active_component=""; unmounting=false
+    active_component=0ul; unmounting=false
     ui_reset()
 }
 
