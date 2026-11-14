@@ -23,6 +23,9 @@ static bool rui_live_open(const char* title,int width,int height,bool advanced) 
     if(!live_window) {
         if(!SDL_Init(SDL_INIT_VIDEO)) return false;
         SDL_WindowFlags flags=SDL_WINDOW_RESIZABLE | (live_hidden ? SDL_WINDOW_HIDDEN : 0);
+#if defined(DASRMLUI_IOS)
+        flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
         if(advanced) {
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,3);
 #if defined(__EMSCRIPTEN__) || defined(DASRMLUI_IOS)

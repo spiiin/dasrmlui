@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
         if (error) return 1;
         rui_set_screenshot_directory(pref.get());
     }
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     das::setDasRoot(root.substr(0, root.size() - 1).c_str());

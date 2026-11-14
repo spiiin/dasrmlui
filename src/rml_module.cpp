@@ -233,6 +233,10 @@ public:
 
     IosViewport viewport;
 
+    bool IsEditing() const {
+        return keyboard_requested && SDL_TextInputActive(keyboard_window);
+    }
+
     void SyncKeyboard() {
         if (!keyboard_dirty) return;
         keyboard_dirty = false;
@@ -1174,7 +1178,27 @@ static void rui_event(const SDL_Event& event) { native_guard();
     }
     if (ev.type == SDL_EVENT_TEXT_INPUT || ev.type == SDL_EVENT_WINDOW_FOCUS_LOST) state->composing = false;
     if (ev.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) state->context->SetDimensions({ev.window.data1, ev.window.data2});
+#if defined(DASRMLUI_IOS)
+    Rml::ObserverPtr<Rml::Element> editing;
+    if (state->system->IsEditing()) {
+        if (auto* focus = state->context->GetFocusElement()) {
+            if (ev.type == SDL_EVENT_KEY_DOWN && !state->composing &&
+                (ev.key.key == SDLK_ESCAPE ||
+                 ((ev.key.key == SDLK_RETURN || ev.key.key == SDLK_KP_ENTER) && focus->GetTagName() == "input"))) {
+                editing = focus->GetObserverPtr();
+            } else if (ev.type == SDL_EVENT_FINGER_DOWN) {
+                const auto size = state->context->GetDimensions();
+                auto* hit = state->context->GetElementAtPoint({ev.tfinger.x*size.x,ev.tfinger.y*size.y});
+                if (!inside(focus,hit)) editing = focus->GetObserverPtr();
+            }
+        }
+    }
+#endif
     RmlSDL::InputEventHandler(state->context, state->window, ev);
+#if defined(DASRMLUI_IOS)
+    // Let RmlUi deliver Enter and give other controls a chance to take focus first.
+    if (editing && editing.get() == state->context->GetFocusElement()) editing->Blur();
+#endif
 }
 static bool rui_next_event() { native_guard();
     if (!state) return false;
