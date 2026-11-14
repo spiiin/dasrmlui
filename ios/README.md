@@ -35,5 +35,33 @@ The app writes smoke screenshots to `Library/Application Support/dasrmlui/Exampl
 in its data container. Live Lab uses the bundled stylesheet. The smoke run
 checks its startup and frame loop. The signed bundle is read-only on the device.
 
+### Live Workbench on a connected iPhone
+
+Launch Live Workbench with `--live-edit` so it watches writable copies of
+`live_lab.das` and `live_lab_styles.das` in its data container. The first launch
+copies the bundled scripts there, and subsequent launches keep your edits.
+
+```sh
+xcrun devicectl device process launch --device DEVICE_ID --terminate-existing \
+  --console com.example.inventory -- --example live_lab --live-edit
+```
+
+Enter a title in the app. From the checkout, start the Mac watcher in a second
+terminal. It sends the selected files once on startup and again when you save
+changes:
+
+```sh
+python3 tools/watch_ios_live.py --device DEVICE_ID --bundle-id com.example.inventory \
+  examples/live_lab.das examples/live_lab_styles.das
+```
+
+Change the heading in `live_lab.das` and save. The heading should change on the
+iPhone, the title you entered should remain, and the console should report
+`[live] reloaded 1` (or a higher generation if it has already reloaded). A
+stylesheet save reports `[live] styles reloaded (no remount)`. Stop the Mac
+watcher with Ctrl+C. The phone keeps the latest copies in
+`Library/Application Support/dasrmlui/LiveWorkbench`. To restore the bundled
+UI in edit mode, sync the original scripts from the checkout.
+
 GitHub Actions builds the unsigned `iphoneos` app and checks the arm64 binary
 and bundled scripts. Smoke tests run on a physical iPhone.

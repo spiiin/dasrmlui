@@ -18,6 +18,26 @@ void rui_set_default_font(const char* path);
 void rui_set_screenshot_directory(const char* path);
 
 namespace {
+std::string prepare_live_sources(const std::string& root) {
+    std::unique_ptr<char, decltype(&SDL_free)> directory(SDL_GetPrefPath("dasrmlui", "LiveWorkbench"), SDL_free);
+    if (!directory) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot open Live Workbench directory: %s", SDL_GetError());
+        return {};
+    }
+    const std::string destination(directory.get());
+    for (const char* file : {"live_lab.das", "live_lab_styles.das"}) {
+        std::error_code error;
+        std::filesystem::copy_file(root + "examples/" + file, destination + file,
+            std::filesystem::copy_options::skip_existing, error);
+        if (error) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot seed %s: %s", file, error.message().c_str());
+            return {};
+        }
+    }
+    SDL_Log("Live Workbench sources: %s", destination.c_str());
+    return destination;
+}
+
 int run(const std::string& script, const std::string& root, bool smoke) {
     using namespace das;
     ModuleGroup modules;
@@ -59,9 +79,11 @@ int run(const std::string& script, const std::string& root, bool smoke) {
 int main(int argc, char** argv) {
     std::string_view example = "inventory";
     bool smoke = false;
+    bool live_edit = false;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg == "--smoke-test") smoke = true;
+        else if (arg == "--live-edit") live_edit = true;
         else if (arg == "--example" && i+1 < argc) example = argv[++i];
         else if (arg == "--native-lab") example = "native_lab";
     }
@@ -69,6 +91,15 @@ int main(int argc, char** argv) {
     if (!base || example.empty() || example.find_first_not_of("abcdefghijklmnopqrstuvwxyz_0123456789") != std::string_view::npos)
         return 1;
     const std::string root(base);
+    std::string editable_root;
+    if (live_edit) {
+        if (example != "live_lab") {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "--live-edit requires --example live_lab");
+            return 1;
+        }
+        editable_root = prepare_live_sources(root);
+        if (editable_root.empty()) return 1;
+    }
     std::error_code error;
     std::filesystem::current_path(root, error);
     if (error) {
@@ -93,9 +124,10 @@ int main(int argc, char** argv) {
     NEED_MODULE(Module_LiveHost);
     das::Module::Initialize();
     const std::string script = root + "examples/" + std::string(example) + ".das";
+    const std::string live_root = live_edit ? editable_root : root + "examples/";
     const int result = example == "live_lab"
-        ? run_ui_live(script.c_str(), (root + "examples/live_lab_styles.das").c_str(),
-            root, root+"dassdl3", root+"dasrmlui", root+"examples", smoke, smoke ? 8 : 0)
+        ? run_ui_live((live_root + "live_lab.das").c_str(), (live_root + "live_lab_styles.das").c_str(),
+            root, root+"dassdl3", root+"dasrmlui", root+"examples", smoke, smoke ? 8 : 0, editable_root)
         : run(script, root, smoke);
     rui_shutdown();
     rui_live_close();
