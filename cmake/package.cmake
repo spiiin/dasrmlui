@@ -21,6 +21,10 @@ install(FILES "${RMLUI_DIR}/Samples/assets/LatoLatin-Regular.ttf"
   "${RMLUI_DIR}/Samples/assets/LatoLatin-BoldItalic.ttf" DESTINATION assets COMPONENT runtime)
 install(FILES "${RMLUI_DIR}/Samples/assets/LICENSE.txt" DESTINATION assets
   RENAME LatoLatin-LICENSE.txt COMPONENT runtime)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/web/assets/DejaVuSans.ttf"
+  DESTINATION web/assets COMPONENT runtime)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/web/assets/LICENSE-DejaVuSans.ttf.txt" DESTINATION licenses
+  RENAME DejaVuSans-LICENSE.txt COMPONENT runtime)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/gl3/LICENSE.txt" DESTINATION licenses
   RENAME RmlUi-GL3-LICENSE.txt COMPONENT runtime)
 

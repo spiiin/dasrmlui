@@ -131,9 +131,8 @@ Run from the project root, after `./tools/build.ps1`:
 | Data Models / Harbour | `[ui_component]` with `native_data` and `[ui_style]`, no external RML/RCSS; a public Context model, native forms, lists and expressions, callbacks and the stock Data Models panel |
 
 All of them are part of CTest. The GL examples need OpenGL 3.3 and the Windows video
-driver; the SDL dummy driver is not enough. Localization uses the installed
-`C:/Windows/Fonts/segoeui.ttf` for Cyrillic; the font is not copied and not distributed
-with the project.
+driver; the SDL dummy driver is not enough. Localization uses the bundled DejaVu Sans
+font for Cyrillic.
 
 ```powershell
 # All tests, including the OpenGL and SDL pixel checks:
@@ -526,8 +525,8 @@ cmake --install build-package --component runtime --prefix dist
 ```
 
 `dist` receives the executable, `daslib`, the das modules of dasSDL3 and dasrmlui, the
-examples, the LatoLatin font with its license, and a `licenses` folder with the licenses
-of dasrmlui, daScript and the RmlUi GL3 backend. The folder can be moved: with
+examples, the LatoLatin and DejaVu Sans fonts, and a `licenses` folder with the font
+licenses and the licenses of dasrmlui, daScript and the RmlUi GL3 backend. The folder can be moved: with
 `DASRMLUI_DEV_PATHS=OFF` no path to the build tree remains in the binary. The examples
 address their resources relative to the current folder, so run them from the root of the
 package. The `runtime_package` test builds such a package and runs an example from it.

@@ -17,10 +17,9 @@ def prepare(build: Path, sdl: Path, rml: Path):
     fonts=vfs/'assets'; fonts.mkdir(exist_ok=True)
     for name in ['LatoLatin-Regular.ttf','LatoLatin-Bold.ttf','LatoLatin-Italic.ttf','LatoLatin-BoldItalic.ttf']:
         shutil.copy2(rml/'Samples/assets'/name,fonts/name)
-    shutil.copy2(ROOT/'web/assets/DejaVuSans.ttf',fonts/'DejaVuSans.ttf')
-    localization=vfs/'examples/localization.das'
-    text=localization.read_text(encoding='utf-8').replace('C:/Windows/Fonts/segoeui.ttf','/assets/DejaVuSans.ttf').replace('Segoe UI','DejaVu Sans')
-    localization.write_text(text,encoding='utf-8')
+    localization_fonts=vfs/'web/assets'
+    localization_fonts.mkdir(parents=True,exist_ok=True)
+    shutil.copy2(ROOT/'web/assets/DejaVuSans.ttf',localization_fonts/'DejaVuSans.ttf')
     (vfs/'logs').mkdir(exist_ok=True)
     site=build/'site';site.mkdir(exist_ok=True)
     for name in ['index.html','example.html','gallery.js','player.js','style.css','examples.json']:
