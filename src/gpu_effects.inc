@@ -120,7 +120,7 @@ static uint64_t rui_gpu_register(const char* name,bool filter,const char* source
         if(!value->Configure(names,parsers,defaults)) { gpu_error="Invalid GPU parameter default"; return 0; }
         type=std::move(value);
     }
-    #ifdef __EMSCRIPTEN__
+    #if defined(__EMSCRIPTEN__) || defined(DASRMLUI_IOS)
     std::string fragment="#version 300 es\nprecision highp float;\n";
 #else
     std::string fragment="#version 330\n";

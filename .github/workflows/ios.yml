@@ -1,0 +1,76 @@
+name: iOS arm64
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iphoneos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: spiiin/dasSDL3
+          ref: 7639a616fc9b2721d7b1887057d6bac1cc881cef
+          path: build/ios-deps/dasSDL3
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: mikke89/RmlUi
+          ref: 821cbd229d804cb1c905b729af86c21133abceee
+          path: build/ios-deps/RmlUi
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: freetype/freetype
+          ref: 0a0221a1347e2f1e07c395263540026e9a0aa7c7
+          path: build/ios-deps/freetype
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure iPhone device build
+        run: |
+          python -m pip install 'cmake==3.31.10'
+          cmake -S ios -B build/iphone -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DDASSDL3_DIR="$PWD/build/ios-deps/dasSDL3" \
+            -DRMLUI_DIR="$PWD/build/ios-deps/RmlUi" \
+            -DFREETYPE_SOURCE="$PWD/build/ios-deps/freetype"
+      - name: Build unsigned application
+        run: |
+          set -o pipefail
+          cmake --build build/iphone --config Release --target dasrmlui_iphone --parallel 4 -- \
+            CODE_SIGNING_ALLOWED=NO | tee build/iphone/build.log
+      - name: Verify device binary and bundled resources
+        run: |
+          app=build/iphone/Release-iphoneos/dasrmlui_iphone.app
+          test "$(xcrun lipo -archs "$app/dasrmlui_iphone")" = arm64
+          xcrun vtool -show-build "$app/dasrmlui_iphone" | grep -E 'platform +IOS$'
+          test -f "$app/ios/inventory.das"
+          test -f "$app/ios/native_lab.das"
+          test -f "$app/examples/native_lab.das"
+          test -f "$app/dasrmlui/ui.das"
+          test -f "$app/assets/DejaVuSans.ttf"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iphoneos-build-log
+          path: build/iphone/build.log
+          if-no-files-found: ignore

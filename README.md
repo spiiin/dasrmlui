@@ -34,6 +34,11 @@ build script creates the `logs` folder. Most tests run with the SDL dummy video 
 the examples that need filters, shaders or meshes use a real OpenGL context, and the
 pixel tests for ninepatch, SVG/Lottie and native elements use a real SDL renderer.
 
+## iPhone
+
+Build and run the Inventory app on a physical arm64 iPhone with the
+[experimental iOS profile](ios/README.md).
+
 ## Web gallery
 
 **[Open the live gallery](https://spiiin.github.io/dasrmlui/)** — all 24 examples

@@ -26,6 +26,8 @@
 #ifdef __EMSCRIPTEN__
 #include <GLES3/gl3.h>
 #include <emscripten.h>
+#elif defined(DASRMLUI_IOS)
+#include <OpenGLES/ES3/gl.h>
 #else
 #include "RmlUi_Include_GL3.h"
 #endif
@@ -167,7 +169,48 @@ public:
 };
 class UiSystem : public SystemInterface_SDL {
 public:
+#if defined(DASRMLUI_IOS)
+    explicit UiSystem(SDL_Window* window) : SystemInterface_SDL(window), keyboard_window(window) {}
+
+    void ActivateKeyboard(Rml::Vector2f caret, float line_height) override {
+        const float density = SDL_GetWindowPixelDensity(keyboard_window);
+        keyboard_area = {int(caret.x / density), int(caret.y / density), 1, int(std::ceil(line_height / density))};
+        keyboard_requested = true;
+        keyboard_dirty = true;
+    }
+
+    void DeactivateKeyboard() override {
+        keyboard_requested = false;
+        keyboard_dirty = true;
+    }
+
+    void SyncKeyboard() {
+        if (!keyboard_dirty) return;
+        keyboard_dirty = false;
+        const bool active = SDL_TextInputActive(keyboard_window);
+        if (!keyboard_requested) {
+            if (active) SDL_StopTextInput(keyboard_window);
+            return;
+        }
+        SDL_Rect area{};
+        if (!SDL_GetTextInputArea(keyboard_window, &area, nullptr) ||
+            area.x != keyboard_area.x || area.y != keyboard_area.y ||
+            area.w != keyboard_area.w || area.h != keyboard_area.h)
+            SDL_SetTextInputArea(keyboard_window, &keyboard_area, 0);
+        // UIKit moves its text field when SDL_StartTextInput is called, even
+        // for an active session. Caret movement only needs the updated area.
+        if (!active) SDL_StartTextInput(keyboard_window);
+    }
+
+private:
+    SDL_Window* keyboard_window;
+    SDL_Rect keyboard_area{};
+    bool keyboard_requested = false;
+    bool keyboard_dirty = false;
+public:
+#else
     using SystemInterface_SDL::SystemInterface_SDL;
+#endif
     bool test_clock=false;
     double test_time=0;
     double GetElapsedTime() override { return test_clock ? test_time : SystemInterface_SDL::GetElapsedTime(); }
@@ -476,6 +519,10 @@ void rui_shutdown() { native_guard();
     if(state->context) for(int i=0;i<state->context->GetNumDocuments();++i) listen_document(state->context->GetDocument(i),false);
     const bool gl_loaded=state->gl_loaded;
     Rml::Shutdown();
+#if defined(DASRMLUI_IOS)
+    state->system->DeactivateKeyboard();
+    state->system->SyncKeyboard();
+#endif
     // Release rooted daScript handlers only after every native element died.
     for(auto& type:state->native_types) type.second->Call(0,NativeRelease);
     for(auto& type:state->decorator_types) type.second->Call(nullptr,NativeRelease);
@@ -1175,6 +1222,10 @@ static void rui_update() { native_guard();
 }
 static void rui_render(das::Context* context,das::LineInfoArg* at) { native_guard();
     if (!state) return;
+#if defined(DASRMLUI_IOS)
+    // Coalesce transient blur/focus caused by DOM updates within this frame.
+    state->system->SyncKeyboard();
+#endif
     if (state->advanced) {
         const auto size=state->context->GetDimensions();
         state->advanced->SetViewport(size.x,size.y);
