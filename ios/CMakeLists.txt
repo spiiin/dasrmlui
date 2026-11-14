@@ -41,12 +41,12 @@ include("${ROOT}/cmake/vector_plugins.cmake")
 add_subdirectory("${RMLUI_DIR}" rmlui EXCLUDE_FROM_ALL)
 find_library(OPENGLES OpenGLES REQUIRED)
 
-add_executable(dasrmlui_iphone MACOSX_BUNDLE runner.cpp
+add_executable(dasrmlui_iphone MACOSX_BUNDLE runner.cpp "${ROOT}/src/live_host.cpp"
   "${DAS}/modules/dasLiveHost/src/dasLiveHost.cpp"
   "${ROOT}/src/rml_module.cpp" "${ROOT}/src/gl3/RmlUi_Renderer_GL3.cpp"
   "${RMLUI_DIR}/Backends/RmlUi_Platform_SDL.cpp")
 target_include_directories(dasrmlui_iphone PRIVATE
-  "${DASSDL3_DIR}/ios" "${DAS}/modules/dasLiveHost/src"
+  "${ROOT}/ios" "${ROOT}/src" "${DASSDL3_DIR}/ios" "${DAS}/modules/dasLiveHost/src"
   "${RMLUI_DIR}/Source/Core" "${RMLUI_DIR}/Backends")
 target_compile_definitions(dasrmlui_iphone PRIVATE RMLUI_SDL_VERSION_MAJOR=3 DASRMLUI_IOS=1)
 target_link_libraries(dasrmlui_iphone PRIVATE dasSDL3 RmlUi::RmlUi RmlUi::Debugger "${OPENGLES}")
@@ -54,7 +54,7 @@ target_link_libraries(dasrmlui_iphone PRIVATE dasSDL3 RmlUi::RmlUi RmlUi::Debugg
 set_target_properties(dasrmlui_iphone PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
   MACOSX_BUNDLE_GUI_IDENTIFIER "${DASRMLUI_IOS_BUNDLE_ID}"
-  MACOSX_BUNDLE_BUNDLE_NAME "dasrmlui Inventory"
+  MACOSX_BUNDLE_BUNDLE_NAME "dasrmlui Examples"
   XCODE_GENERATE_SCHEME ON
   XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${DASRMLUI_IOS_BUNDLE_ID}"
   XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
@@ -80,13 +80,17 @@ endfunction()
 bundle_scripts("${DAS}/daslib" daslib)
 bundle_scripts("${DASSDL3_DIR}/dassdl3" dassdl3)
 bundle_scripts("${ROOT}/dasrmlui" dasrmlui)
-foreach(example inventory_ui native_lab gl_demo_host)
-  bundle_resource("${ROOT}/examples/${example}.das" examples)
+bundle_scripts("${ROOT}/examples" examples)
+bundle_scripts("${DAS}/modules/dasGlsl/glsl" modules/dasGlsl/glsl)
+bundle_scripts("${DAS}/modules/dasLiveHost/live" modules/dasLiveHost/live)
+file(GLOB example_assets CONFIGURE_DEPENDS "${ROOT}/examples/assets/*")
+foreach(asset IN LISTS example_assets)
+  bundle_resource("${asset}" examples/assets)
 endforeach()
-bundle_resource("${CMAKE_CURRENT_LIST_DIR}/inventory.das" ios)
-bundle_resource("${CMAKE_CURRENT_LIST_DIR}/native_lab.das" ios)
-bundle_resource("${RMLUI_DIR}/Samples/assets/LatoLatin-Regular.ttf" assets)
+foreach(style Regular Bold Italic BoldItalic)
+  bundle_resource("${RMLUI_DIR}/Samples/assets/LatoLatin-${style}.ttf" assets)
+endforeach()
 bundle_resource("${RMLUI_DIR}/Samples/assets/LICENSE.txt" licenses/Lato)
-bundle_resource("${ROOT}/web/assets/DejaVuSans.ttf" assets)
+bundle_resource("${ROOT}/web/assets/DejaVuSans.ttf" web/assets)
 bundle_resource("${ROOT}/web/assets/LICENSE-DejaVuSans.ttf.txt" licenses)
 bundle_resource("${ROOT}/LICENSE" licenses/dasrmlui)

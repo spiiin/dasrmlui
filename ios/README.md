@@ -1,9 +1,8 @@
-# dasrmlui Inventory for iPhone
+# dasrmlui examples for iPhone
 
-This profile builds an arm64 iPhone app using SDL 3.4.16 through dasSDL3 and the
-existing RmlUi SDL_Renderer backend. The app bundles the script runtime,
-Inventory components, LatoLatin, and DejaVu Sans for Cyrillic fallback. It executes scripts in the interpreter
-and uses SDL app callbacks for rendering, input and background/foreground events.
+The arm64 app runs the same example scripts as the desktop host. It
+bundles the daScript runtime, the examples, their assets and fonts.
+The common window hosts use SDL Renderer or OpenGL ES on iOS.
 
 Use Xcode, CMake 3.24 or later, dasSDL3 at
 `7639a616fc9b2721d7b1887057d6bac1cc881cef` with its daScript submodule
@@ -22,24 +21,19 @@ cmake --build build/iphone --config Release --target dasrmlui_iphone
 ```
 
 Set the bundle identifier and team to match your development signing profile.
-Open the generated Xcode project and run the `dasrmlui_iphone` scheme on an
-iPhone with Developer Mode enabled. In Inventory you can add, edit and remove
-items. Launch with `--smoke-test` to exercise SDL/RmlUi hit testing, verify that
-the model gains an item, and send Latin and Cyrillic SDL text events while
-checking that the on-screen keyboard stays visible.
+Install the resulting app from Xcode on an iPhone with Developer Mode enabled.
+It opens Inventory by default. Use `--example` to select a script by its name:
 
 ```sh
-xcrun devicectl device process launch --device DEVICE_ID --console \
-  --terminate-existing com.example.inventory -- --smoke-test
+xcrun devicectl device process launch --device DEVICE_ID --terminate-existing \
+  com.example.inventory -- --example native_lab
 ```
 
-## Native Lab
+Add `--console` before the bundle identifier and `--smoke-test` after the
+example name to run the script's desktop smoke checks and see its exit status.
+The app writes smoke screenshots to `Library/Application Support/dasrmlui/Examples/logs`
+in its data container. Live Lab uses the bundled stylesheet. The smoke run
+checks its startup and frame loop. The signed bundle is read-only on the device.
 
-Pass `--native-lab` to open Signal Foundry. The compact layout reuses the
-desktop example's daScript-defined waveform element. Tap the trace to select
-it, then use **Hold trace** to pause the animation. Add `--smoke-test` to
-check selection, pause and the rendered waveform on the phone.
-
-GitHub Actions builds the unsigned `iphoneos` application and checks the
-arm64 binary and its bundled resources. The interactive tests run on an
-iPhone.
+GitHub Actions builds the unsigned `iphoneos` app and checks the arm64 binary
+and bundled scripts. Smoke tests run on a physical iPhone.

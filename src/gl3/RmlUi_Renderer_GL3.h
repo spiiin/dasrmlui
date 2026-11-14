@@ -21,6 +21,8 @@ public:
 	explicit operator bool() const { return static_cast<bool>(program_data); }
 
 	// The viewport should be updated whenever the window size changes.
+	void SetTargetFramebuffer(unsigned int framebuffer) { target_framebuffer = framebuffer; }
+	void SetPresentationViewport(int x, int y, int width, int height);
 	void SetViewport(int viewport_width, int viewport_height, int viewport_offset_x = 0, int viewport_offset_y = 0);
 
 	// Sets up OpenGL states for taking rendering commands from RmlUi.
@@ -112,6 +114,8 @@ private:
 	int viewport_height = 0;
 	int viewport_offset_x = 0;
 	int viewport_offset_y = 0;
+	int presentation_width = 0;
+	int presentation_height = 0;
 
 	Rml::CompiledGeometryHandle fullscreen_quad_geometry = {};
 
@@ -202,6 +206,7 @@ private:
 		Stencil stencil_back;
 	};
 	GLStateBackup glstate_backup = {};
+	unsigned int target_framebuffer = 0;
 };
 
 /**

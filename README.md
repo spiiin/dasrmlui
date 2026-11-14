@@ -36,7 +36,7 @@ pixel tests for ninepatch, SVG/Lottie and native elements use a real SDL rendere
 
 ## iPhone
 
-Build and run the Inventory app on a physical arm64 iPhone with the
+Build and run the desktop examples on a physical arm64 iPhone with the
 [experimental iOS profile](ios/README.md).
 
 ## Web gallery

@@ -5,15 +5,17 @@ require dassdl3/sdl3_window_boost
 require dassdl3/sdl3_scope
 require dassdl3/sdl3_gl_egl
 require math
+require sdl3
 
 def run_gl_demo(title,screenshot:string; smoke:bool; tick:block<(delta:float):void>; render:block; check:block<(frame:int):void>):int {
     let result=sdl_scope() {
         with_sdl() |> sdl_use
         set_gl_attribute(SDL_GLAttr.GL_CONTEXT_MAJOR_VERSION,3) |> sdl_try
-        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_MINOR_VERSION,3) |> sdl_try
-        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_PROFILE_MASK,int(SDL_GL_CONTEXT_PROFILE_CORE)) |> sdl_try
+        let ios = SDL_GetPlatform()=="iOS"
+        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_MINOR_VERSION,ios ? 0 : 3) |> sdl_try
+        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_PROFILE_MASK,int(ios ? SDL_GL_CONTEXT_PROFILE_ES : SDL_GL_CONTEXT_PROFILE_CORE)) |> sdl_try
         set_gl_attribute(SDL_GLAttr.GL_STENCIL_SIZE,8) |> sdl_try
-        let flags=SDL_WINDOW_OPENGL | (smoke ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE)
+        let flags=SDL_WINDOW_OPENGL | (smoke && !ios ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE) | (ios ? SDL_WINDOW_HIGH_PIXEL_DENSITY : 0ul)
         let window:SDL_Window?=with_window(title,1200,820,flags) |> sdl_use
         let context:SDL_GLContextState?=window |> with_gl_context() |> sdl_use
         verify(rui_init_gl(window,1200,820),"OpenGL 3.3 renderer initialization failed")

@@ -3,11 +3,13 @@ module demo_host public
 require dasrmlui/ui public
 require dassdl3/sdl3_window_boost
 require dassdl3/sdl3_scope
+require sdl3
 
 def run_demo(title, screenshot:string; smoke:bool; render:block; check:block<(frame:int):void>) : int {
     let result = sdl_scope() {
         with_sdl() |> sdl_use
-        let flags = smoke ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE
+        let ios = SDL_GetPlatform()=="iOS"
+        let flags = (smoke && !ios ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE) | (ios ? SDL_WINDOW_HIGH_PIXEL_DENSITY : 0ul)
         let window : SDL_Window? = with_window(title,1200,820,flags) |> sdl_use
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,1200,820))

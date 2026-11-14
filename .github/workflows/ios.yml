@@ -63,11 +63,11 @@ jobs:
           app=build/iphone/Release-iphoneos/dasrmlui_iphone.app
           test "$(xcrun lipo -archs "$app/dasrmlui_iphone")" = arm64
           xcrun vtool -show-build "$app/dasrmlui_iphone" | grep -E 'platform +IOS$'
-          test -f "$app/ios/inventory.das"
-          test -f "$app/ios/native_lab.das"
-          test -f "$app/examples/native_lab.das"
+          for script in examples/*.das; do
+            cmp "$script" "$app/$script"
+          done
           test -f "$app/dasrmlui/ui.das"
-          test -f "$app/assets/DejaVuSans.ttf"
+          test -f "$app/web/assets/DejaVuSans.ttf"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

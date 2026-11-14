@@ -46,7 +46,11 @@ static bool rui_live_open(const char* title,int width,int height,bool advanced) 
     }
     SDL_SetWindowTitle(live_window,title);
     if(state) return true;
+#if defined(DASRMLUI_IOS)
+    const int w=width,h=height;
+#else
     int w,h; SDL_GetWindowSizeInPixels(live_window,&w,&h);
+#endif
     live_base_css.clear();
     return rui_init_backend(live_window,live_renderer,w,h,advanced) && rui_default_font();
 }

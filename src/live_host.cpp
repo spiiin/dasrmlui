@@ -2,6 +2,9 @@
 #include "daScript/daScript.h"
 #include "dasLiveHost.h"
 #include "live_host.h"
+#ifdef DASRMLUI_IOS
+#include "script_access.h"
+#endif
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -70,7 +73,11 @@ struct Driver {
     }
     std::unique_ptr<Unit> compile(const char* path,bool styles,bool prepare=true) {
         auto u=std::make_unique<Unit>();
+#ifdef DASRMLUI_IOS
+        auto access=ios_script_access(das_root.c_str());
+#else
         auto access=make_smart<FsFileAccess>();
+#endif
         access->addFsRoot("dassdl3",sdl_root); access->addFsRoot("dasrmlui",ui_root);
         access->addFsRoot("glsl",das_root+"/modules/dasGlsl/glsl");
         access->addFsRoot("live",das_root+"/modules/dasLiveHost/live");
