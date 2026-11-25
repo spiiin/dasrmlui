@@ -1,5 +1,7 @@
 /build/
 /build-*/
+/android/.gradle/
+/android/local.properties
 /dist/
 /logs/
 /.jitted_scripts/

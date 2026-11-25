@@ -1,5 +1,6 @@
 #include "daScript/daScript.h"
 #include "live_host.h"
+#include "script_access.h"
 #include <SDL3/SDL.h>
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL_main.h>
@@ -9,6 +10,9 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#ifdef __ANDROID__
+#include <unistd.h>
+#endif
 DECLARE_MODULE(Module_dasSDL3);
 DECLARE_MODULE(Module_dasRmlUi);
 DECLARE_MODULE(Module_LiveHost);
@@ -76,7 +80,7 @@ struct Roots {
 static int run(const char* path, bool smoke, const Roots& roots) {
     using namespace das;
     TextPrinter out; ModuleGroup modules;
-    auto access = make_smart<FsFileAccess>();
+    auto access = rui_script_access();
     access->addFsRoot("dassdl3", roots.sdl.path);
     access->addFsRoot("dasrmlui", roots.ui.path);
     access->addFsRoot("live", roots.das.path + "/modules/dasLiveHost/live");
@@ -101,7 +105,11 @@ static int run(const char* path, bool smoke, const Roots& roots) {
     if (auto error = rui_last_native_error()) { out << error << "\n"; return 4; }
     return cast<int32_t>::to(result);
 }
+#ifdef __ANDROID__
+static int run_host(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
 #ifdef __EMSCRIPTEN__
     std::setvbuf(stdout,nullptr,_IONBF,0); std::setvbuf(stderr,nullptr,_IONBF,0);
 #endif
@@ -133,3 +141,27 @@ int main(int argc, char** argv) {
                      : run(argv[1],smoke,roots);
     rui_shutdown(); rui_live_close(); SDL_Quit(); das::Module::Shutdown(); return code;
 }
+#ifdef __ANDROID__
+extern "C" SDL_DECLSPEC int SDLCALL SDL_main(int argc, char** argv) {
+    if (argc < 3) return 2;
+    std::error_code error;
+    std::filesystem::current_path(argv[1], error);
+    if (error || setenv("DASRMLUI_HOME", argv[1], 1) != 0) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not open the packaged dasRmlUi runtime");
+        return 2;
+    }
+    // Android has no terminal. Preserve compiler diagnostics and live reload
+    // receipts in app-private storage, accessible with adb run-as on debug APKs.
+    if (std::freopen("logs/host.log", "w", stdout)) {
+        dup2(fileno(stdout), STDERR_FILENO);
+        std::setvbuf(stdout, nullptr, _IONBF, 0);
+    }
+    // RmlUi's touch handler generates its own pointer press and release.
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    SDL_Log("dasRmlUi runtime %s", argv[1]);
+    // The extracted root takes argv[0]'s place for the shared command line.
+    int code = run_host(argc - 1, argv + 1);
+    SDL_Log("dasRmlUi %s exited with %d", argv[2], code);
+    return code;
+}
+#endif

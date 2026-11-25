@@ -1,0 +1,39 @@
+plugins {
+    id 'com.android.application' version '8.7.3'
+}
+
+def stage = file('../build/android-stage')
+layout.buildDirectory.set(file('../build/android-apk'))
+def runtimeZip = tasks.register('packRuntime', Zip) {
+    from(new File(stage, 'runtime'))
+    archiveFileName.set('runtime.zip')
+    destinationDirectory.set(layout.buildDirectory.dir('generated/runtime'))
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    doFirst {
+        if (!new File(stage, 'runtime/examples/dashboard.das').isFile()) {
+            throw new GradleException('Install the apk CMake component before assembling the APK.')
+        }
+    }
+}
+
+android {
+    namespace 'org.dasrmlui.demo'
+    compileSdk 35
+    ndkVersion '28.2.13676358'
+    buildToolsVersion '35.0.1'
+    defaultConfig {
+        applicationId 'org.dasrmlui.demo'
+        minSdk 28
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+    sourceSets.main {
+        manifest.srcFile 'AndroidManifest.xml'
+        java.srcDirs = ['java', new File(stage, 'java')]
+        assets.srcDirs = [runtimeZip.get().destinationDirectory.get().asFile]
+        jniLibs.srcDirs = [new File(stage, 'jniLibs')]
+    }
+}
+tasks.named('preBuild') { dependsOn(runtimeZip) }

@@ -34,6 +34,11 @@ build script creates the `logs` folder. Most tests run with the SDL dummy video 
 the examples that need filters, shaders or meshes use a real OpenGL context, and the
 pixel tests for ninepatch, SVG/Lottie and native elements use a real SDL renderer.
 
+## Android
+
+Build the arm64 APK to run the dashboard, OpenGL ES examples and LiveHost on a phone.
+See the [Android build and device checks](docs/android.md).
+
 ## Web gallery
 
 **[Open the live gallery](https://spiiin.github.io/dasrmlui/)** — all 24 examples

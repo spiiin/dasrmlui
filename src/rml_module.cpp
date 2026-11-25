@@ -24,8 +24,10 @@
 #include "RmlUi_Platform_SDL.h"
 #include "gl3/RmlUi_Renderer_GL3.h"
 #ifdef __EMSCRIPTEN__
-#include <GLES3/gl3.h>
 #include <emscripten.h>
+#endif
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#include <GLES3/gl3.h>
 #else
 #include "RmlUi_Include_GL3.h"
 #endif
@@ -37,6 +39,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <filesystem>
 #include <cmath>
 #include <DataModel.h>
 #include <DataView.h>
@@ -54,6 +57,16 @@ namespace {
 #ifdef DASRMLUI_BENCHMARK
 bool bench_defer_update=false;
 #endif
+// SDL resolves relative Android paths from getFilesDir(); the example host
+// and RmlUi resolve them from the extracted runtime's working directory.
+static std::string sdl_file_path(const std::string& path) {
+#ifdef __ANDROID__
+    if (!path.empty() && path.front() != '/') {
+        return std::string(std::getenv("DASRMLUI_HOME")) + "/" + path;
+    }
+#endif
+    return path;
+}
 struct Geometry { std::vector<SDL_Vertex> verts; std::vector<int> indices; };
 
 class RenderInterface_SDLRenderer : public Rml::RenderInterface {
@@ -85,7 +98,7 @@ public:
     void ReleaseGeometry(Rml::CompiledGeometryHandle handle) override { delete (Geometry *)handle; }
 
     Rml::TextureHandle LoadTexture(Rml::Vector2i & dims, const Rml::String & source) override {
-        SDL_Surface * s = SDL_LoadPNG(source.c_str());
+        SDL_Surface * s = SDL_LoadPNG(sdl_file_path(source).c_str());
         if (!s) { SDL_Log("rmlui: can not load %s", source.c_str()); return 0; }
         SDL_Surface * c = SDL_ConvertSurface(s, SDL_PIXELFORMAT_ABGR8888);
         SDL_DestroySurface(s);
@@ -210,7 +223,7 @@ public:
 class RenderInterface_Advanced : public RenderInterface_GL3 {
 public:
     Rml::TextureHandle LoadTexture(Rml::Vector2i& dims, const Rml::String& source) override {
-        SDL_Surface* original=SDL_LoadPNG(source.c_str());
+        SDL_Surface* original=SDL_LoadPNG(sdl_file_path(source).c_str());
         if (!original) { SDL_Log("rmlui: cannot load PNG %s: %s",source.c_str(),SDL_GetError()); return 0; }
         SDL_Surface* surface=SDL_ConvertSurface(original,SDL_PIXELFORMAT_RGBA32);
         SDL_DestroySurface(original);
@@ -990,8 +1003,25 @@ static void rui_event(const SDL_Event& event) { native_guard();
     if(ev.type==SDL_EVENT_MOUSE_BUTTON_UP && (state->swallowed_buttons & SDL_BUTTON_MASK(ev.button.button))) {
         state->swallowed_buttons &= ~SDL_BUTTON_MASK(ev.button.button); return;
     }
+#ifdef __ANDROID__
+    if (ev.type == SDL_EVENT_FINGER_CANCELED) {
+        const auto point = Rml::Vector2f(ev.tfinger.x, ev.tfinger.y) * Rml::Vector2f(state->context->GetDimensions());
+        state->context->ProcessTouchCancel(Rml::TouchList{{static_cast<Rml::TouchId>(ev.tfinger.fingerID), point}});
+        return;
+    }
+#endif
     if(!state->popups.empty()) {
         const auto id=state->popups.back();
+#ifdef __ANDROID__
+        if (ev.type == SDL_EVENT_FINGER_DOWN) {
+            const auto point = Rml::Vector2f(ev.tfinger.x, ev.tfinger.y) * Rml::Vector2f(state->context->GetDimensions());
+            auto hit = state->context->GetElementAtPoint(point);
+            if (!inside(node(id), hit) && !debugger_element(hit)) {
+                dismiss_popup(id, "outside");
+                return;
+            }
+        }
+#endif
         if(ev.type==SDL_EVENT_KEY_DOWN && ev.key.key==SDLK_ESCAPE && !debugger_element(state->context->GetFocusElement())) { dismiss_popup(id,"escape"); return; }
         if(ev.type==SDL_EVENT_MOUSE_BUTTON_DOWN) {
             const float density=SDL_GetWindowPixelDensity(state->window);
@@ -1342,11 +1372,11 @@ static bool rui_screenshot(const char* path) {
         auto surface=SDL_CreateSurface(dims.x,dims.y,SDL_PIXELFORMAT_RGBA32);
         if (!surface) return false;
         for (int y=0;y<dims.y;++y) memcpy((char*)surface->pixels+y*surface->pitch,pixels.data()+size_t(dims.y-y-1)*dims.x*4,size_t(dims.x)*4);
-        const bool ok=SDL_SavePNG(surface,path); SDL_DestroySurface(surface); return ok;
+        const bool ok=SDL_SavePNG(surface,sdl_file_path(path).c_str()); SDL_DestroySurface(surface); return ok;
     }
     SDL_Surface* s = SDL_RenderReadPixels(state->render.r,nullptr);
     if (!s) return false;
-    bool ok = SDL_SavePNG(s,path); SDL_DestroySurface(s); return ok;
+    bool ok = SDL_SavePNG(s,sdl_file_path(path).c_str()); SDL_DestroySurface(s); return ok;
 }
 static void rui_focus(uint64_t id) { native_guard(); if (auto e=node(id)) e->Focus(); }
 static bool rui_focused(uint64_t id) { return state && node(id) && state->context->GetFocusElement()==node(id); }
@@ -1376,7 +1406,13 @@ static bool rui_default_font() {
         SDL_Log("dasrmlui: the bundled default font was not found; load a font with rui_font and name it with set_base_text");
         return false;
     }
-    return rui_font(default_font_path.c_str());
+    if (!rui_font(default_font_path.c_str())) return false;
+#ifdef __ANDROID__
+    const auto fallback = std::filesystem::path(default_font_path).parent_path() / "DejaVuSans.ttf";
+    return rui_fallback_font(fallback.c_str());
+#else
+    return true;
+#endif
 }
 static bool rui_default_font_styles() {
     if(!rui_default_font()) return false;

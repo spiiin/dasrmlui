@@ -10,13 +10,16 @@ def run_gl_demo(title,screenshot:string; smoke:bool; tick:block<(delta:float):vo
     let result=sdl_scope() {
         with_sdl() |> sdl_use
         set_gl_attribute(SDL_GLAttr.GL_CONTEXT_MAJOR_VERSION,3) |> sdl_try
-        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_MINOR_VERSION,3) |> sdl_try
-        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_PROFILE_MASK,int(SDL_GL_CONTEXT_PROFILE_CORE)) |> sdl_try
+        let es = SDL_GetPlatform() == "Android"
+        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_MINOR_VERSION,es ? 0 : 3) |> sdl_try
+        set_gl_attribute(SDL_GLAttr.GL_CONTEXT_PROFILE_MASK,int(es ? SDL_GL_CONTEXT_PROFILE_ES : SDL_GL_CONTEXT_PROFILE_CORE)) |> sdl_try
         set_gl_attribute(SDL_GLAttr.GL_STENCIL_SIZE,8) |> sdl_try
-        let flags=SDL_WINDOW_OPENGL | (smoke ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE)
+        let desktop_flags = smoke ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE
+        let display_flags = es ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_RESIZABLE) : desktop_flags
+        let flags = SDL_WINDOW_OPENGL | display_flags
         let window:SDL_Window?=with_window(title,1200,820,flags) |> sdl_use
         let context:SDL_GLContextState?=window |> with_gl_context() |> sdl_use
-        verify(rui_init_gl(window,1200,820),"OpenGL 3.3 renderer initialization failed")
+        verify(rui_init_gl(window,1200,820),"GL renderer initialization failed")
         verify(rui_default_font())
         var event=SDL_MakeEvent()
         var running=true

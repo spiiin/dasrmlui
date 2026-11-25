@@ -127,7 +127,11 @@ def main(smoke:bool):int {
     var state=ui_state(initial)
     return run_demo("Vector deck - native RmlUi tools","logs/navigation_lab.png",smoke,$() { ui_frame(state) $(model:Lab) { deck(model) } },$(frame:int) {
         ui_edit(state) $(var model:Lab) {
-            if (frame==0) { verify(rui_focused(ui_find("tile",0))); rui_test_shortcut("Right",0) }
+            if (frame==0) {
+                // Keep the inspector controls clear of the fixed-pixel tiles when picking them in this test.
+                set_ui_scale(1.0/rui_dp_ratio())
+                verify(rui_focused(ui_find("tile",0))); rui_test_shortcut("Right",0)
+            }
             elif (frame==1) { verify(rui_focused(ui_find("tile",1))); rui_test_shortcut("Down",0) }
             elif (frame==2) {
                 verify(rui_focused(ui_find("tile",4)))

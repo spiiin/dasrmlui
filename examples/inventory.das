@@ -11,7 +11,8 @@ def main(smoke:bool) : int {
     var state=ui_state(initial)
     let result = sdl_scope() {
         with_sdl() |> sdl_use
-        let flags = smoke ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE
+        let desktop_flags = smoke ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE
+        let flags = SDL_GetPlatform() == "Android" ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_RESIZABLE) : desktop_flags
         let window : SDL_Window? = with_window("dasrmlui - Inventory",960,640,flags) |> sdl_use
         let renderer : SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,960,640))
