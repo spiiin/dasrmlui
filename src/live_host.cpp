@@ -2,7 +2,7 @@
 #include "daScript/daScript.h"
 #include "dasLiveHost.h"
 #include "live_host.h"
-#ifdef DASRMLUI_IOS
+#if defined(DASRMLUI_IOS) || defined(__ANDROID__)
 #include "script_access.h"
 #endif
 #include <SDL3/SDL.h>
@@ -75,6 +75,8 @@ struct Driver {
         auto u=std::make_unique<Unit>();
 #ifdef DASRMLUI_IOS
         auto access=ios_script_access(das_root.c_str(),editable_root.c_str());
+#elif defined(__ANDROID__)
+        auto access=android_script_access();
 #else
         auto access=make_smart<FsFileAccess>();
 #endif

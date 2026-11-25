@@ -20,15 +20,12 @@
 	#pragma warning(disable : 4505)
 #endif
 
-#if defined RMLUI_PLATFORM_EMSCRIPTEN
+#if defined(RMLUI_PLATFORM_EMSCRIPTEN) || defined(__ANDROID__)
 	#define RMLUI_SHADER_HEADER_VERSION "#version 300 es\nprecision highp float;\n"
 	#include <GLES3/gl3.h>
 #elif defined(DASRMLUI_IOS)
 	#define RMLUI_SHADER_HEADER_VERSION "#version 300 es\nprecision highp float;\n"
 	#include <OpenGLES/ES3/gl.h>
-#elif defined __ANDROID__
-	#define RMLUI_SHADER_HEADER_VERSION "#version 320 es\nprecision highp float;\n"
-	#include <GLES3/gl32.h>
 #elif defined RMLUI_GL3_CUSTOM_LOADER
 	#define RMLUI_SHADER_HEADER_VERSION "#version 330\n"
 	#include RMLUI_GL3_CUSTOM_LOADER

@@ -9,7 +9,10 @@ bool live_isolated=false;
 bool live_advanced=false;
 }
 void rui_live_isolate(bool isolated) { live_isolated=isolated; }
-void rui_live_hidden(bool hidden) { live_hidden=hidden; }
+void rui_live_hidden(bool hidden) {
+    // A hidden Android window has no drawable framebuffer.
+    live_hidden = hidden && SDL_strcmp(SDL_GetPlatform(), "Android") != 0;
+}
 void rui_live_close() {
     if(live_gl) SDL_GL_DestroyContext(live_gl);
     if(live_renderer) SDL_DestroyRenderer(live_renderer);
@@ -25,10 +28,12 @@ static bool rui_live_open(const char* title,int width,int height,bool advanced) 
         SDL_WindowFlags flags=SDL_WINDOW_RESIZABLE | (live_hidden ? SDL_WINDOW_HIDDEN : 0);
 #if defined(DASRMLUI_IOS)
         flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#elif defined(__ANDROID__)
+        flags |= SDL_WINDOW_FULLSCREEN;
 #endif
         if(advanced) {
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,3);
-#if defined(__EMSCRIPTEN__) || defined(DASRMLUI_IOS)
+#if defined(__EMSCRIPTEN__) || defined(DASRMLUI_IOS) || defined(__ANDROID__)
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,0);
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_ES);
 #else
