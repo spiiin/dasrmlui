@@ -28,6 +28,8 @@
 #endif
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 #include <GLES3/gl3.h>
+#elif defined(DASRMLUI_IOS)
+#include <OpenGLES/ES3/gl.h>
 #else
 #include "RmlUi_Include_GL3.h"
 #endif
@@ -39,7 +41,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
-#include <filesystem>
+#include <cstdlib>
 #include <cmath>
 #include <DataModel.h>
 #include <DataView.h>
@@ -178,9 +180,108 @@ public:
     }
     size_t Tell(Rml::FileHandle handle) override { auto f=reinterpret_cast<File*>(handle); return f->disk ? size_t(std::ftell(f->disk)) : f->position; }
 };
+#if defined(DASRMLUI_IOS)
+struct IosViewport {
+    SDL_Rect pixels{};
+    int drawable_height = 0;
+    float scale = 1.f;
+
+    void Update(SDL_Window* window, SDL_Renderer* renderer, Rml::Vector2i size) {
+        SDL_Rect safe{};
+        int width=0, height=0;
+        if (!SDL_GetWindowSizeInPixels(window,&width,&height) || width<=0 || height<=0)
+            return;
+        const float density = SDL_GetWindowPixelDensity(window);
+        if (!std::isfinite(density) || density<=0 || size.x<=0 || size.y<=0) return;
+        if (!SDL_GetWindowSafeArea(window,&safe) || safe.w<=0 || safe.h<=0) {
+            int window_width=0, window_height=0;
+            if (!SDL_GetWindowSize(window,&window_width,&window_height)) return;
+            safe = {0,0,window_width,window_height};
+        }
+
+        const float fit = std::min(float(safe.w)/size.x, float(safe.h)/size.y);
+        scale = fit*density;
+        const float x = (safe.x+(safe.w-size.x*fit)*0.5f)*density;
+        const float y = (safe.y+(safe.h-size.y*fit)*0.5f)*density;
+        drawable_height = height;
+        if (renderer) {
+            // SDL applies render scale to viewport offsets as well as geometry.
+            const SDL_Rect viewport{int(std::round(x/scale)),int(std::round(y/scale)),size.x,size.y};
+            SDL_SetRenderScale(renderer,scale,scale);
+            SDL_SetRenderViewport(renderer,&viewport);
+            pixels = {int(std::floor(viewport.x*scale)),int(std::floor(viewport.y*scale)),
+                      int(std::ceil(size.x*scale)),int(std::ceil(size.y*scale))};
+        } else {
+            pixels = {int(std::round(x)),int(std::round(y)),
+                      std::max(1,int(std::round(size.x*scale))),std::max(1,int(std::round(size.y*scale)))};
+        }
+    }
+
+    Rml::Vector2f ToLogical(float x, float y) const {
+        return {(x-pixels.x)/scale,(y-pixels.y)/scale};
+    }
+
+    Rml::Vector2f ToPixels(float x, float y) const {
+        return {pixels.x+x*scale,pixels.y+y*scale};
+    }
+};
+#endif
+
 class UiSystem : public SystemInterface_SDL {
 public:
+#if defined(DASRMLUI_IOS)
+    explicit UiSystem(SDL_Window* window) : SystemInterface_SDL(window), keyboard_window(window) {}
+
+    void ActivateKeyboard(Rml::Vector2f caret, float line_height) override {
+        keyboard_caret = caret;
+        keyboard_line_height = line_height;
+        keyboard_requested = true;
+        keyboard_dirty = true;
+    }
+
+    void DeactivateKeyboard() override {
+        keyboard_requested = false;
+        keyboard_dirty = true;
+    }
+
+    IosViewport viewport;
+
+    bool IsEditing() const {
+        return keyboard_requested && SDL_TextInputActive(keyboard_window);
+    }
+
+    void SyncKeyboard() {
+        if (!keyboard_dirty) return;
+        keyboard_dirty = false;
+        const bool active = SDL_TextInputActive(keyboard_window);
+        if (!keyboard_requested) {
+            if (active) SDL_StopTextInput(keyboard_window);
+            return;
+        }
+        const float density = SDL_GetWindowPixelDensity(keyboard_window);
+        const auto position = viewport.ToPixels(keyboard_caret.x,keyboard_caret.y);
+        const SDL_Rect keyboard_area{int(position.x/density),int(position.y/density),
+            1,std::max(1,int(std::ceil(keyboard_line_height*viewport.scale/density)))};
+        SDL_Rect area{};
+        if (!SDL_GetTextInputArea(keyboard_window, &area, nullptr) ||
+            area.x != keyboard_area.x || area.y != keyboard_area.y ||
+            area.w != keyboard_area.w || area.h != keyboard_area.h)
+            SDL_SetTextInputArea(keyboard_window, &keyboard_area, 0);
+        // UIKit moves its text field when SDL_StartTextInput is called, even
+        // for an active session. Caret movement only needs the updated area.
+        if (!active) SDL_StartTextInput(keyboard_window);
+    }
+
+private:
+    SDL_Window* keyboard_window;
+    Rml::Vector2f keyboard_caret{};
+    float keyboard_line_height = 0;
+    bool keyboard_requested = false;
+    bool keyboard_dirty = false;
+public:
+#else
     using SystemInterface_SDL::SystemInterface_SDL;
+#endif
     bool test_clock=false;
     double test_time=0;
     double GetElapsedTime() override { return test_clock ? test_time : SystemInterface_SDL::GetElapsedTime(); }
@@ -489,6 +590,10 @@ void rui_shutdown() { native_guard();
     if(state->context) for(int i=0;i<state->context->GetNumDocuments();++i) listen_document(state->context->GetDocument(i),false);
     const bool gl_loaded=state->gl_loaded;
     Rml::Shutdown();
+#if defined(DASRMLUI_IOS)
+    state->system->DeactivateKeyboard();
+    state->system->SyncKeyboard();
+#endif
     // Release rooted daScript handlers only after every native element died.
     for(auto& type:state->native_types) type.second->Call(0,NativeRelease);
     for(auto& type:state->decorator_types) type.second->Call(nullptr,NativeRelease);
@@ -517,10 +622,14 @@ static bool rui_init_backend(SDL_Window* window, SDL_Renderer* renderer, int wid
     if (!Rml::Initialise()) { state.reset(); if (advanced) RmlGL3::Shutdown(); return false; }
     state->context = Rml::CreateContext("dasrmlui", {width, height});
     if (!state->context) { rui_shutdown(); return false; }
+#if defined(DASRMLUI_IOS)
+    state->system->viewport.Update(window,renderer,{width,height});
+#else
     int pixel_width=0,pixel_height=0;
     if(SDL_GetWindowSizeInPixels(window,&pixel_width,&pixel_height) && pixel_width>0 && pixel_height>0)
         state->context->SetDimensions({pixel_width,pixel_height});
     state->display_scale=SDL_GetWindowDisplayScale(window);
+#endif
     if(!std::isfinite(state->display_scale) || state->display_scale<=0) state->display_scale=1.f;
     state->context->SetDensityIndependentPixelRatio(state->display_scale);
     state->document = state->context->CreateDocument();
@@ -986,10 +1095,61 @@ static char* rui_theme(das::Context* ctx,das::LineInfoArg* at) { return str(stat
 static void rui_test_display_scale(float scale) { native_guard(); update_density(scale); }
 static float rui_scroll_top(uint64_t id) { auto e=node(id); return e ? e->GetScrollTop() : 0.f; }
 static void rui_scroll_to(uint64_t id, float y) { native_guard(); if (auto e=node(id)) e->SetScrollTop(y); }
-static void rui_test_resize(int width, int height) { if (state) { native_guard(); SDL_SetWindowSize(state->window,width,height); state->context->SetDimensions({width,height}); } }
+static void rui_test_resize(int width, int height) {
+    if (!state) return;
+    native_guard();
+#if !defined(DASRMLUI_IOS)
+    SDL_SetWindowSize(state->window,width,height);
+#endif
+    state->context->SetDimensions({width,height});
+#if defined(DASRMLUI_IOS)
+    state->system->viewport.Update(state->window,state->render.r,{width,height});
+#endif
+}
+static Rml::Vector2f test_window_position(float x, float y) {
+    const float density = SDL_GetWindowPixelDensity(state->window);
+#if defined(DASRMLUI_IOS)
+    return state->system->viewport.ToPixels(x,y)/density;
+#else
+    return {x/density,y/density};
+#endif
+}
 static void rui_event(const SDL_Event& event) { native_guard();
     if (!state) return;
     SDL_Event ev = event;
+#if defined(DASRMLUI_IOS)
+    if (ev.type==SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED || ev.type==SDL_EVENT_WINDOW_SAFE_AREA_CHANGED ||
+        ev.type==SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED) {
+        if (ev.window.windowID==SDL_GetWindowID(state->window))
+            state->system->viewport.Update(state->window,state->render.r,state->context->GetDimensions());
+        return;
+    }
+    const auto& viewport = state->system->viewport;
+    const float density = SDL_GetWindowPixelDensity(state->window);
+    auto map_mouse = [&](float& x,float& y) {
+        // RmlSDL applies window pixel density to mouse coordinates.
+        const auto position = viewport.ToLogical(x*density,y*density)/density;
+        x = position.x;
+        y = position.y;
+    };
+    switch (ev.type) {
+    case SDL_EVENT_MOUSE_MOTION: map_mouse(ev.motion.x,ev.motion.y); break;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP: map_mouse(ev.button.x,ev.button.y); break;
+    case SDL_EVENT_FINGER_DOWN:
+    case SDL_EVENT_FINGER_UP:
+    case SDL_EVENT_FINGER_MOTION: {
+        int w=0,h=0;
+        if (!SDL_GetWindowSizeInPixels(state->window,&w,&h)) return;
+        const auto position = viewport.ToLogical(ev.tfinger.x*w,ev.tfinger.y*h);
+        const auto size = state->context->GetDimensions();
+        ev.tfinger.x = position.x/size.x;
+        ev.tfinger.y = position.y/size.y;
+        break;
+    }
+    default: break;
+    }
+#endif
     if((ev.type==SDL_EVENT_KEY_DOWN || ev.type==SDL_EVENT_KEY_UP) && state->debugger_key!=SDLK_UNKNOWN &&
        ev.key.key==state->debugger_key && ev.key.windowID==SDL_GetWindowID(state->window)) {
         if(ev.type==SDL_EVENT_KEY_DOWN) {
@@ -1048,7 +1208,27 @@ static void rui_event(const SDL_Event& event) { native_guard();
     }
     if (ev.type == SDL_EVENT_TEXT_INPUT || ev.type == SDL_EVENT_WINDOW_FOCUS_LOST) state->composing = false;
     if (ev.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) state->context->SetDimensions({ev.window.data1, ev.window.data2});
+#if defined(DASRMLUI_IOS)
+    Rml::ObserverPtr<Rml::Element> editing;
+    if (state->system->IsEditing()) {
+        if (auto* focus = state->context->GetFocusElement()) {
+            if (ev.type == SDL_EVENT_KEY_DOWN && !state->composing &&
+                (ev.key.key == SDLK_ESCAPE ||
+                 ((ev.key.key == SDLK_RETURN || ev.key.key == SDLK_KP_ENTER) && focus->GetTagName() == "input"))) {
+                editing = focus->GetObserverPtr();
+            } else if (ev.type == SDL_EVENT_FINGER_DOWN) {
+                const auto size = state->context->GetDimensions();
+                auto* hit = state->context->GetElementAtPoint({ev.tfinger.x*size.x,ev.tfinger.y*size.y});
+                if (!inside(focus,hit)) editing = focus->GetObserverPtr();
+            }
+        }
+    }
+#endif
     RmlSDL::InputEventHandler(state->context, state->window, ev);
+#if defined(DASRMLUI_IOS)
+    // Let RmlUi deliver Enter and give other controls a chance to take focus first.
+    if (editing && editing.get() == state->context->GetFocusElement()) editing->Blur();
+#endif
 }
 static bool rui_next_event() { native_guard();
     if (!state) return false;
@@ -1205,13 +1385,30 @@ static void rui_update() { native_guard();
 }
 static void rui_render(das::Context* context,das::LineInfoArg* at) { native_guard();
     if (!state) return;
+#if defined(DASRMLUI_IOS)
+    // Coalesce transient blur/focus caused by DOM updates within this frame.
+    state->system->SyncKeyboard();
+#endif
     if (state->advanced) {
         const auto size=state->context->GetDimensions();
         state->advanced->SetViewport(size.x,size.y);
+#if defined(DASRMLUI_IOS)
+        const auto properties = SDL_GetWindowProperties(state->window);
+        const auto framebuffer = GLuint(SDL_GetNumberProperty(properties, SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0));
+        state->advanced->SetTargetFramebuffer(framebuffer);
+        const auto& viewport = state->system->viewport;
+        const auto& rect = viewport.pixels;
+        state->advanced->SetPresentationViewport(rect.x,viewport.drawable_height-rect.y-rect.h,rect.w,rect.h);
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+#endif
         if (state->gl_clear) { glClearColor(0.035f,0.05f,0.075f,1.f); glClear(GL_COLOR_BUFFER_BIT); }
         state->advanced->BeginFrame();
         state->context->Render();
         state->advanced->EndFrame();
+#if defined(DASRMLUI_IOS)
+        const auto renderbuffer = GLuint(SDL_GetNumberProperty(properties, SDL_PROP_WINDOW_UIKIT_OPENGL_RENDERBUFFER_NUMBER, 0));
+        glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
+#endif
         rui_native_check(context,at);
         return;
     }
@@ -1246,19 +1443,19 @@ static void rui_test_click(uint64_t id) { native_guard();
     state->context->Update();
     const auto p = e->GetAbsoluteOffset(Rml::BoxArea::Border);
     const auto size = e->GetBox().GetSize(Rml::BoxArea::Border);
-    const float density = SDL_GetWindowPixelDensity(state->window);
+    const auto position = test_window_position(p.x + size.x * 0.5f,p.y + size.y * 0.5f);
     SDL_Event ev{};
     ev.type = SDL_EVENT_MOUSE_MOTION;
     ev.motion.windowID = SDL_GetWindowID(state->window);
-    ev.motion.x = (p.x + size.x * 0.5f) / density;
-    ev.motion.y = (p.y + size.y * 0.5f) / density;
+    ev.motion.x = position.x;
+    ev.motion.y = position.y;
     rui_event(ev);
     ev = {};
     ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     ev.button.windowID = SDL_GetWindowID(state->window);
     ev.button.button = SDL_BUTTON_LEFT;
-    ev.button.x = (p.x + size.x * 0.5f) / density;
-    ev.button.y = (p.y + size.y * 0.5f) / density;
+    ev.button.x = position.x;
+    ev.button.y = position.y;
     ev.button.down = true;
     rui_event(ev);
     ev.type = SDL_EVENT_MOUSE_BUTTON_UP;
@@ -1287,13 +1484,13 @@ static void rui_test_shortcut(const char* name,int modifiers) { native_guard();
 }
 static void rui_test_pointer(float x,float y,int button,float wheel) { native_guard();
     if(!state) return;
-    const auto density=SDL_GetWindowPixelDensity(state->window);
+    const auto position=test_window_position(x,y);
     SDL_Event ev{}; ev.type=SDL_EVENT_MOUSE_MOTION; ev.motion.windowID=SDL_GetWindowID(state->window);
-    ev.motion.x=x/density; ev.motion.y=y/density; rui_event(ev);
+    ev.motion.x=position.x; ev.motion.y=position.y; rui_event(ev);
     ev={};
     if(button>=0) {
         ev.type=SDL_EVENT_MOUSE_BUTTON_DOWN; ev.button.windowID=SDL_GetWindowID(state->window);
-        ev.button.x=x/density; ev.button.y=y/density;
+        ev.button.x=position.x; ev.button.y=position.y;
         ev.button.button=button==0 ? SDL_BUTTON_LEFT : button==1 ? SDL_BUTTON_RIGHT : SDL_BUTTON_MIDDLE;
         ev.button.down=true; rui_event(ev); ev.type=SDL_EVENT_MOUSE_BUTTON_UP; ev.button.down=false; rui_event(ev);
     } else {
@@ -1331,16 +1528,17 @@ static char* rui_computed_property(uint64_t id,const char* name,das::Context* ct
 static void rui_test_drag_offset(uint64_t source, float dx, float dy) { native_guard();
     if (!state || !node(source)) return;
     state->context->Update(); const auto box=rui_bounds(source);
-    const float density=SDL_GetWindowPixelDensity(state->window);
+    const float x=box.x+box.z*.5f,y=box.y+box.w*.5f;
+    const auto start=test_window_position(x,y);
     SDL_Event event{}; event.type=SDL_EVENT_MOUSE_MOTION;
     event.motion.windowID=SDL_GetWindowID(state->window);
-    const float x=(box.x+box.z*.5f)/density,y=(box.y+box.w*.5f)/density;
-    event.motion.x=x; event.motion.y=y; rui_event(event);
+    event.motion.x=start.x; event.motion.y=start.y; rui_event(event);
     event={}; event.type=SDL_EVENT_MOUSE_BUTTON_DOWN; event.button.windowID=SDL_GetWindowID(state->window);
     event.button.button=SDL_BUTTON_LEFT; event.button.down=true; rui_event(event);
     for (int i=1;i<=10;++i) {
         event={}; event.type=SDL_EVENT_MOUSE_MOTION; event.motion.windowID=SDL_GetWindowID(state->window);
-        event.motion.state=SDL_BUTTON_LMASK; event.motion.x=x+dx*float(i)/10.f/density; event.motion.y=y+dy*float(i)/10.f/density;
+        const auto position=test_window_position(x+dx*float(i)/10.f,y+dy*float(i)/10.f);
+        event.motion.state=SDL_BUTTON_LMASK; event.motion.x=position.x; event.motion.y=position.y;
         rui_event(event);
     }
     event={}; event.type=SDL_EVENT_MOUSE_BUTTON_UP; event.button.windowID=SDL_GetWindowID(state->window);
@@ -1361,14 +1559,35 @@ static char* rui_inner_markup(uint64_t id,das::Context* ctx,das::LineInfoArg* at
 static char* rui_local_property(uint64_t id,const char* name,das::Context* ctx,das::LineInfoArg* at) {
     auto e=node(id); const auto p=e ? e->GetLocalProperty(name) : nullptr; return str(p ? p->ToString() : "",ctx,at);
 }
+#if defined(DASRMLUI_IOS)
+static std::string screenshot_directory;
+void rui_set_screenshot_directory(const char* path) { screenshot_directory = path; }
+#endif
 static bool rui_screenshot(const char* path) {
     if (!state) return false;
+#if defined(DASRMLUI_IOS)
+    const std::string full_path = screenshot_directory + path;
+    path = full_path.c_str();
+#endif
     if (state->advanced) {
+#if defined(DASRMLUI_IOS)
+        const auto& viewport=state->system->viewport;
+        const auto& rect=viewport.pixels;
+        const Rml::Vector2i dims{rect.w,rect.h};
+        const int x=rect.x, y=viewport.drawable_height-rect.y-rect.h;
+#else
         const auto dims=state->context->GetDimensions();
+        const int x=0,y=0;
+#endif
         if (dims.x<=0 || dims.y<=0) return false;
         std::vector<unsigned char> pixels(size_t(dims.x)*dims.y*4);
-        glReadBuffer(GL_BACK); glPixelStorei(GL_PACK_ALIGNMENT,1);
-        glReadPixels(0,0,dims.x,dims.y,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+#if defined(DASRMLUI_IOS)
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+#else
+        glReadBuffer(GL_BACK);
+#endif
+        glPixelStorei(GL_PACK_ALIGNMENT,1);
+        glReadPixels(x,y,dims.x,dims.y,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
         auto surface=SDL_CreateSurface(dims.x,dims.y,SDL_PIXELFORMAT_RGBA32);
         if (!surface) return false;
         for (int y=0;y<dims.y;++y) memcpy((char*)surface->pixels+y*surface->pitch,pixels.data()+size_t(dims.y-y-1)*dims.x*4,size_t(dims.x)*4);
@@ -1407,9 +1626,8 @@ static bool rui_default_font() {
         return false;
     }
     if (!rui_font(default_font_path.c_str())) return false;
-#ifdef __ANDROID__
-    const auto fallback = std::filesystem::path(default_font_path).parent_path() / "DejaVuSans.ttf";
-    return rui_fallback_font(fallback.c_str());
+#if defined(DASRMLUI_IOS) || defined(__ANDROID__)
+    return rui_fallback_font("web/assets/DejaVuSans.ttf");
 #else
     return true;
 #endif

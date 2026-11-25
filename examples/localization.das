@@ -34,7 +34,7 @@ def sample_phrase(count:int; language:string):string {
 }
 [ui_style]
 def passport_style() {
-    rule(part("shell")) { padding(px(40)); background(rgb(244,239,232)); color(rgb(50,53,75)); min_height(px(740)); property("font-family",get_platform_name() == "windows" ? "Segoe UI" : "DejaVu Sans") }
+    rule(part("shell")) { padding(px(40)); background(rgb(244,239,232)); color(rgb(50,53,75)); min_height(px(740)); property("font-family","DejaVu Sans") }
     rule(part("heading")) { font_size(px(36)); margin_bottom(px(12)) }
     rule(part("muted")) { color(rgb(119,110,122)); margin_bottom(px(20)) }
     rule(part("card")) { padding(px(28)); width(px(720)); background(rgb(255,253,249)); border(px(1),rgb(221,209,203)); border_radius(px(12)); margin_top(px(18)) }
@@ -50,8 +50,7 @@ def passport(var model:Passport) {
     use_style(@@passport_style)
     on_mount() {
         translations()
-        // Installed Windows font, not redistributed in the repository.
-        verify(rui_font(get_platform_name() == "windows" ? "C:/Windows/Fonts/segoeui.ttf" : "assets/DejaVuSans.ttf"),"Could not load the localization font")
+        verify(rui_font("web/assets/DejaVuSans.ttf"),"Localization demo requires the bundled DejaVu Sans font")
     }
     column("shell") {
         width(px(ui_width()-80.))

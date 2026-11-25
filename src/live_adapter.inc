@@ -26,12 +26,14 @@ static bool rui_live_open(const char* title,int width,int height,bool advanced) 
     if(!live_window) {
         if(!SDL_Init(SDL_INIT_VIDEO)) return false;
         SDL_WindowFlags flags=SDL_WINDOW_RESIZABLE | (live_hidden ? SDL_WINDOW_HIDDEN : 0);
-#ifdef __ANDROID__
+#if defined(DASRMLUI_IOS)
+        flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#elif defined(__ANDROID__)
         flags |= SDL_WINDOW_FULLSCREEN;
 #endif
         if(advanced) {
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,3);
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if defined(__EMSCRIPTEN__) || defined(DASRMLUI_IOS) || defined(__ANDROID__)
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,0);
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_ES);
 #else
@@ -52,7 +54,11 @@ static bool rui_live_open(const char* title,int width,int height,bool advanced) 
     }
     SDL_SetWindowTitle(live_window,title);
     if(state) return true;
+#if defined(DASRMLUI_IOS)
+    const int w=width,h=height;
+#else
     int w,h; SDL_GetWindowSizeInPixels(live_window,&w,&h);
+#endif
     live_base_css.clear();
     return rui_init_backend(live_window,live_renderer,w,h,advanced) && rui_default_font();
 }

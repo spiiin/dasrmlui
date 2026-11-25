@@ -2,7 +2,9 @@
 #include "daScript/daScript.h"
 #include "dasLiveHost.h"
 #include "live_host.h"
+#if defined(DASRMLUI_IOS) || defined(__ANDROID__)
 #include "script_access.h"
+#endif
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -51,7 +53,7 @@ struct Unit {
     }
 };
 struct Driver {
-    std::string das_root,sdl_root,ui_root,examples_root;
+    std::string das_root,sdl_root,ui_root,examples_root,editable_root;
     TextPrinter out;
     std::string error;
     void fail(const std::string& message) {
@@ -71,7 +73,13 @@ struct Driver {
     }
     std::unique_ptr<Unit> compile(const char* path,bool styles,bool prepare=true) {
         auto u=std::make_unique<Unit>();
-        auto access=rui_script_access();
+#ifdef DASRMLUI_IOS
+        auto access=ios_script_access(das_root.c_str(),editable_root.c_str());
+#elif defined(__ANDROID__)
+        auto access=android_script_access();
+#else
+        auto access=make_smart<FsFileAccess>();
+#endif
         access->addFsRoot("dassdl3",sdl_root); access->addFsRoot("dasrmlui",ui_root);
         access->addFsRoot("glsl",das_root+"/modules/dasGlsl/glsl");
         access->addFsRoot("live",das_root+"/modules/dasLiveHost/live");
@@ -128,9 +136,9 @@ struct Driver {
 };
 }
 int run_ui_live(const char* path,const char* styles,const std::string& das_root,const std::string& sdl_root,
-    const std::string& ui_root,const std::string& examples_root,bool hidden,int frames) {
+    const std::string& ui_root,const std::string& examples_root,bool hidden,int frames,const std::string& editable_root) {
     std::setvbuf(stdout,nullptr,_IONBF,0);
-    Driver d{das_root,sdl_root,ui_root,examples_root};
+    Driver d{das_root,sdl_root,ui_root,examples_root,editable_root};
     live_host_set_live_mode(true); rui_live_hidden(hidden);
     auto app=d.compile(path,false);
     if(!app) return 1;

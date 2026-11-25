@@ -47,9 +47,8 @@ exception handling in this toolchain. See [Emscripten asynchronous code](https:/
 `web/examples/demo_host.das` and `gl_demo_host.das` replace only desktop window/event
 loops in the staged VFS. Components/styles remain the original files. Inventory has
 an equivalent small browser entry point. RmlUi uses the GL3 renderer's GLES branch;
-custom shader/filter source uses GLSL ES 300. The staged localization example uses
-bundled DejaVu Sans instead of a Windows system font. Host adapters retain periodic
-script GC.
+custom shader/filter source uses GLSL ES 300. Localization uses the same bundled
+DejaVu Sans font on desktop and in the browser. Host adapters retain periodic script GC.
 
 Live workbench runs the real LiveHost against the browser VFS. Its Reload/Reset
 buttons preserve/reset state as on desktop; watching physical disk files requires

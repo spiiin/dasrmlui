@@ -20,6 +20,13 @@ FetchContent_Declare(rlottie
   GIT_TAG ea06d2f29ba01b8d06c00a838d107f5e484ae59b
   PATCH_COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=<SOURCE_DIR> -P ${CMAKE_CURRENT_LIST_DIR}/patch_rlottie.cmake)
 FetchContent_MakeAvailable(lunasvg rlottie)
+if(APPLE)
+  # The bundled pixman NEON assembly targets 32-bit ARM.
+  target_compile_options(rlottie PRIVATE -U__ARM_NEON__)
+  get_target_property(rlottie_link_libraries rlottie INTERFACE_LINK_LIBRARIES)
+  list(FILTER rlottie_link_libraries EXCLUDE REGEX "^-Wl, -undefined error$")
+  set_property(TARGET rlottie PROPERTY INTERFACE_LINK_LIBRARIES "${rlottie_link_libraries}")
+endif()
 if(TARGET lottie2gif)
   set_target_properties(lottie2gif PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endif()

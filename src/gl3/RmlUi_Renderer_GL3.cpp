@@ -23,6 +23,9 @@
 #if defined(RMLUI_PLATFORM_EMSCRIPTEN) || defined(__ANDROID__)
 	#define RMLUI_SHADER_HEADER_VERSION "#version 300 es\nprecision highp float;\n"
 	#include <GLES3/gl3.h>
+#elif defined(DASRMLUI_IOS)
+	#define RMLUI_SHADER_HEADER_VERSION "#version 300 es\nprecision highp float;\n"
+	#include <OpenGLES/ES3/gl.h>
 #elif defined RMLUI_GL3_CUSTOM_LOADER
 	#define RMLUI_SHADER_HEADER_VERSION "#version 330\n"
 	#include RMLUI_GL3_CUSTOM_LOADER
@@ -593,7 +596,7 @@ static bool CreateProgram(GLuint& out_program, Uniforms& inout_uniform_map, Prog
 static bool CreateFramebuffer(FramebufferData& out_fb, int width, int height, int samples, FramebufferAttachment attachment,
 	GLuint shared_depth_stencil_buffer)
 {
-#if defined(RMLUI_PLATFORM_EMSCRIPTEN) || defined(__ANDROID__)
+#if defined(RMLUI_PLATFORM_EMSCRIPTEN) || defined(__ANDROID__) || defined(DASRMLUI_IOS)
 	constexpr GLint wrap_mode = GL_CLAMP_TO_EDGE;
 #else
 	constexpr GLint wrap_mode = GL_CLAMP_TO_BORDER; // GL_REPEAT GL_MIRRORED_REPEAT GL_CLAMP_TO_EDGE
@@ -626,7 +629,7 @@ static bool CreateFramebuffer(FramebufferData& out_fb, int width, int height, in
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, min_mag_filter);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_mode);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_mode);
-#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__)
+#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(DASRMLUI_IOS)
 		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, &border_color[0]);
 #endif
 
@@ -807,9 +810,16 @@ void RenderInterface_GL3::SetViewport(int width, int height, int offset_x, int o
 {
 	viewport_width = Rml::Math::Max(width, 1);
 	viewport_height = Rml::Math::Max(height, 1);
-	viewport_offset_x = offset_x;
-	viewport_offset_y = offset_y;
+	SetPresentationViewport(offset_x, offset_y, viewport_width, viewport_height);
 	projection = Rml::Matrix4f::ProjectOrtho(0, (float)viewport_width, (float)viewport_height, 0, -10000, 10000);
+}
+
+void RenderInterface_GL3::SetPresentationViewport(int x, int y, int width, int height)
+{
+	viewport_offset_x = x;
+	viewport_offset_y = y;
+	presentation_width = width;
+	presentation_height = height;
 }
 
 void RenderInterface_GL3::BeginFrame()
@@ -871,7 +881,7 @@ void RenderInterface_GL3::BeginFrame()
 	glBlendEquation(GL_FUNC_ADD);
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__)
+#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(DASRMLUI_IOS)
 	// We do blending in nonlinear sRGB space because that is the common practice and gives results that we are used to.
 	glDisable(GL_FRAMEBUFFER_SRGB);
 #endif
@@ -907,9 +917,9 @@ void RenderInterface_GL3::EndFrame()
 
 	glBlitFramebuffer(0, 0, fb_active.width, fb_active.height, 0, 0, fb_postprocess.width, fb_postprocess.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-	// Draw to backbuffer
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(viewport_offset_x, viewport_offset_y, viewport_width, viewport_height);
+	// Draw to the window framebuffer. UIKit uses a nonzero name.
+	glBindFramebuffer(GL_FRAMEBUFFER, target_framebuffer);
+	glViewport(viewport_offset_x, viewport_offset_y, presentation_width, presentation_height);
 
 	// Assuming we have an opaque background, we can just write to it with the premultiplied alpha blend mode and we'll get the correct result.
 	// Instead, if we had a transparent destination that didn't use premultiplied alpha, we would need to perform a manual un-premultiplication step.
@@ -2190,7 +2200,7 @@ bool RmlGL3::Initialize(Rml::String* out_message)
 #if defined(RMLUI_PLATFORM_EMSCRIPTEN)
 	if (out_message)
 		*out_message = "Started Emscripten WebGL renderer.";
-#elif defined(__ANDROID__)
+#elif defined(__ANDROID__) || defined(DASRMLUI_IOS)
 	if (out_message)
 		*out_message = "Started OpenGL ES 3 renderer.";
 #elif !defined RMLUI_GL3_CUSTOM_LOADER
@@ -2211,7 +2221,7 @@ bool RmlGL3::Initialize(Rml::String* out_message)
 
 void RmlGL3::Shutdown()
 {
-#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(RMLUI_GL3_CUSTOM_LOADER)
+#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(DASRMLUI_IOS) && !defined(RMLUI_GL3_CUSTOM_LOADER)
 	gladLoaderUnloadGL();
 #endif
 }

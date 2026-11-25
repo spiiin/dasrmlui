@@ -20,7 +20,7 @@ def main(smoke:bool):int {
         let renderer:SDL_Renderer? = window |> with_renderer() |> sdl_use
         verify(rui_init(window,renderer,720,480))
         verify(rui_default_font())
-        verify(rui_font("assets/DejaVuSans.ttf"))
+        verify(rui_font("web/assets/DejaVuSans.ttf"))
         let field = rui_create(rui_root(),"input","","text")
         rui_css("input \{ position: absolute; top: 12px; left: 12px; width: 500px; height: 80px; font-family: LatoLatin; font-size: 48px; color: white; background-color: black; border-width: 0px; \}")
         rui_update()

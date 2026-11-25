@@ -45,7 +45,7 @@ set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(RmlUi)
 add_library(main SHARED "${ROOT}/src/host.cpp" "${ROOT}/src/live_host.cpp" "${ROOT}/src/rml_module.cpp"
   "${ROOT}/src/gl3/RmlUi_Renderer_GL3.cpp" "${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp")
-target_include_directories(main PRIVATE "${DASSDL3_DIR}/mobile" "${DAS}/modules/dasLiveHost/src"
+target_include_directories(main PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${DASSDL3_DIR}/mobile" "${DAS}/modules/dasLiveHost/src"
   "${rmlui_SOURCE_DIR}/Source/Core" "${rmlui_SOURCE_DIR}/Backends")
 target_compile_definitions(main PRIVATE RMLUI_SDL_VERSION_MAJOR=3 DAS_NO_FILEIO=1)
 target_link_libraries(main PRIVATE dasSDL3 libDasModuleLiveHost RmlUi::RmlUi RmlUi::Debugger GLESv3)
@@ -72,7 +72,7 @@ install(DIRECTORY "${ROOT}/examples/" DESTINATION runtime/examples COMPONENT apk
 install(DIRECTORY "${rmlui_SOURCE_DIR}/Samples/assets/" DESTINATION runtime/assets COMPONENT apk
   FILES_MATCHING PATTERN "LatoLatin-*.ttf" PATTERN "LICENSE.txt")
 install(FILES "${ROOT}/web/assets/DejaVuSans.ttf" "${ROOT}/web/assets/LICENSE-DejaVuSans.ttf.txt"
-  DESTINATION runtime/assets COMPONENT apk)
+  DESTINATION runtime/web/assets COMPONENT apk)
 foreach(dep SDL daScript)
   install(DIRECTORY "${DASSDL3_DIR}/licenses/${dep}/" DESTINATION "runtime/licenses/${dep}" COMPONENT apk)
 endforeach()

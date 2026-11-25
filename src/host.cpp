@@ -1,6 +1,5 @@
 #include "daScript/daScript.h"
 #include "live_host.h"
-#include "script_access.h"
 #include <SDL3/SDL.h>
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL_main.h>
@@ -12,6 +11,7 @@
 #include <vector>
 #ifdef __ANDROID__
 #include <unistd.h>
+#include "script_access.h"
 #endif
 DECLARE_MODULE(Module_dasSDL3);
 DECLARE_MODULE(Module_dasRmlUi);
@@ -42,7 +42,7 @@ struct Location { std::string path; const char* origin; };
 // Looked up in order: the DASRMLUI_HOME folder, the folder of the executable
 // and the one above it (an installed package keeps the binary in bin/), then
 // the tree this binary was built from, if the build recorded it.
-Location locate(const char* relative, const char* build_time) {
+Location locate(const char* relative, const char* build_time, bool directory = true) {
     namespace fs = std::filesystem;
     std::vector<std::pair<fs::path,const char*>> homes;
     const char* home = std::getenv("DASRMLUI_HOME");
@@ -54,7 +54,8 @@ Location locate(const char* relative, const char* build_time) {
     for (const auto& entry : homes) {
         std::error_code error;
         const auto candidate = entry.first / relative;
-        if (!fs::exists(candidate, error)) continue;
+        const auto status = fs::status(candidate, error);
+        if (error || (directory ? !fs::is_directory(status) : !fs::is_regular_file(status))) continue;
         const auto resolved = fs::weakly_canonical(candidate, error);
         return {(error ? candidate : resolved).generic_string(), entry.second};
     }
@@ -66,7 +67,7 @@ struct Roots {
     Location sdl = locate("dassdl3", SDL_MODULE_ROOT);
     Location ui = locate("dasrmlui", UI_MODULE_ROOT);
     Location examples = locate("examples", EXAMPLES_ROOT);
-    Location font = locate("assets/LatoLatin-Regular.ttf", RMLUI_FONT);
+    Location font = locate("assets/LatoLatin-Regular.ttf", RMLUI_FONT, false);
     void print() const {
         const std::pair<const char*,const Location*> all[] = {
             {"daScript",&das},{"dassdl3",&sdl},{"dasrmlui",&ui},{"examples",&examples},{"font",&font}};
@@ -80,7 +81,11 @@ struct Roots {
 static int run(const char* path, bool smoke, const Roots& roots) {
     using namespace das;
     TextPrinter out; ModuleGroup modules;
-    auto access = rui_script_access();
+#ifdef __ANDROID__
+    auto access = android_script_access();
+#else
+    auto access = make_smart<FsFileAccess>();
+#endif
     access->addFsRoot("dassdl3", roots.sdl.path);
     access->addFsRoot("dasrmlui", roots.ui.path);
     access->addFsRoot("live", roots.das.path + "/modules/dasLiveHost/live");

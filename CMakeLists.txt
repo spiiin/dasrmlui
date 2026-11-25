@@ -5,6 +5,10 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
 endif()
 project(dasrmlui LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
+if(APPLE)
+  # The pinned daScript runtime is built without C++ RTTI.
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+endif()
 # Locates the dasSDL3 build, checks that this configuration can link it and
 # defines the dependency variables used below.
 include(cmake/dependencies.cmake)
@@ -60,7 +64,8 @@ if(DASRMLUI_BUILD_BENCHMARKS)
   target_compile_definitions(dasrmlui_bench PRIVATE DASRMLUI_BENCHMARK=1)
   set_target_properties(dasrmlui_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
-enable_testing()
+include(CTest)
+if(BUILD_TESTING)
 if(DASRMLUI_BUILD_BENCHMARKS)
   add_test(NAME binding_benchmark_smoke COMMAND dasrmlui_bench ${CMAKE_SOURCE_DIR}/benchmarks/bindings.das --smoke-test)
   set_tests_properties(binding_benchmark_smoke PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -252,3 +257,5 @@ set_tests_properties(live_gl PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} EN
 add_test(NAME live_errors COMMAND ${DASRML_POWERSHELL} -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/test_live_errors.ps1
   -Runner $<TARGET_FILE:dasrmlui> -Root ${CMAKE_SOURCE_DIR})
 set_tests_properties(live_errors PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} TIMEOUT 60)
+
+endif()
